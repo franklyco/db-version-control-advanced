@@ -1,0 +1,349 @@
+<!doctype html>
+<!--
+  DBVC Visual Editor — R6 Frontend Site Manager Workspace static mockup (S-02 happy path).
+
+  PURELY STATIC. No JavaScript in this file. Every row is pre-rendered inline
+  from the frozen fixture so a reviewer can read the intended production DOM
+  shape without following any script. Tabs, search, Load more and the row
+  actions are inert visuals: they show the DOM production will emit but do not
+  react to clicks here.
+
+  Runtime authority: docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R6-WORKSPACE-STATE-CONTRACT.md
+  Brief:             docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/R6-WORKSPACE-CLAUDE-MOCKUP-HANDOFF.md
+  Fixture:           docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/fixtures/workspace-r6b-view-model.json
+                     (queries.populated — 20 rows, hasMore:true; every honest-route variant present)
+
+  Production hooks are NOT claimed here: data-mockup-* attributes only.
+  State gallery: states.html (D3).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>DBVC Visual Editor — R6 Site Manager workspace (static mockup)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="dbvc-ve-workspace-mockup">
+
+<!-- Faux WordPress admin bar (32px). Mockup scaffold only. -->
+<div class="dbvc-ve-workspace-mockup__admin-bar" aria-hidden="true">
+  <span>WordPress</span>
+  <span>Example Landscaping</span>
+  <span>Howdy, Editor</span>
+</div>
+
+<!-- Faux live site backdrop (aria-hidden). Generic sample content — no client data. -->
+<div class="dbvc-ve-workspace-mockup__stage" aria-hidden="true">
+  <div class="dbvc-ve-workspace-mockup__site-bar">
+    <span class="dbvc-ve-workspace-mockup__wordmark">Example Landscaping</span>
+    <span class="dbvc-ve-workspace-mockup__nav"><span>Services</span><span>Projects</span><span>About</span><span>Blog</span><span>Contact</span></span>
+    <span class="dbvc-ve-workspace-mockup__site-cta">Get a quote</span>
+  </div>
+  <div class="dbvc-ve-workspace-mockup__hero">
+    <span class="dbvc-ve-workspace-mockup__marker">Edit: Headline</span>
+    <p class="dbvc-ve-workspace-mockup__hero-title">Outdoor spaces, built for living.</p>
+    <span class="dbvc-ve-workspace-mockup__marker">Edit: Subheadline</span>
+    <p class="dbvc-ve-workspace-mockup__hero-body">Sample landscape design and installation copy. This backdrop exists only to show the workspace against a live page.</p>
+    <span class="dbvc-ve-workspace-mockup__hero-cta">Get a quote</span>
+  </div>
+  <div class="dbvc-ve-workspace-mockup__cards">
+    <div class="dbvc-ve-workspace-mockup__card"><span class="dbvc-ve-workspace-mockup__marker">Edit: Icon</span><strong>Thoughtful design</strong><span>Sample supporting copy for the first feature card.</span></div>
+    <div class="dbvc-ve-workspace-mockup__card"><span class="dbvc-ve-workspace-mockup__marker">Edit: Icon</span><strong>Quality craftsmanship</strong><span>Sample supporting copy for the second feature card.</span></div>
+    <div class="dbvc-ve-workspace-mockup__card"><span class="dbvc-ve-workspace-mockup__marker">Edit: Icon</span><strong>Easy maintenance</strong><span>Sample supporting copy for the third feature card.</span></div>
+  </div>
+</div>
+
+<!-- Faux frontend toolbar — reproduces the LIVE R5.later-toolbar-skin.c pill (dark, 30px round
+     buttons, dock dividers, orange [aria-expanded=true]). Scaffold only; the new first-dock
+     "Workspace" button is the one R6-D-1 adds (icon `grid`, aria-controls the drawer). -->
+<div class="dbvc-ve-workspace-mockup__toolbar" aria-hidden="true">
+  <span class="dbvc-ve-workspace-mockup__toolbar-button dbvc-ve-workspace-mockup__toolbar-button--satellite" title="Visual Editor status"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Zm8 0a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Z"/></svg><span class="dbvc-ve-workspace-mockup__toolbar-count">12</span></span>
+  <span class="dbvc-ve-workspace-mockup__toolbar-dock">
+    <span class="dbvc-ve-workspace-mockup__toolbar-button is-expanded" title="Site Manager"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="3" width="7" height="7" rx="1.5"/><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="14" y="3" width="7" height="7" rx="1.5"/><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="14" width="7" height="7" rx="1.5"/><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+    <span class="dbvc-ve-workspace-mockup__toolbar-button" title="Review fields"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m12 3 8 4-8 4-8-4 8-4Z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m4 12 8 4 8-4"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m4 17 8 4 8-4"/></svg></span>
+    <span class="dbvc-ve-workspace-mockup__toolbar-button" title="Go to object"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><circle fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="11" cy="11" r="6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m16 16 4 4"/></svg></span>
+    <span class="dbvc-ve-workspace-mockup__toolbar-button" title="Media Manager"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="4" width="18" height="16" rx="2.5"/><circle fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="8.75" cy="9.75" r="1.6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m4 16.5 4.5-4a1.8 1.8 0 0 1 2.4 0l3 2.7a1.8 1.8 0 0 0 2.4 0l3.7-2.6"/></svg></span>
+    <span class="dbvc-ve-workspace-mockup__toolbar-button" title="Shared globals"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><circle fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="12" r="9"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 12h18"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.5 2.7 3.5 5.7 3.5 9s-1 6.3-3.5 9c-2.5-2.7-3.5-5.7-3.5-9S9.5 5.7 12 3Z"/></svg></span>
+    <span class="dbvc-ve-workspace-mockup__toolbar-button" title="Global Brand Controls"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h11"/><circle fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="18" cy="6" r="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 12H4"/><circle fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="12" r="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 12h4"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 18h11"/><circle fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="18" cy="18" r="2"/></svg></span>
+  </span>
+  <span class="dbvc-ve-workspace-mockup__toolbar-button dbvc-ve-workspace-mockup__toolbar-button--satellite" title="Edit object"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 16 1-4 9-9 4 4-9 9-4 1Z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m14 5 4 4"/></svg></span>
+  <span class="dbvc-ve-workspace-mockup__toolbar-button dbvc-ve-workspace-mockup__toolbar-button--satellite" title="Exit Visual Editor"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 2v10"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg></span>
+</div>
+
+<!-- ============================================================================
+     THE WORKSPACE DRAWER — the only part of this file that maps to production DOM.
+     role=complementary (landmark, not dialog): no focus trap, outside click does
+     not close, Escape closes only when nothing above it is open (contract §6).
+     ============================================================================ -->
+<aside class="dbvc-ve-workspace" role="complementary" aria-labelledby="dbvc-ve-workspace-title" id="dbvc-ve-workspace">
+
+  <header class="dbvc-ve-workspace__header">
+    <span class="dbvc-ve-workspace__header-icon" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="3" width="7" height="7" rx="1.5"/><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="14" y="3" width="7" height="7" rx="1.5"/><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="14" width="7" height="7" rx="1.5"/><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+    <div class="dbvc-ve-workspace__title-block">
+      <span class="dbvc-ve-workspace__eyebrow">Visual Editor</span>
+      <h2 class="dbvc-ve-workspace__title" id="dbvc-ve-workspace-title">Site Manager</h2>
+    </div>
+    <button type="button" class="dbvc-ve-workspace__close" aria-label="Close Site Manager" data-mockup-action="close"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+
+  <!-- Current object card: from bootstrap.pageContext + currentEditLink; no request. -->
+  <section class="dbvc-ve-workspace__current" aria-labelledby="dbvc-ve-workspace-current-label">
+    <span class="dbvc-ve-workspace__overline" id="dbvc-ve-workspace-current-label">Current object</span>
+    <div class="dbvc-ve-workspace__current-row">
+      <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v13H7z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 3v5h5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 13h6M10 17h6"/></svg></span>
+      <div class="dbvc-ve-workspace__row-text">
+        <span class="dbvc-ve-workspace__row-title" title="Home">Home</span>
+        <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Page</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--publish">Published</span><span class="dbvc-ve-workspace__here">You are here</span></span>
+      </div>
+      <div class="dbvc-ve-workspace__row-actions">
+        <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/post.php?post=12&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="current-backend">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section tablist: Navigate | Tools -->
+  <div class="dbvc-ve-workspace__sections" role="tablist" aria-label="Site Manager sections">
+    <button type="button" class="dbvc-ve-workspace__section-tab" role="tab" id="dbvc-ve-workspace-tab-navigate" aria-selected="true" aria-controls="dbvc-ve-workspace-panel-navigate" tabindex="0" data-mockup-action="section" data-mockup-section="navigate">Navigate</button>
+    <button type="button" class="dbvc-ve-workspace__section-tab" role="tab" id="dbvc-ve-workspace-tab-tools" aria-selected="false" aria-controls="dbvc-ve-workspace-panel-tools" tabindex="-1" data-mockup-action="section" data-mockup-section="tools">Tools</button>
+  </div>
+
+  <!-- Navigate panel: the scroll container. Search + type strip are sticky inside it. -->
+  <div class="dbvc-ve-workspace__body is-navigate" role="tabpanel" id="dbvc-ve-workspace-panel-navigate" aria-labelledby="dbvc-ve-workspace-tab-navigate">
+
+    <div class="dbvc-ve-workspace__sticky">
+      <div class="dbvc-ve-workspace__search-wrap">
+        <label class="dbvc-ve-workspace__sr-only" for="dbvc-ve-workspace-search">Search objects</label>
+        <input class="dbvc-ve-workspace__search" id="dbvc-ve-workspace-search" type="search" placeholder="Search pages, posts, projects, terms…" maxlength="100" autocomplete="off" aria-describedby="dbvc-ve-workspace-status" data-mockup-action="search">
+        <button type="button" class="dbvc-ve-workspace__search-clear" aria-label="Clear search" data-mockup-action="clear-search" hidden><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><circle fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="12" r="8"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 9 6 6M15 9l-6 6"/></svg></button>
+      </div>
+
+      <div class="dbvc-ve-workspace__types" role="tablist" aria-label="Object types">
+        <button type="button" class="dbvc-ve-workspace__type" role="tab" aria-selected="true" tabindex="0" data-mockup-action="type" data-mockup-type="all" data-mockup-subtype="">All</button>
+        <button type="button" class="dbvc-ve-workspace__type" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="post" data-mockup-subtype="page">Pages</button>
+        <button type="button" class="dbvc-ve-workspace__type" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="post" data-mockup-subtype="post">Posts</button>
+        <button type="button" class="dbvc-ve-workspace__type" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="post" data-mockup-subtype="project">Projects</button>
+        <button type="button" class="dbvc-ve-workspace__type is-backend-only" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="post" data-mockup-subtype="testimonial">Testimonials<span class="dbvc-ve-workspace__type-affix" title="No public archive — backend edit only"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="5" y="10" width="14" height="10" rx="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="dbvc-ve-workspace__sr-only"> (backend only)</span></span></button>
+        <button type="button" class="dbvc-ve-workspace__type" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="term" data-mockup-subtype="category">Categories</button>
+        <button type="button" class="dbvc-ve-workspace__type" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="term" data-mockup-subtype="post_tag">Tags</button>
+        <button type="button" class="dbvc-ve-workspace__type" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="term" data-mockup-subtype="project_type">Project Types</button>
+        <button type="button" class="dbvc-ve-workspace__type is-backend-only" role="tab" aria-selected="false" tabindex="-1" data-mockup-action="type" data-mockup-type="term" data-mockup-subtype="service_area">Service Areas<span class="dbvc-ve-workspace__type-affix" title="No public archive — backend edit only"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="5" y="10" width="14" height="10" rx="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="dbvc-ve-workspace__sr-only"> (backend only)</span></span></button>
+      </div>
+    </div>
+
+    <p class="dbvc-ve-workspace__status" id="dbvc-ve-workspace-status" role="status" aria-live="polite" aria-atomic="true">Showing 20 · more available</p>
+
+    <ul class="dbvc-ve-workspace__results" role="list" aria-label="Objects">
+      <li class="dbvc-ve-workspace__row is-publish" data-mockup-object="post:12">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v13H7z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 3v5h5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 13h6M10 17h6"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Home">Home</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Page</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--publish">Published</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/home/" data-mockup-action="open-frontend" data-mockup-object="post:12">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/post.php?post=12&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:12">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:3">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Landscape Design">Landscape Design</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Category</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/category/landscape-design/" data-mockup-action="open-frontend" data-mockup-object="term:3">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=category&amp;tag_ID=3" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:3">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-publish" data-mockup-object="post:18">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v13H7z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 3v5h5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 13h6M10 17h6"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="About Us">About Us</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Page</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--publish">Published</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/about-us/" data-mockup-action="open-frontend" data-mockup-object="post:18">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/post.php?post=18&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:18">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:9">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Residential">Residential</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Project Type</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/project-type/residential/" data-mockup-action="open-frontend" data-mockup-object="term:9">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=project_type&amp;tag_ID=9" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:9">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-publish" data-mockup-object="post:21">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v13H7z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 3v5h5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 13h6M10 17h6"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Services">Services</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Page</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--publish">Published</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/services/" data-mockup-action="open-frontend" data-mockup-object="post:21">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/post.php?post=21&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:21">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:11">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Commercial">Commercial</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Project Type</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/project-type/commercial/" data-mockup-action="open-frontend" data-mockup-object="term:11">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=project_type&amp;tag_ID=11" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:11">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-publish" data-mockup-object="post:44">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v14H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 9h10M7 12h10M7 15h6"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Spring Planting Guide for Small Urban Gardens with Limited Afternoon Sun">Spring Planting Guide for Small Urban Gardens with Limited Afternoon Sun</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Post</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--publish">Published</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/spring-planting-guide/" data-mockup-action="open-frontend" data-mockup-object="post:44">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/post.php?post=44&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:44">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term is-no-route" data-mockup-object="term:14">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Calgary">Calgary</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Service Area</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span><span class="dbvc-ve-workspace__row-note">No public archive</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/term.php?taxonomy=service_area&amp;tag_ID=14" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:14">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-draft is-no-route" data-mockup-object="post:45">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v14H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 9h10M7 12h10M7 15h6"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Winter Prep Checklist">Winter Prep Checklist</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Post</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--draft">Draft</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/post.php?post=45&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:45">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:5">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Maintenance">Maintenance</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Category</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/category/maintenance/" data-mockup-action="open-frontend" data-mockup-object="term:5">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=category&amp;tag_ID=5" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:5">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-publish" data-mockup-object="post:61">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="7" width="18" height="13" rx="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 12h18"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Lakeside Retreat Backyard">Lakeside Retreat Backyard</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Project</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--publish">Published</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/lakeside-retreat-backyard/" data-mockup-action="open-frontend" data-mockup-object="post:61">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/post.php?post=61&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:61">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:21">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="drought-tolerant">drought-tolerant</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Tag</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/post-tag/drought-tolerant/" data-mockup-action="open-frontend" data-mockup-object="term:21">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=post_tag&amp;tag_ID=21" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:21">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-pending is-no-route" data-mockup-object="post:62">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="7" width="18" height="13" rx="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 12h18"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Downtown Rooftop Terrace">Downtown Rooftop Terrace</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Project</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--pending">Pending</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/post.php?post=62&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:62">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term is-no-route" data-mockup-object="term:15">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Airdrie">Airdrie</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Service Area</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span><span class="dbvc-ve-workspace__row-note">No public archive</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/term.php?taxonomy=service_area&amp;tag_ID=15" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:15">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-future is-no-route" data-mockup-object="post:63">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="7" width="18" height="13" rx="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 12h18"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Hillside Terracing &amp; Retaining Walls">Hillside Terracing &amp; Retaining Walls</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Project</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--future">Scheduled</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/post.php?post=63&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:63">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:6">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Irrigation">Irrigation</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Category</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/category/irrigation/" data-mockup-action="open-frontend" data-mockup-object="term:6">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=category&amp;tag_ID=6" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:6">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-publish is-no-route" data-mockup-object="post:70">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 9h8M8 12h5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Sarah M. — Two-storey renovation">Sarah M. — Two-storey renovation</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Testimonial</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--publish">Published</span><span class="dbvc-ve-workspace__row-note">No public page</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/post.php?post=70&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:70">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:22">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="native-plants">native-plants</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Tag</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/post-tag/native-plants/" data-mockup-action="open-frontend" data-mockup-object="term:22">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=post_tag&amp;tag_ID=22" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:22">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-private is-no-route" data-mockup-object="post:71">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 9h8M8 12h5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="James T. — Front yard refresh">James T. — Front yard refresh</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Testimonial</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--private">Private</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/wp-admin/post.php?post=71&amp;action=edit" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="post:71">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+      <li class="dbvc-ve-workspace__row is-term" data-mockup-object="term:12">
+        <span class="dbvc-ve-workspace__row-glyph" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 11V4h7l10 10-7 7z"/><circle fill="currentColor" cx="7.5" cy="8.5" r="1.5"/></svg></span>
+        <div class="dbvc-ve-workspace__row-text">
+          <span class="dbvc-ve-workspace__row-title" title="Public Spaces">Public Spaces</span>
+          <span class="dbvc-ve-workspace__row-meta"><span class="dbvc-ve-workspace__row-type">Project Type</span><span class="dbvc-ve-workspace__status-chip dbvc-ve-workspace__status-chip--term">Term</span></span>
+        </div>
+        <div class="dbvc-ve-workspace__row-actions">
+          <a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--primary" href="https://example-site.test/project-type/public-spaces/" data-mockup-action="open-frontend" data-mockup-object="term:12">Open</a><a class="dbvc-ve-workspace__action dbvc-ve-workspace__action--secondary" href="https://example-site.test/wp-admin/term.php?taxonomy=project_type&amp;tag_ID=12" target="_blank" rel="noopener noreferrer" data-mockup-action="open-backend" data-mockup-object="term:12">Edit<span class="dbvc-ve-workspace__sr-only"> (opens in a new tab)</span><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" class="dbvc-ve-workspace__action-icon"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 4 10 14"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 13v6H5V6h6"/></svg></a>
+        </div>
+      </li>
+    </ul>
+
+    <footer class="dbvc-ve-workspace__footer">
+      <button type="button" class="dbvc-ve-workspace__load-more" data-mockup-action="load-more">Load more</button>
+    </footer>
+  </div>
+
+  <!-- Tools panel (hidden in the happy path; see states.html S-18) -->
+  <div class="dbvc-ve-workspace__body is-tools" role="tabpanel" id="dbvc-ve-workspace-panel-tools" aria-labelledby="dbvc-ve-workspace-tab-tools" hidden></div>
+
+</aside>
+
+</body>
+</html>

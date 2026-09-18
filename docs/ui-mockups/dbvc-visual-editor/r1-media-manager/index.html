@@ -1,0 +1,796 @@
+<!doctype html>
+<!--
+  DBVC Visual Editor - R1 Media Manager static mockup (phase R1-D3, default view).
+
+  Non-production artifact. No build step, no framework, no CDN, no font or icon kit,
+  no network request, no persistence, no production state store, no inline handlers.
+
+  Every value rendered below comes from:
+    docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/fixtures/media-manager-r1c-view-model.json
+
+  R1 is read-only scan and report. This page deliberately contains no media selection,
+  no upload, no descriptor hydration, no assignment, no row save, no bulk save,
+  no raw owner/field targets, and no exact filtered totals.
+
+  Explicit ARIA roles mirror the implicit table roles so semantics survive the
+  display:block card transform at <=640px. data-mockup-* attributes drive mockup.js,
+  which is local-only and optional.
+
+  State gallery: states.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DBVC Visual Editor - R1 Media Manager (static mockup)</title>
+<link rel="stylesheet" href="styles.css">
+<script src="mockup.js" defer></script>
+</head>
+<body class="dbvc-ve-media-manager-mockup">
+
+<!--
+  Faux live site behind the drawer. Presentational only: aria-hidden, no focusable nodes,
+  no images. Demonstrates that the live page stays visible around a viewport-clamped panel.
+-->
+<div class="dbvc-ve-media-manager-mockup__stage" aria-hidden="true">
+  <div class="dbvc-ve-media-manager-mockup__site-bar">
+    <span class="dbvc-ve-media-manager-mockup__wordmark">Greenfield Landscapes</span>
+    <span class="dbvc-ve-media-manager-mockup__nav">
+      <span>Services</span><span>Projects</span><span>About</span><span>Blog</span><span>Contact</span>
+    </span>
+    <span class="dbvc-ve-media-manager-mockup__site-cta">Get a Quote</span>
+  </div>
+  <div class="dbvc-ve-media-manager-mockup__hero">
+    <span class="dbvc-ve-media-manager-mockup__hero-eyebrow">Live page behind the panel</span>
+    <span class="dbvc-ve-media-manager-mockup__hero-title">Garden design that grows with you</span>
+  </div>
+</div>
+
+<!--
+  Visual Editor toolbar continuity. Mockup-only classes; token values mirror
+  .dbvc-ve-toolbar / .dbvc-ve-toolbar__dock so the drawer reads as the same product.
+-->
+<div class="dbvc-ve-media-manager-mockup__toolbar" aria-hidden="true">
+  <span class="dbvc-ve-media-manager-mockup__toolbar-dock">
+    <span class="dbvc-ve-media-manager-mockup__toolbar-button">Status</span>
+    <span class="dbvc-ve-media-manager-mockup__toolbar-button">Review Fields</span>
+    <span class="dbvc-ve-media-manager-mockup__toolbar-button">Go To Object</span>
+    <span class="dbvc-ve-media-manager-mockup__toolbar-button is-active">Media Manager</span>
+    <span class="dbvc-ve-media-manager-mockup__toolbar-button">Exit</span>
+  </span>
+</div>
+
+<!-- Mockup-only: revealed when the drawer is closed so the demo can be reopened. -->
+<button type="button" class="dbvc-ve-media-manager-mockup__reopen" data-mockup-action="reopen" hidden>
+  Reopen Media Manager
+</button>
+
+<section class="dbvc-ve-media-manager" data-state="complete" aria-labelledby="mm-title" data-mockup-region="drawer">
+
+  <header class="dbvc-ve-media-manager__header">
+    <span class="dbvc-ve-media-manager__header-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="2.5"></rect>
+        <circle cx="8.75" cy="9.75" r="1.6"></circle>
+        <path d="M4 16.5l4.5-4a1.8 1.8 0 0 1 2.4 0l3 2.7a1.8 1.8 0 0 0 2.4 0L20 12.6"></path>
+      </svg>
+    </span>
+
+    <div class="dbvc-ve-media-manager__header-text">
+      <h1 class="dbvc-ve-media-manager__title" id="mm-title">Media Manager</h1>
+      <p class="dbvc-ve-media-manager__subtitle">Read-only scan of published content for empty image fields.</p>
+    </div>
+
+    <!--
+      Scan-wide summary. Bound to scan.summary and frozen against search/filter/sort so a
+      count can never be misread as an exact filtered total.
+    -->
+    <dl class="dbvc-ve-media-manager__summary">
+      <div class="dbvc-ve-media-manager__summary-metric">
+        <dt class="dbvc-ve-media-manager__summary-label">Entities</dt>
+        <dd class="dbvc-ve-media-manager__summary-value">6</dd>
+        <dd class="dbvc-ve-media-manager__summary-note">with findings in last scan</dd>
+      </div>
+      <div class="dbvc-ve-media-manager__summary-metric">
+        <dt class="dbvc-ve-media-manager__summary-label">Missing fields</dt>
+        <dd class="dbvc-ve-media-manager__summary-value">13</dd>
+        <dd class="dbvc-ve-media-manager__summary-note">across 84 entities scanned</dd>
+      </div>
+    </dl>
+
+    <button type="button" class="dbvc-ve-media-manager__close" data-mockup-action="close">
+      <span aria-hidden="true">&times;</span>
+      <span class="dbvc-ve-media-manager__sr-only">Close Media Manager</span>
+    </button>
+  </header>
+
+  <div class="dbvc-ve-media-manager__scan">
+    <p class="dbvc-ve-media-manager__scan-state is-complete">
+      <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+      Scan complete
+    </p>
+
+    <div class="dbvc-ve-media-manager__scan-progress">
+      <label class="dbvc-ve-media-manager__sr-only" for="mm-progress">Entities processed</label>
+      <progress class="dbvc-ve-media-manager__progress" id="mm-progress" max="84" value="84">84 of 84</progress>
+      <span class="dbvc-ve-media-manager__scan-progress-text">84 of 84 processed &middot; 5 chunks &middot; 5 attempts &middot; 0 retries</span>
+    </div>
+
+    <ul class="dbvc-ve-media-manager__scan-times">
+      <li>Started <time datetime="2026-08-15T14:22:00Z">15 Aug 2026, 14:22 UTC</time></li>
+      <li>Completed <time datetime="2026-08-15T14:22:14Z">15 Aug 2026, 14:22 UTC</time></li>
+      <li>Snapshot expires <time datetime="2026-08-15T15:22:14Z">15 Aug 2026, 15:22 UTC</time></li>
+    </ul>
+
+    <div class="dbvc-ve-media-manager__scan-actions">
+      <button type="button" class="dbvc-ve-media-manager__button dbvc-ve-media-manager__button--primary" data-mockup-action="refresh">
+        Refresh scan
+      </button>
+      <!--
+        Continue: omitted. scan.state is "complete", so there is no next chunk to run.
+        Cancel:   omitted. scan.canCancel is false.
+        Retry:    omitted. scan.canRetry is false.
+        All three are demonstrated in states.html, never speculatively here.
+      -->
+    </div>
+  </div>
+
+  <div class="dbvc-ve-media-manager__notices">
+    <p class="dbvc-ve-media-manager__notice is-info">
+      <strong>Skipped observations.</strong>
+      7 unsupported field observations and 1 invalid non-empty value were excluded from these results.
+      R1 reports these as an aggregate count only.
+    </p>
+    <p class="dbvc-ve-media-manager__notice is-warning">
+      <strong>Snapshot freshness.</strong>
+      This snapshot expires at 15:22 UTC. Expand a row to revalidate against current content.
+    </p>
+  </div>
+
+  <div class="dbvc-ve-media-manager__controls">
+    <div class="dbvc-ve-media-manager__controls-row">
+      <div class="dbvc-ve-media-manager__control dbvc-ve-media-manager__control--search">
+        <label class="dbvc-ve-media-manager__control-label" for="mm-search">Search entities</label>
+        <input class="dbvc-ve-media-manager__search" id="mm-search" type="search" maxlength="100"
+               placeholder="Search entities&hellip;" value="" data-mockup-input="search">
+      </div>
+
+      <fieldset class="dbvc-ve-media-manager__control dbvc-ve-media-manager__control--chips">
+        <legend class="dbvc-ve-media-manager__control-label">Entity type</legend>
+        <div class="dbvc-ve-media-manager__chip-set">
+          <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-entity" id="mm-entity-all" value="all" checked data-mockup-input="entity-family">
+          <label class="dbvc-ve-media-manager__chip" for="mm-entity-all">All</label>
+          <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-entity" id="mm-entity-post" value="post" data-mockup-input="entity-family">
+          <label class="dbvc-ve-media-manager__chip" for="mm-entity-post">Posts</label>
+          <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-entity" id="mm-entity-term" value="term" data-mockup-input="entity-family">
+          <label class="dbvc-ve-media-manager__chip" for="mm-entity-term">Terms</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="dbvc-ve-media-manager__control dbvc-ve-media-manager__control--chips">
+        <legend class="dbvc-ve-media-manager__control-label">Field type</legend>
+        <div class="dbvc-ve-media-manager__chip-set">
+          <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-field" id="mm-field-all" value="all" checked data-mockup-input="field-family">
+          <label class="dbvc-ve-media-manager__chip" for="mm-field-all">All</label>
+          <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-field" id="mm-field-featured" value="featured_image" data-mockup-input="field-family">
+          <label class="dbvc-ve-media-manager__chip" for="mm-field-featured">Featured image</label>
+          <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-field" id="mm-field-image" value="acf_image" data-mockup-input="field-family">
+          <label class="dbvc-ve-media-manager__chip" for="mm-field-image">ACF image</label>
+          <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-field" id="mm-field-gallery" value="acf_gallery" data-mockup-input="field-family">
+          <label class="dbvc-ve-media-manager__chip" for="mm-field-gallery">ACF gallery</label>
+        </div>
+      </fieldset>
+
+      <div class="dbvc-ve-media-manager__control dbvc-ve-media-manager__control--sort">
+        <label class="dbvc-ve-media-manager__control-label" for="mm-sort">Sort</label>
+        <select class="dbvc-ve-media-manager__select" id="mm-sort" data-mockup-input="sort">
+          <option value="entity_asc" selected>Entity (A&ndash;Z)</option>
+          <option value="missing_desc">Missing fields (most first)</option>
+          <option value="scanned_desc">Recently scanned</option>
+        </select>
+      </div>
+
+      <!-- R1 scope is server-fixed. Rendered as a static badge, never as a toggle. -->
+      <p class="dbvc-ve-media-manager__scope-badge">
+        <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+        Published &middot; live scope
+      </p>
+    </div>
+
+    <div class="dbvc-ve-media-manager__legend">
+      <p class="dbvc-ve-media-manager__legend-title">Findings in last scan</p>
+      <ul class="dbvc-ve-media-manager__legend-list">
+        <li><span class="dbvc-ve-media-manager__family-chip is-featured">Featured image 4</span></li>
+        <li><span class="dbvc-ve-media-manager__family-chip is-image">ACF image 6</span></li>
+        <li><span class="dbvc-ve-media-manager__family-chip is-gallery">ACF gallery 3</span></li>
+      </ul>
+      <p class="dbvc-ve-media-manager__legend-title">Field status key</p>
+      <ul class="dbvc-ve-media-manager__legend-list">
+        <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing</span></li>
+        <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed</span></li>
+        <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed</span></li>
+        <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="dbvc-ve-media-manager__results" data-mockup-region="results" tabindex="-1">
+
+    <table class="dbvc-ve-media-manager__table" role="table">
+      <caption class="dbvc-ve-media-manager__sr-only">
+        Published entities with empty media fields. Expand a row to list its missing fields.
+        Results are paged by cursor; no total is reported.
+      </caption>
+      <!-- Fixed column widths so a long entity label clamps instead of widening the table. -->
+      <colgroup>
+        <col class="dbvc-ve-media-manager__col--toggle">
+        <col class="dbvc-ve-media-manager__col--entity">
+        <col class="dbvc-ve-media-manager__col--type">
+        <col class="dbvc-ve-media-manager__col--missing">
+        <col class="dbvc-ve-media-manager__col--families">
+        <col class="dbvc-ve-media-manager__col--time">
+        <col class="dbvc-ve-media-manager__col--time">
+        <col class="dbvc-ve-media-manager__col--link">
+      </colgroup>
+      <thead class="dbvc-ve-media-manager__thead" role="rowgroup">
+        <tr role="row">
+          <th class="dbvc-ve-media-manager__th dbvc-ve-media-manager__th--toggle" scope="col" role="columnheader">
+            <span class="dbvc-ve-media-manager__sr-only">Expand</span>
+          </th>
+          <!-- aria-sort marks the active sort from query.sort. The select above is the only sort control. -->
+          <th class="dbvc-ve-media-manager__th" scope="col" role="columnheader" aria-sort="ascending" data-mockup-sortcol="entity_asc">Entity</th>
+          <th class="dbvc-ve-media-manager__th" scope="col" role="columnheader">Type</th>
+          <th class="dbvc-ve-media-manager__th" scope="col" role="columnheader" data-mockup-sortcol="missing_desc">Missing</th>
+          <th class="dbvc-ve-media-manager__th" scope="col" role="columnheader">Field types</th>
+          <th class="dbvc-ve-media-manager__th" scope="col" role="columnheader" data-mockup-sortcol="scanned_desc">Scanned</th>
+          <th class="dbvc-ve-media-manager__th" scope="col" role="columnheader">Updated</th>
+          <th class="dbvc-ve-media-manager__th" scope="col" role="columnheader">Front end</th>
+        </tr>
+      </thead>
+
+      <tbody class="dbvc-ve-media-manager__tbody" role="rowgroup" data-mockup-region="rows">
+
+        <!-- Row 1: vemg_aaaaaaaaaaaaaaaaaaaa - expanded by default in this view. -->
+        <tr class="dbvc-ve-media-manager__row" role="row"
+            data-mockup-group="vemg_ffffffffffffffffffff"
+            data-entity-family="post" data-field-families="featured_image acf_gallery"
+            data-entity-label="10 modern garden ideas" data-missing="2" data-scanned="1786803726">
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--toggle" role="cell">
+            <button type="button" class="dbvc-ve-media-manager__row-toggle" aria-expanded="false"
+                    aria-controls="mm-exp-6" data-mockup-action="toggle-row">
+              <span class="dbvc-ve-media-manager__row-toggle-icon" aria-hidden="true"></span>
+              <span class="dbvc-ve-media-manager__sr-only">Missing media fields for 10 Modern Garden Ideas</span>
+            </button>
+          </td>
+          <th class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--entity" scope="row" role="rowheader" data-label="Entity">
+            <span class="dbvc-ve-media-manager__entity-label">10 Modern Garden Ideas</span>
+          </th>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Type">
+            <span class="dbvc-ve-media-manager__type-chip">Post</span>
+            <span class="dbvc-ve-media-manager__family-note">Post</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Missing">
+            <span class="dbvc-ve-media-manager__missing-chip">2 fields</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Field types">
+            <span class="dbvc-ve-media-manager__family-chip is-featured">Featured 1</span>
+            <span class="dbvc-ve-media-manager__family-chip is-gallery">Gallery 1</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Scanned">
+            <time datetime="2026-08-15T14:22:06Z">15 Aug, 14:22 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Updated">
+            <time datetime="2026-08-06T11:25:00Z">6 Aug, 11:25 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Front end">
+            <span class="dbvc-ve-media-manager__muted">No public URL</span>
+          </td>
+        </tr>
+        <tr class="dbvc-ve-media-manager__expansion-row" id="mm-exp-6" role="row" hidden>
+          <td class="dbvc-ve-media-manager__expansion-cell" colspan="8" role="cell">
+            <div class="dbvc-ve-media-manager__expansion" data-expansion-status="unavailable" tabindex="-1">
+              <div class="dbvc-ve-media-manager__expansion-header">
+                <h2 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;10 Modern Garden Ideas&rdquo;</h2>
+                <p class="dbvc-ve-media-manager__expansion-state is-unavailable">
+                  <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+                  Unavailable &mdash; revalidation could not complete
+                </p>
+                <ul class="dbvc-ve-media-manager__expansion-counts">
+                  <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 2</span></li>
+                </ul>
+              </div>
+              <p class="dbvc-ve-media-manager__notice is-warning">
+                <strong>Revalidation could not complete.</strong> A media scan candidate could not be
+                inspected safely, so these findings show their scan-time state. This is retryable &mdash;
+                refresh the scan once the provider is available.
+              </p>
+
+              <ul class="dbvc-ve-media-manager__field-list">
+                <li class="dbvc-ve-media-manager__field" data-status="unavailable">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Featured image</p>
+                    <p class="dbvc-ve-media-manager__field-context">Native WordPress field</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-featured">Featured image</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This field could not be revalidated safely. Refresh the scan after the provider is available.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: unavailable</p>
+                </li>
+                <li class="dbvc-ve-media-manager__field" data-status="unavailable">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Post gallery</p>
+                    <p class="dbvc-ve-media-manager__field-context">Article media</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-gallery">ACF gallery</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This field could not be revalidated safely. Refresh the scan after the provider is available.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: unavailable</p>
+                </li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-media-manager__row" role="row"
+            data-mockup-group="vemg_bbbbbbbbbbbbbbbbbbbb"
+            data-entity-family="post" data-field-families="featured_image acf_image"
+            data-entity-label="about us" data-missing="2" data-scanned="1786803730">
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--toggle" role="cell">
+            <button type="button" class="dbvc-ve-media-manager__row-toggle" aria-expanded="false"
+                    aria-controls="mm-exp-2" data-mockup-action="toggle-row">
+              <span class="dbvc-ve-media-manager__row-toggle-icon" aria-hidden="true"></span>
+              <span class="dbvc-ve-media-manager__sr-only">Missing media fields for About Us</span>
+            </button>
+          </td>
+          <th class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--entity" scope="row" role="rowheader" data-label="Entity">
+            <span class="dbvc-ve-media-manager__entity-label">About Us</span>
+          </th>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Type">
+            <span class="dbvc-ve-media-manager__type-chip">Page</span>
+            <span class="dbvc-ve-media-manager__family-note">Post</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Missing">
+            <span class="dbvc-ve-media-manager__missing-chip">2 fields</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Field types">
+            <span class="dbvc-ve-media-manager__family-chip is-featured">Featured 1</span>
+            <span class="dbvc-ve-media-manager__family-chip is-image">ACF image 1</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Scanned">
+            <time datetime="2026-08-15T14:22:10Z">15 Aug, 14:22 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Updated">
+            <time datetime="2026-08-12T14:08:00Z">12 Aug, 14:08 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Front end">
+            <a class="dbvc-ve-media-manager__open-link" href="https://example.test/about-us/" target="_blank" rel="noopener noreferrer">
+              View
+              <span class="dbvc-ve-media-manager__sr-only">About Us on the front end (opens in a new tab)</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 4h6v6"></path><path d="M20 4l-8.5 8.5"></path>
+                <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>
+              </svg>
+            </a>
+          </td>
+        </tr>
+        <tr class="dbvc-ve-media-manager__expansion-row" id="mm-exp-2" role="row" hidden>
+          <td class="dbvc-ve-media-manager__expansion-cell" colspan="8" role="cell">
+            <div class="dbvc-ve-media-manager__expansion" data-expansion-status="changed" tabindex="-1">
+              <div class="dbvc-ve-media-manager__expansion-header">
+                <h2 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;About Us&rdquo;</h2>
+                <p class="dbvc-ve-media-manager__expansion-state is-changed">
+                  <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+                  Changed &mdash; scan evidence moved since the snapshot
+                </p>
+                <ul class="dbvc-ve-media-manager__expansion-counts">
+                  <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 1</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 1</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 0</span></li>
+                </ul>
+              </div>
+              <p class="dbvc-ve-media-manager__notice is-warning">
+                <strong>1 new missing finding</strong> appeared after this snapshot was taken. It is reported
+                as a count only and is not listed below. Refresh the scan for an accurate picture.
+              </p>
+
+              <ul class="dbvc-ve-media-manager__field-list">
+                <li class="dbvc-ve-media-manager__field" data-status="missing">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Featured image</p>
+                    <p class="dbvc-ve-media-manager__field-context">Native WordPress field</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-featured">Featured image</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-missing">Missing</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: not hydrated</p>
+                </li>
+                <li class="dbvc-ve-media-manager__field" data-status="changed">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Team photo</p>
+                    <p class="dbvc-ve-media-manager__field-context">About page content</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-image">ACF image</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-changed">Changed</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This field is still empty, but its scan evidence changed. Refresh the scan before taking further action.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: blocked (stale evidence)</p>
+                </li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Row 3: vemg_cccccccccccccccccccc - featuredImage count is 0, so no featured chip is rendered. -->
+        <tr class="dbvc-ve-media-manager__row is-expanded" role="row"
+            data-mockup-group="vemg_aaaaaaaaaaaaaaaaaaaa"
+            data-entity-family="post" data-field-families="featured_image acf_image acf_gallery"
+            data-entity-label="home page" data-missing="3" data-scanned="1786803731">
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--toggle" role="cell">
+            <button type="button" class="dbvc-ve-media-manager__row-toggle" aria-expanded="true"
+                    aria-controls="mm-exp-1" data-mockup-action="toggle-row">
+              <span class="dbvc-ve-media-manager__row-toggle-icon" aria-hidden="true"></span>
+              <span class="dbvc-ve-media-manager__sr-only">Missing media fields for Home Page</span>
+            </button>
+          </td>
+          <th class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--entity" scope="row" role="rowheader" data-label="Entity">
+            <span class="dbvc-ve-media-manager__entity-label">Home Page</span>
+          </th>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Type">
+            <span class="dbvc-ve-media-manager__type-chip">Page</span>
+            <span class="dbvc-ve-media-manager__family-note">Post</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Missing">
+            <span class="dbvc-ve-media-manager__missing-chip">3 fields</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Field types">
+            <span class="dbvc-ve-media-manager__family-chip is-featured">Featured 1</span>
+            <span class="dbvc-ve-media-manager__family-chip is-image">ACF image 1</span>
+            <span class="dbvc-ve-media-manager__family-chip is-gallery">Gallery 1</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Scanned">
+            <time datetime="2026-08-15T14:22:11Z">15 Aug, 14:22 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Updated">
+            <time datetime="2026-08-15T14:20:00Z">15 Aug, 14:20 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Front end">
+            <a class="dbvc-ve-media-manager__open-link" href="https://example.test/" target="_blank" rel="noopener noreferrer">
+              View
+              <span class="dbvc-ve-media-manager__sr-only">Home Page on the front end (opens in a new tab)</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 4h6v6"></path><path d="M20 4l-8.5 8.5"></path>
+                <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>
+              </svg>
+            </a>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-media-manager__expansion-row" id="mm-exp-1" role="row">
+          <td class="dbvc-ve-media-manager__expansion-cell" colspan="8" role="cell">
+            <div class="dbvc-ve-media-manager__expansion" data-expansion-status="current" tabindex="-1">
+              <div class="dbvc-ve-media-manager__expansion-header">
+                <h2 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;Home Page&rdquo;</h2>
+                <p class="dbvc-ve-media-manager__expansion-state is-current">
+                  <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+                  Current &mdash; revalidated against the scan snapshot
+                </p>
+                <ul class="dbvc-ve-media-manager__expansion-counts">
+                  <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 3</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 0</span></li>
+                </ul>
+                <p class="dbvc-ve-media-manager__expansion-note">No new missing findings since the scan.</p>
+              </div>
+
+              <ul class="dbvc-ve-media-manager__field-list">
+                <li class="dbvc-ve-media-manager__field" data-status="missing">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Featured image</p>
+                    <p class="dbvc-ve-media-manager__field-context">Native WordPress field</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-featured">Featured image</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-missing">Missing</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: not hydrated</p>
+                </li>
+
+                <li class="dbvc-ve-media-manager__field" data-status="missing">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Hero image</p>
+                    <p class="dbvc-ve-media-manager__field-context">Homepage content</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-image">ACF image</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-missing">Missing</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: not hydrated</p>
+                </li>
+
+                <li class="dbvc-ve-media-manager__field" data-status="missing">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Project gallery</p>
+                    <p class="dbvc-ve-media-manager__field-context">Featured projects</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-gallery">ACF gallery</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-missing">Missing</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: not hydrated</p>
+                </li>
+              </ul>
+
+              <p class="dbvc-ve-media-manager__expansion-footnote">
+                R1 reports only. Assignment, upload, and descriptor hydration are not available in this release.
+              </p>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Row 2: vemg_bbbbbbbbbbbbbbbbbbbb -->
+        <tr class="dbvc-ve-media-manager__row" role="row"
+            data-mockup-group="vemg_dddddddddddddddddddd"
+            data-entity-family="post" data-field-families="featured_image acf_image acf_gallery"
+            data-entity-label="lake house project with an intentionally long entity name for responsive testing"
+            data-missing="3" data-scanned="1786803728">
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--toggle" role="cell">
+            <button type="button" class="dbvc-ve-media-manager__row-toggle" aria-expanded="false"
+                    aria-controls="mm-exp-4" data-mockup-action="toggle-row">
+              <span class="dbvc-ve-media-manager__row-toggle-icon" aria-hidden="true"></span>
+              <span class="dbvc-ve-media-manager__sr-only">Missing media fields for Lake House Project With an Intentionally Long Entity Name for Responsive Testing</span>
+            </button>
+          </td>
+          <th class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--entity" scope="row" role="rowheader" data-label="Entity">
+            <span class="dbvc-ve-media-manager__entity-label"
+                  title="Lake House Project With an Intentionally Long Entity Name for Responsive Testing">Lake House Project With an Intentionally Long Entity Name for Responsive Testing</span>
+          </th>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Type">
+            <span class="dbvc-ve-media-manager__type-chip">Project</span>
+            <span class="dbvc-ve-media-manager__family-note">Post</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Missing">
+            <span class="dbvc-ve-media-manager__missing-chip">3 fields</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Field types">
+            <span class="dbvc-ve-media-manager__family-chip is-featured">Featured 1</span>
+            <span class="dbvc-ve-media-manager__family-chip is-image">ACF image 1</span>
+            <span class="dbvc-ve-media-manager__family-chip is-gallery">Gallery 1</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Scanned">
+            <time datetime="2026-08-15T14:22:08Z">15 Aug, 14:22 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Updated">
+            <time datetime="2026-08-08T17:42:00Z">8 Aug, 17:42 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Front end">
+            <a class="dbvc-ve-media-manager__open-link" href="https://example.test/projects/lake-house/" target="_blank" rel="noopener noreferrer">
+              View
+              <span class="dbvc-ve-media-manager__sr-only">Lake House Project on the front end (opens in a new tab)</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 4h6v6"></path><path d="M20 4l-8.5 8.5"></path>
+                <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>
+              </svg>
+            </a>
+          </td>
+        </tr>
+        <tr class="dbvc-ve-media-manager__expansion-row" id="mm-exp-4" role="row" hidden>
+          <td class="dbvc-ve-media-manager__expansion-cell" colspan="8" role="cell">
+            <div class="dbvc-ve-media-manager__expansion is-pending" tabindex="-1">
+              <p class="dbvc-ve-media-manager__expansion-pending">
+                Requesting field detail&hellip; Production issues
+                <code>GET /scans/{scanRef}/groups/{groupRef}</code> here. Mockup note: the R1-C fixture
+                carries revalidation payloads for four of the six groups. This group is not one of them, so
+                the row stays honestly pending rather than showing invented field records.
+              </p>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Row 5: vemg_eeeeeeeeeeeeeeeeeeee - term family, modifiedGmt is empty. -->
+        <tr class="dbvc-ve-media-manager__row" role="row"
+            data-mockup-group="vemg_cccccccccccccccccccc"
+            data-entity-family="post" data-field-families="acf_image"
+            data-entity-label="landscape design" data-missing="2" data-scanned="1786803729">
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--toggle" role="cell">
+            <button type="button" class="dbvc-ve-media-manager__row-toggle" aria-expanded="false"
+                    aria-controls="mm-exp-3" data-mockup-action="toggle-row">
+              <span class="dbvc-ve-media-manager__row-toggle-icon" aria-hidden="true"></span>
+              <span class="dbvc-ve-media-manager__sr-only">Missing media fields for Landscape Design</span>
+            </button>
+          </td>
+          <th class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--entity" scope="row" role="rowheader" data-label="Entity">
+            <span class="dbvc-ve-media-manager__entity-label">Landscape Design</span>
+          </th>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Type">
+            <span class="dbvc-ve-media-manager__type-chip">Service</span>
+            <span class="dbvc-ve-media-manager__family-note">Post</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Missing">
+            <span class="dbvc-ve-media-manager__missing-chip">2 fields</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Field types">
+            <span class="dbvc-ve-media-manager__family-chip is-image">ACF image 2</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Scanned">
+            <time datetime="2026-08-15T14:22:09Z">15 Aug, 14:22 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Updated">
+            <time datetime="2026-08-10T09:15:00Z">10 Aug, 09:15 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Front end">
+            <a class="dbvc-ve-media-manager__open-link" href="https://example.test/services/landscape-design/" target="_blank" rel="noopener noreferrer">
+              View
+              <span class="dbvc-ve-media-manager__sr-only">Landscape Design on the front end (opens in a new tab)</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 4h6v6"></path><path d="M20 4l-8.5 8.5"></path>
+                <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>
+              </svg>
+            </a>
+          </td>
+        </tr>
+        <tr class="dbvc-ve-media-manager__expansion-row" id="mm-exp-3" role="row" hidden>
+          <td class="dbvc-ve-media-manager__expansion-cell" colspan="8" role="cell">
+            <div class="dbvc-ve-media-manager__expansion is-pending" tabindex="-1">
+              <p class="dbvc-ve-media-manager__expansion-pending">
+                Requesting field detail&hellip; Production issues
+                <code>GET /scans/{scanRef}/groups/{groupRef}</code> here. Mockup note: the R1-C fixture
+                carries revalidation payloads for four of the six groups. This group is not one of them, so
+                the row stays honestly pending rather than showing invented field records.
+              </p>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Row 4: vemg_dddddddddddddddddddd - deliberately long label, clamped to two lines. -->
+        <tr class="dbvc-ve-media-manager__row" role="row"
+            data-mockup-group="vemg_eeeeeeeeeeeeeeeeeeee"
+            data-entity-family="term" data-field-families="acf_image"
+            data-entity-label="landscaping" data-missing="1" data-scanned="1786803727">
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--toggle" role="cell">
+            <button type="button" class="dbvc-ve-media-manager__row-toggle" aria-expanded="false"
+                    aria-controls="mm-exp-5" data-mockup-action="toggle-row">
+              <span class="dbvc-ve-media-manager__row-toggle-icon" aria-hidden="true"></span>
+              <span class="dbvc-ve-media-manager__sr-only">Missing media fields for Landscaping</span>
+            </button>
+          </td>
+          <th class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--entity" scope="row" role="rowheader" data-label="Entity">
+            <span class="dbvc-ve-media-manager__entity-label">Landscaping</span>
+          </th>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Type">
+            <span class="dbvc-ve-media-manager__type-chip is-term">Project Type</span>
+            <span class="dbvc-ve-media-manager__family-note">Term</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Missing">
+            <span class="dbvc-ve-media-manager__missing-chip">1 field</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Field types">
+            <span class="dbvc-ve-media-manager__family-chip is-image">ACF image 1</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Scanned">
+            <time datetime="2026-08-15T14:22:07Z">15 Aug, 14:22 UTC</time>
+          </td>
+          <td class="dbvc-ve-media-manager__cell dbvc-ve-media-manager__cell--time" role="cell" data-label="Updated">
+            <span class="dbvc-ve-media-manager__muted">Not recorded</span>
+          </td>
+          <td class="dbvc-ve-media-manager__cell" role="cell" data-label="Front end">
+            <a class="dbvc-ve-media-manager__open-link" href="https://example.test/project-type/landscaping/" target="_blank" rel="noopener noreferrer">
+              View
+              <span class="dbvc-ve-media-manager__sr-only">Landscaping archive on the front end (opens in a new tab)</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 4h6v6"></path><path d="M20 4l-8.5 8.5"></path>
+                <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>
+              </svg>
+            </a>
+          </td>
+        </tr>
+        <tr class="dbvc-ve-media-manager__expansion-row" id="mm-exp-5" role="row" hidden>
+          <td class="dbvc-ve-media-manager__expansion-cell" colspan="8" role="cell">
+            <div class="dbvc-ve-media-manager__expansion" data-expansion-status="resolved_or_changed" tabindex="-1">
+              <div class="dbvc-ve-media-manager__expansion-header">
+                <h2 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;Landscaping&rdquo;</h2>
+                <p class="dbvc-ve-media-manager__expansion-state is-resolved">
+                  <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+                  Resolved or changed &mdash; no longer confirmed missing
+                </p>
+                <ul class="dbvc-ve-media-manager__expansion-counts">
+                  <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 0</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 1</span></li>
+                  <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 0</span></li>
+                </ul>
+                <p class="dbvc-ve-media-manager__expansion-note">No new missing findings since the scan.</p>
+              </div>
+              <p class="dbvc-ve-media-manager__notice is-info">
+                This finding is no longer missing. It was either filled or the field is no longer in scope.
+                R1 cannot tell the two apart and does not guess.
+              </p>
+
+              <ul class="dbvc-ve-media-manager__field-list">
+                <li class="dbvc-ve-media-manager__field" data-status="resolved_or_changed">
+                  <div class="dbvc-ve-media-manager__field-main">
+                    <p class="dbvc-ve-media-manager__field-label">Archive image</p>
+                    <p class="dbvc-ve-media-manager__field-context">Project type media</p>
+                  </div>
+                  <div class="dbvc-ve-media-manager__field-tags">
+                    <span class="dbvc-ve-media-manager__family-chip is-image">ACF image</span>
+                    <span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed</span>
+                  </div>
+                  <p class="dbvc-ve-media-manager__field-message">
+                    This field is no longer confirmed missing. Refresh the scan before taking further action.
+                  </p>
+                  <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: unavailable</p>
+                </li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Row 6: vemg_ffffffffffffffffffff - frontendUrl empty and openFrontend false, so no link element. -->
+      </tbody>
+    </table>
+
+    <!-- Shown by mockup.js when local filters match nothing. Also demonstrated in states.html. -->
+    <div class="dbvc-ve-media-manager__empty" data-mockup-region="empty" hidden>
+      <p class="dbvc-ve-media-manager__empty-title">No entities match these filters</p>
+      <p class="dbvc-ve-media-manager__empty-body">
+        Clear the search or widen the entity and field filters. The scan itself is unchanged.
+      </p>
+    </div>
+
+    <!--
+      __load-more is OMITTED, not disabled, because this response has pagination.hasMore = false
+      and an empty nextCursor: every matching row for this query is already on the page. The
+      control is rendered only when the server reports another cursor page. Omitting rather than
+      disabling matches the Continue/Cancel/Retry convention in DESIGN-DECISIONS.md section 1.3.
+      A contract-valid partial page, with the control present, is demonstrated in states.html.
+      No "showing all N results" copy is emitted here: hasMore is a server statement about the
+      cursor, not permission to publish an exact filtered total.
+    -->
+  </div>
+
+  <p class="dbvc-ve-media-manager__sr-only" role="status" aria-live="polite" aria-atomic="true" data-mockup-live="announcer">
+    Scan complete. Showing 6 entities with findings, sorted by entity A to Z. No further result pages.
+  </p>
+
+  <footer class="dbvc-ve-media-manager__footer">
+    <p class="dbvc-ve-media-manager__footer-note">
+      <strong>Read-only release.</strong>
+      R1 scans and reports. Media assignment, upload, descriptor hydration, row save, and bulk save are not
+      part of this release and are intentionally absent from this interface.
+      <a class="dbvc-ve-media-manager__open-link" href="states.html">State gallery</a>
+    </p>
+  </footer>
+
+</section>
+
+</body>
+</html>

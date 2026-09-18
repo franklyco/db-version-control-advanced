@@ -1,0 +1,657 @@
+<!doctype html>
+<!--
+  DBVC Visual Editor — R4 Expanded Global & Brand Control Center static mockup (happy-path default view).
+
+  PURELY STATIC. No JavaScript. Every row is pre-rendered inline so a reviewer
+  can read the intended production markup without following JS logic.
+  Tabs, filter chips, view-mode toggle, group-header disclosures, search input,
+  and Open buttons are all inert visuals — they exist as the DOM shape production
+  will emit but do not react to clicks in this file.
+
+  Fixture source: rows drawn verbatim from
+    addons/visual-editor/curation/vertical-approved-controls.json
+  with fabricated overlays (descriptions, value summaries) per DESIGN-DECISIONS.md.
+  Real client content is NOT present; sample descriptions are austere placeholders.
+
+  State gallery: states.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>DBVC Visual Editor — R4 Expanded Global & Brand Control Center (static mockup)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="dbvc-ve-control-center-mockup">
+
+<!-- Faux WordPress admin bar (32px) -->
+<div class="dbvc-ve-control-center-mockup__admin-bar" aria-hidden="true">
+  <span>WordPress</span>
+  <span>Flourish Web Co.</span>
+  <span>Howdy, Rhett</span>
+</div>
+
+<!-- Faux live site backdrop (aria-hidden) -->
+<div class="dbvc-ve-control-center-mockup__stage" aria-hidden="true">
+  <div class="dbvc-ve-control-center-mockup__site-bar">
+    <span class="dbvc-ve-control-center-mockup__wordmark">Flourish Web Co.</span>
+    <span class="dbvc-ve-control-center-mockup__nav">
+      <span>Services</span><span>Case Studies</span><span>About</span><span>Blog</span><span>Contact</span>
+    </span>
+    <span class="dbvc-ve-control-center-mockup__site-cta">Book a Call</span>
+  </div>
+  <div class="dbvc-ve-control-center-mockup__hero">
+    <span class="dbvc-ve-control-center-mockup__hero-eyebrow">Live site · visible beside the drawer</span>
+    <span class="dbvc-ve-control-center-mockup__hero-title">Every control your team touches, in one calm workspace.</span>
+    <p class="dbvc-ve-control-center-mockup__hero-body">
+      The drawer sits on the left edge without a backdrop so the site stays readable on the right.
+      Search, tabs, and the category-vs-provider view toggle live in the drawer; opening a control opens
+      the existing main editor panel over/beside the drawer — the drawer stays open.
+    </p>
+  </div>
+</div>
+
+<!-- Toolbar continuity (unchanged from R3; new sliders slot for Control Center) -->
+<div class="dbvc-ve-control-center-mockup__toolbar" aria-hidden="true">
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Pause">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="5" width="4" height="14"></rect><rect x="14" y="5" width="4" height="14"></rect>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Shared Globals">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l9 4.5-9 4.5-9-4.5L12 3z"></path><path d="M3 12l9 4.5 9-4.5"></path><path d="M3 16.5l9 4.5 9-4.5"></path>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button is-active" title="Global Brand Controls (active)">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4" y1="7" x2="20" y2="7"></line><circle cx="9" cy="7" r="2.4" fill="currentColor" stroke="none"></circle>
+      <line x1="4" y1="12" x2="20" y2="12"></line><circle cx="15" cy="12" r="2.4" fill="currentColor" stroke="none"></circle>
+      <line x1="4" y1="17" x2="20" y2="17"></line><circle cx="7" cy="17" r="2.4" fill="currentColor" stroke="none"></circle>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-divider" aria-hidden="true"></span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Exit">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4"></path><path d="M16 8l5 4-5 4"></path><path d="M21 12H9"></path>
+    </svg>
+  </span>
+</div>
+
+<!--
+  The R4 drawer. Root class = `.dbvc-ve-control-center` (inherited from R3).
+  Category-folded view is active (default). View-toggle segmented control in the header.
+-->
+<aside class="dbvc-ve-control-center" role="complementary" aria-labelledby="dbvc-ve-cc-title">
+
+  <header class="dbvc-ve-control-center__header">
+    <span class="dbvc-ve-control-center__header-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="4" y1="7" x2="20" y2="7"></line><circle cx="9" cy="7" r="2.4" fill="currentColor" stroke="none"></circle>
+        <line x1="4" y1="12" x2="20" y2="12"></line><circle cx="15" cy="12" r="2.4" fill="currentColor" stroke="none"></circle>
+        <line x1="4" y1="17" x2="20" y2="17"></line><circle cx="7" cy="17" r="2.4" fill="currentColor" stroke="none"></circle>
+      </svg>
+    </span>
+    <div class="dbvc-ve-control-center__title-block">
+      <h2 class="dbvc-ve-control-center__title" id="dbvc-ve-cc-title">Global Brand Controls</h2>
+      <span class="dbvc-ve-control-center__summary-chip"><strong>400</strong> controls · 2 providers</span>
+    </div>
+    <div class="dbvc-ve-control-center__view-toggle" role="tablist" aria-label="Category view">
+      <button type="button" role="tab" aria-selected="true" data-view-mode="category" class="dbvc-ve-control-center__view-toggle-option" title="Group by category">
+        <span class="dbvc-ve-control-center__view-toggle-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="7" height="7"></rect><rect x="13" y="4" width="7" height="7"></rect>
+            <rect x="4" y="13" width="7" height="7"></rect><rect x="13" y="13" width="7" height="7"></rect>
+          </svg>
+        </span>
+        By category
+      </button>
+      <button type="button" role="tab" aria-selected="false" data-view-mode="provider" class="dbvc-ve-control-center__view-toggle-option" title="Group by provider">
+        <span class="dbvc-ve-control-center__view-toggle-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="5" width="16" height="4"></rect><rect x="4" y="11" width="16" height="4"></rect><rect x="4" y="17" width="16" height="2"></rect>
+          </svg>
+        </span>
+        By provider
+      </button>
+    </div>
+    <button type="button" class="dbvc-ve-control-center__close" data-dbvc-ve-control-center-action="close" aria-label="Close Global Brand Control Center">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </header>
+
+  <div class="dbvc-ve-control-center__tabs" role="tablist" aria-label="Category">
+    <button type="button" role="tab" aria-selected="true" data-category="all" class="dbvc-ve-control-center__tab">
+      All <span class="dbvc-ve-control-center__tab-count">400</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="brand" class="dbvc-ve-control-center__tab">
+      Brand <span class="dbvc-ve-control-center__tab-count">78</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="contact" class="dbvc-ve-control-center__tab">
+      Contact <span class="dbvc-ve-control-center__tab-count">42</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="content" class="dbvc-ve-control-center__tab">
+      Content <span class="dbvc-ve-control-center__tab-count">96</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="design" class="dbvc-ve-control-center__tab">
+      Design <span class="dbvc-ve-control-center__tab-count">64</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="layout_elements" class="dbvc-ve-control-center__tab">
+      Layout <span class="dbvc-ve-control-center__tab-count">58</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="legal" class="dbvc-ve-control-center__tab">
+      Legal <span class="dbvc-ve-control-center__tab-count">28</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="seo" class="dbvc-ve-control-center__tab">
+      SEO <span class="dbvc-ve-control-center__tab-count">33</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="globals" class="dbvc-ve-control-center__tab">
+      Globals <span class="dbvc-ve-control-center__tab-count">1</span>
+    </button>
+  </div>
+
+  <div class="dbvc-ve-control-center__filters">
+    <label class="dbvc-ve-control-center__sr-only" for="dbvc-ve-cc-search">Search controls</label>
+    <div class="dbvc-ve-control-center__search-wrap">
+      <span class="dbvc-ve-control-center__search-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path>
+        </svg>
+      </span>
+      <input type="search" id="dbvc-ve-cc-search" class="dbvc-ve-control-center__search" placeholder="Search labels, descriptions, owner&hellip;" maxlength="100" data-dbvc-ve-control-center-query="search">
+    </div>
+    <div class="dbvc-ve-control-center__chip-row" role="group" aria-label="Status filter">
+      <span class="dbvc-ve-control-center__chip-label">Status</span>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="available">Available</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="inspect_only">View only</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="unsupported">Unsupported</button>
+    </div>
+    <div class="dbvc-ve-control-center__chip-row" role="group" aria-label="Priority and field filters">
+      <span class="dbvc-ve-control-center__chip-label">Priority</span>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="must">Must</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="should">Should</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="nice">Nice</button>
+      <span class="dbvc-ve-control-center__chip-label" style="margin-left:8px;">Field</span>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="image">Image</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="gallery">Gallery</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="relationship">Relationship</button>
+    </div>
+  </div>
+
+  <div class="dbvc-ve-control-center__table-wrap">
+    <table class="dbvc-ve-control-center__table" role="table">
+      <caption class="dbvc-ve-control-center__sr-only">
+        Registered global brand controls, grouped by field group. Each row lists a control that can be opened in the main editor panel.
+      </caption>
+      <thead class="dbvc-ve-control-center__thead">
+        <tr>
+          <th class="dbvc-ve-control-center__th" scope="col">Control</th>
+          <th class="dbvc-ve-control-center__th dbvc-ve-control-center__th--action" scope="col">
+            <span class="dbvc-ve-control-center__sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+
+      <!-- ==== GROUP: Brand & Design Tokens › Official Color Palette (Vertical) - EXPANDED ==== -->
+      <tbody class="dbvc-ve-control-center__group" data-group-key="vertical::brand-design-tokens-palette">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="true" data-dbvc-ve-control-center-action="toggle-group" data-group-key="vertical::brand-design-tokens-palette">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">Brand &amp; Design Tokens › Official Color Palette</span>
+              <span class="dbvc-ve-control-center__group-count">7 controls</span>
+            </button>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:advanced_settings__brand_color_palette__vertical_global_palette__colorAccent" data-category="brand" data-status="unsupported" data-priority="must" data-field-family="other" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true" title="Unsupported"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Accent</span>
+              <p class="dbvc-ve-control-center__description">Primary accent color used on interactive elements, links, and small brand accents.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Brand</span>
+              <span class="dbvc-ve-control-center__meta-part">Palette</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/advanced-settings · color_picker</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-color">
+                <span class="dbvc-ve-control-center__value-color-swatch" style="background:#ff5b21;"></span>
+                <span class="dbvc-ve-control-center__value-color-hex">#ff5b21</span>
+              </span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none" title="Color-picker fields unlock with R5.2+color_picker.">Unsupported</span>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:advanced_settings__brand_color_palette__vertical_global_palette__colorBodyBG" data-category="brand" data-status="unsupported" data-priority="should" data-field-family="other" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Body Background</span>
+              <p class="dbvc-ve-control-center__description">Default page background behind every layout section.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Brand</span>
+              <span class="dbvc-ve-control-center__meta-part">Palette</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/advanced-settings · color_picker</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-color">
+                <span class="dbvc-ve-control-center__value-color-swatch" style="background:#f5f5f2;"></span>
+                <span class="dbvc-ve-control-center__value-color-hex">#f5f5f2</span>
+              </span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none">Unsupported</span>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:advanced_settings__brand_color_palette__vertical_global_palette__colorBorder" data-category="brand" data-status="unsupported" data-priority="should" data-field-family="other" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Borders</span>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Brand</span>
+              <span class="dbvc-ve-control-center__meta-part">Palette</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/advanced-settings · color_picker</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-color">
+                <span class="dbvc-ve-control-center__value-color-swatch" style="background:#dfe4f1;"></span>
+                <span class="dbvc-ve-control-center__value-color-hex">#dfe4f1</span>
+              </span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none">Unsupported</span>
+          </td>
+        </tr>
+      </tbody>
+
+      <!-- ==== GROUP: Brand › Identity (Vertical) - COLLAPSED ==== -->
+      <tbody class="dbvc-ve-control-center__group is-collapsed" data-group-key="vertical::brand-identity">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="false" data-dbvc-ve-control-center-action="toggle-group" data-group-key="vertical::brand-identity">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">Brand › Identity</span>
+              <span class="dbvc-ve-control-center__group-count">12 controls</span>
+            </button>
+          </td>
+        </tr>
+        <!-- Rows omitted while collapsed. Production hides via .is-collapsed rule. -->
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__brand_identity__primary_logo" data-category="brand" data-status="unsupported" data-field-family="image" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Primary Logo</span>
+              <p class="dbvc-ve-control-center__description">Full-color primary logo used in the header and OG cards.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Brand</span>
+              <span class="dbvc-ve-control-center__meta-part">Identity</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · image</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-image">
+                <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23001673'/%3E%3Ctext x='12' y='16' fill='white' font-family='sans-serif' font-size='9' text-anchor='middle'%3EFWC%3C/text%3E%3C/svg%3E" alt="" width="24" height="24">
+                <span class="dbvc-ve-control-center__value-image-filename">flourish-primary.svg</span>
+              </span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none" title="Image fields unlock with R5.3.">Unsupported</span>
+          </td>
+        </tr>
+      </tbody>
+
+      <!-- ==== GROUP: Content › Featured (mixed providers, Vertical + Shared Globals) - EXPANDED ==== -->
+      <tbody class="dbvc-ve-control-center__group" data-group-key="mixed::content-featured">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="true" data-dbvc-ve-control-center-action="toggle-group" data-group-key="mixed::content-featured">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">Content › Featured Collections</span>
+              <span class="dbvc-ve-control-center__group-count">4 controls</span>
+            </button>
+          </td>
+        </tr>
+
+        <!-- Shared Globals row (available) with relationship value summary -->
+        <tr class="dbvc-ve-control-center__row is-available is-focused-source" data-public-id="shared_globals:settings_globals_default_posts" data-category="content" data-status="available" data-priority="must" data-field-family="relationship" data-provider-id="shared_globals">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Default Featured Posts</span>
+              <p class="dbvc-ve-control-center__description">Sitewide fallback list of connected posts when a page's own field is empty.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Content</span>
+              <span class="dbvc-ve-control-center__meta-part">Site Settings</span>
+              <span class="dbvc-ve-control-center__badge">Shared Global</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/acf_options · relationship</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-relationship" title="Betor Cosmetic Dental Group, Lakewood Dental Associates, How to gain more patient reviews">
+                <strong>10</strong> connected
+              </span>
+            </span>
+            <button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:settings_globals_default_posts">Open</button>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__content_featured__case_studies" data-category="content" data-status="unsupported" data-priority="should" data-field-family="relationship" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Featured Case Studies</span>
+              <p class="dbvc-ve-control-center__description">Six-item case-study rotation shown on the homepage and services archive.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Content</span>
+              <span class="dbvc-ve-control-center__meta-part">Featured</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · relationship</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-relationship" title="Coastal Family Dental, Bright Smiles Orthodontics, Meadowview Vet Clinic">
+                <strong>6</strong> connected
+              </span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none">Unsupported</span>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__content_featured__press_grid" data-category="content" data-status="unsupported" data-priority="nice" data-field-family="gallery" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Press Mentions Grid</span>
+              <p class="dbvc-ve-control-center__description">Gallery of press logos rotated in the About page footer.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Content</span>
+              <span class="dbvc-ve-control-center__meta-part">Featured</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · gallery</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-gallery">
+                <span class="dbvc-ve-control-center__value-gallery-thumbs">
+                  <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23ff5b21'/%3E%3C/svg%3E" alt="" width="24" height="24">
+                  <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23aebcf9'/%3E%3C/svg%3E" alt="" width="24" height="24">
+                  <img src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23001673'/%3E%3C/svg%3E" alt="" width="24" height="24">
+                </span>
+                <span class="dbvc-ve-control-center__value-gallery-overflow">+9</span>
+              </span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none">Unsupported</span>
+          </td>
+        </tr>
+      </tbody>
+
+      <!-- ==== GROUP: Content › Voice (Vertical) - EXPANDED, showcases text + wysiwyg ==== -->
+      <tbody class="dbvc-ve-control-center__group" data-group-key="vertical::content-voice">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="true" data-dbvc-ve-control-center-action="toggle-group" data-group-key="vertical::content-voice">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">Brand › Voice</span>
+              <span class="dbvc-ve-control-center__group-count">5 controls</span>
+            </button>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__brand_voice__tagline" data-category="brand" data-status="unsupported" data-priority="should" data-field-family="text" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Brand Tagline</span>
+              <p class="dbvc-ve-control-center__description">Short marketing tagline shown in the header dropdown and meta title fallback.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Brand</span>
+              <span class="dbvc-ve-control-center__meta-part">Voice</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · text</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-text">Websites that grow with your practice<span class="dbvc-ve-control-center__value-text-count">(36)</span></span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none" title="Text families unlock with R5.1.">Unsupported</span>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-inspect_only" data-public-id="vertical:site_settings__brand_voice__short_bio" data-category="brand" data-status="inspect_only" data-priority="should" data-field-family="text" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--inspect_only" aria-hidden="true" title="View only"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Short "About" Blurb</span>
+              <p class="dbvc-ve-control-center__description">Two-sentence about summary used in the sidebar and OG description.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Brand</span>
+              <span class="dbvc-ve-control-center__meta-part">Voice</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · textarea</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-text">We build custom websites for growing practices<span class="dbvc-ve-control-center__value-text-count">(128)</span></span>
+            </span>
+            <button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--view" data-dbvc-ve-control-center-action="open" data-public-id="vertical:site_settings__brand_voice__short_bio">View</button>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__brand_voice__long_bio" data-category="brand" data-status="unsupported" data-priority="nice" data-field-family="other" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Long "About" Story</span>
+              <p class="dbvc-ve-control-center__description">Multi-paragraph story used on the About page and long-form email footers.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Brand</span>
+              <span class="dbvc-ve-control-center__meta-part">Voice</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · wysiwyg</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-wysiwyg">
+                <span class="dbvc-ve-control-center__value-wysiwyg-preview">Founded in 2018 with a stubborn belief that</span>
+                <span class="dbvc-ve-control-center__value-wysiwyg-count">· 412 words</span>
+              </span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none" title="WYSIWYG unlocks with R5.2.">Unsupported</span>
+          </td>
+        </tr>
+      </tbody>
+
+      <!-- ==== GROUP: Contact › Reach (Vertical) - EXPANDED, showcases text + link ==== -->
+      <tbody class="dbvc-ve-control-center__group" data-group-key="vertical::contact-reach">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="true" data-dbvc-ve-control-center-action="toggle-group" data-group-key="vertical::contact-reach">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">Contact › Reach</span>
+              <span class="dbvc-ve-control-center__group-count">4 controls</span>
+            </button>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__contact_reach__primary_phone" data-category="contact" data-status="unsupported" data-priority="must" data-field-family="text" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Primary Phone</span>
+              <p class="dbvc-ve-control-center__description">Shown in the site header, footer, and every call-to-action button.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Contact</span>
+              <span class="dbvc-ve-control-center__meta-part">Reach</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · text</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-text">(555) 123-4567</span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none">Unsupported</span>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__contact_reach__primary_email" data-category="contact" data-status="unsupported" data-priority="must" data-field-family="text" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Primary Email</span>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Contact</span>
+              <span class="dbvc-ve-control-center__meta-part">Reach</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · email</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-text">hello@flourishweb.co</span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none">Unsupported</span>
+          </td>
+        </tr>
+
+        <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="vertical:site_settings__contact_reach__map_link" data-category="contact" data-status="unsupported" data-priority="nice" data-field-family="text" data-provider-id="vertical">
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+            <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true"></span>
+            <div class="dbvc-ve-control-center__label-block">
+              <span class="dbvc-ve-control-center__label">Google Maps URL</span>
+              <p class="dbvc-ve-control-center__description">Shared to email signatures and the footer "Get Directions" link.</p>
+            </div>
+            <div class="dbvc-ve-control-center__meta">
+              <span class="dbvc-ve-control-center__meta-part">Contact</span>
+              <span class="dbvc-ve-control-center__meta-part">Reach</span>
+              <span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span>
+            </div>
+            <div class="dbvc-ve-control-center__owner">option/site-settings · url</div>
+          </td>
+          <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action">
+            <span class="dbvc-ve-control-center__value-summary">
+              <span class="dbvc-ve-control-center__value-text">https://maps.google.com/?q=Flourish+W&hellip;<span class="dbvc-ve-control-center__value-text-count">(56)</span></span>
+            </span>
+            <span class="dbvc-ve-control-center__action-none">Unsupported</span>
+          </td>
+        </tr>
+      </tbody>
+
+      <!-- ==== GROUP: Design › Media (Vertical) - COLLAPSED ==== -->
+      <tbody class="dbvc-ve-control-center__group is-collapsed" data-group-key="vertical::design-media">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="false" data-dbvc-ve-control-center-action="toggle-group" data-group-key="vertical::design-media">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">Design › Media</span>
+              <span class="dbvc-ve-control-center__group-count">18 controls</span>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+
+      <!-- ==== GROUP: Legal › Policies (Vertical) - COLLAPSED ==== -->
+      <tbody class="dbvc-ve-control-center__group is-collapsed" data-group-key="vertical::legal-policies">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="false" data-dbvc-ve-control-center-action="toggle-group" data-group-key="vertical::legal-policies">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">Legal › Policies</span>
+              <span class="dbvc-ve-control-center__group-count">6 controls</span>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+
+      <!-- ==== GROUP: SEO › Meta (Vertical) - COLLAPSED ==== -->
+      <tbody class="dbvc-ve-control-center__group is-collapsed" data-group-key="vertical::seo-meta">
+        <tr class="dbvc-ve-control-center__group-header">
+          <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+            <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="false" data-dbvc-ve-control-center-action="toggle-group" data-group-key="vertical::seo-meta">
+              <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </span>
+              <span class="dbvc-ve-control-center__group-title">SEO › Meta</span>
+              <span class="dbvc-ve-control-center__group-count">11 controls</span>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+
+    </table>
+  </div>
+
+  <!-- Shared polite live region — only one per drawer shell (Component Map §6). -->
+  <p class="dbvc-ve-control-center__sr-only" role="status" aria-live="polite" aria-atomic="true">
+    Global Brand Controls opened. Showing 400 registered controls across 2 providers.
+  </p>
+
+  <footer class="dbvc-ve-control-center__footer">
+    <span><strong>400</strong> of 400 controls · 2 providers</span>
+  </footer>
+
+</aside>
+
+</body>
+</html>

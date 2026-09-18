@@ -1,0 +1,824 @@
+/*
+ * DBVC Visual Editor — R6 Frontend Site Manager Workspace drawer.
+ *
+ * Production translation of the accepted static mockup at
+ *   docs/ui-mockups/dbvc-visual-editor/r6-site-manager-workspace/styles.css
+ * (drawer section only — the mockup's page scaffold, gallery, focus
+ * emulation, and sibling stand-ins are intentionally not carried over).
+ *
+ * Rules of engagement (same as control-center.css):
+ * - Every selector is scoped under `.dbvc-ve-workspace` and its `__*`
+ *   element classes (BEM) / `is-*` state classes. No unscoped element
+ *   selectors, no global reset.
+ * - Every colour / font / radius / shadow / focus / z value draws from the
+ *   shared `--dbvc-ve-*` tokens in overlay.css. Component-local sizing lives
+ *   on `.dbvc-ve-workspace` itself as `--dbvc-ve-workspace-*`.
+ * - The one net-new `:root` token — `--dbvc-ve-z-workspace: 120005` — was
+ *   added to overlay.css in the same slice (D-072).
+ * - Dark mode rides the overlay.css token cascade; the four rule-level
+ *   overrides at the bottom cover controls whose light value is the
+ *   deliberately un-flipped `--dbvc-ve-color-surface` (D-076).
+ */
+
+.dbvc-ve-workspace {
+  /* component-local sizing (mirrors control-center.css naming) */
+  --dbvc-ve-workspace-width: 480px;
+  --dbvc-ve-workspace-admin-bar: 32px;
+  --dbvc-ve-workspace-toolbar-strip: 76px;
+  --dbvc-ve-workspace-header-padding-y: 14px;
+  --dbvc-ve-workspace-section-padding-x: 18px;
+  --dbvc-ve-workspace-row-padding-y: 10px;
+  --dbvc-ve-workspace-glyph: 22px;
+  --dbvc-ve-workspace-focus-ring: 2px solid var(--dbvc-ve-color-focus);
+  --dbvc-ve-workspace-shadow: 8px 0 40px rgba(0, 10, 54, 0.22), 1px 0 0 rgba(0, 10, 54, 0.08);
+
+  position: fixed;
+  top: var(--dbvc-ve-workspace-admin-bar);
+  left: 0;
+  bottom: var(--dbvc-ve-workspace-toolbar-strip);
+  z-index: var(--dbvc-ve-z-workspace);
+  display: flex;
+  flex-direction: column;
+  width: var(--dbvc-ve-workspace-width);
+  background: var(--dbvc-ve-color-drawer-background);
+  border-right: 1px solid var(--dbvc-ve-color-border-muted);
+  box-shadow: var(--dbvc-ve-workspace-shadow);
+  color: var(--dbvc-ve-color-drawer-text);
+  font: var(--dbvc-ve-font-weight--normal) var(--dbvc-ve-font--body)/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transform: translateX(0);
+  transition: transform 220ms ease;
+}
+.dbvc-ve-workspace[hidden] {
+  display: none;
+}
+.dbvc-ve-workspace.is-closed {
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+/* Painted under the BCC drawer or Media Manager (contract §5.2–5.3) — the
+   root also carries `inert` + `aria-hidden="true"` while overlaid. */
+.dbvc-ve-workspace.is-inert {
+  pointer-events: none;
+}
+.dbvc-ve-workspace[inert] {
+  pointer-events: none;
+}
+/* Fully covered by the BCC drawer (same slot): hide visually so the two
+   translucent surfaces do not bleed into each other in dark mode. */
+.dbvc-ve-workspace.is-covered {
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-workspace {
+    transition: none;
+  }
+}
+.dbvc-ve-workspace *,
+.dbvc-ve-workspace *::before,
+.dbvc-ve-workspace *::after {
+  box-sizing: border-box;
+}
+/* svgIcon() wrapper — keeps inline SVGs on the baseline without stray line-height */
+.dbvc-ve-workspace__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dbvc-ve-workspace__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Shared focus treatment — every interactive element in the drawer */
+.dbvc-ve-workspace__close:focus-visible,
+.dbvc-ve-workspace__section-tab:focus-visible,
+.dbvc-ve-workspace__search:focus-visible,
+.dbvc-ve-workspace__search-clear:focus-visible,
+.dbvc-ve-workspace__type:focus-visible,
+.dbvc-ve-workspace__action:focus-visible,
+.dbvc-ve-workspace__load-more:focus-visible,
+.dbvc-ve-workspace__retry:focus-visible,
+.dbvc-ve-workspace__tool:focus-visible {
+  outline: var(--dbvc-ve-workspace-focus-ring);
+  outline-offset: 2px;
+}
+
+/* 2.1 Header */
+.dbvc-ve-workspace__header {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: var(--dbvc-ve-workspace-header-padding-y) var(--dbvc-ve-workspace-section-padding-x);
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  /* chrome-header token flips in dark mode (R5.later-darkmode.b); the BCC's
+     white→light gradient would stay white on a dark drawer, so the workspace
+     uses the token instead of the gradient. */
+  background: var(--dbvc-ve-color-chrome-header-background);
+}
+.dbvc-ve-workspace__header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
+}
+.dbvc-ve-workspace__header-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.dbvc-ve-workspace__title-block {
+  min-width: 0;
+}
+.dbvc-ve-workspace__eyebrow,
+.dbvc-ve-workspace__overline {
+  display: block;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dbvc-ve-workspace__title {
+  margin: 2px 0 0;
+  /* Live-site QA (E-152): the host theme styles bare <h2> (font-family,
+     transform, letter-spacing); pin the heading to the drawer's own stack. */
+  font-family: inherit;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--dbvc-ve-color-text-dark);
+}
+.dbvc-ve-workspace__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  cursor: pointer;
+}
+.dbvc-ve-workspace__close svg {
+  width: 18px;
+  height: 18px;
+}
+.dbvc-ve-workspace__close:hover {
+  border-color: var(--dbvc-ve-color-border);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+
+/* 2.2 Current object card */
+.dbvc-ve-workspace__current {
+  padding: 10px var(--dbvc-ve-workspace-section-padding-x) 12px;
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+.dbvc-ve-workspace__current-row {
+  display: grid;
+  grid-template-columns: var(--dbvc-ve-workspace-glyph) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.dbvc-ve-workspace__here {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+/* 2.3 Section tablist (Navigate | Tools) */
+.dbvc-ve-workspace__sections {
+  display: flex;
+  gap: 4px;
+  padding: 8px var(--dbvc-ve-workspace-section-padding-x) 0;
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  background: var(--dbvc-ve-color-drawer-background);
+}
+.dbvc-ve-workspace__section-tab {
+  flex: 0 0 auto;
+  padding: 8px 14px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+.dbvc-ve-workspace__section-tab:hover {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+.dbvc-ve-workspace__section-tab[aria-selected="true"] {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  border-bottom-color: var(--dbvc-ve-color-primary);
+}
+
+/* 2.4 Body — the scroll container */
+.dbvc-ve-workspace__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.dbvc-ve-workspace__body[hidden] {
+  display: none;
+}
+.dbvc-ve-workspace__sticky {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dbvc-ve-color-drawer-background);
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+}
+/* scroll-edge fade so an overflowing type strip reads as scrollable */
+.dbvc-ve-workspace__types {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+
+/* Search */
+.dbvc-ve-workspace__search-wrap {
+  position: relative;
+  padding: 12px var(--dbvc-ve-workspace-section-padding-x) 8px;
+}
+.dbvc-ve-workspace__search {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 38px 9px 12px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-text-dark);
+  font: inherit;
+}
+.dbvc-ve-workspace__search::placeholder {
+  color: var(--dbvc-ve-color-text-subtle);
+}
+.dbvc-ve-workspace__search:disabled {
+  opacity: 0.6;
+}
+.dbvc-ve-workspace__search-clear {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--dbvc-ve-workspace-section-padding-x) + 6px);
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  margin-top: -13px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  cursor: pointer;
+}
+.dbvc-ve-workspace__search-clear[hidden] {
+  display: none;
+}
+.dbvc-ve-workspace__search-clear svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* R6.1-b (2026-09-16) — kind segmented control + sort select. Same
+   component vocabulary as the Preferences popover (VE-prefs-1): segmented
+   radiogroup on the muted surface, checked segment on the emphasis pair; the
+   select sits on the control surface like the search field. One 32px row. */
+.dbvc-ve-workspace__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 var(--dbvc-ve-workspace-section-padding-x) 8px;
+}
+.dbvc-ve-workspace__segmented {
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+.dbvc-ve-workspace__segment {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dbvc-ve-workspace__segment:hover {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+.dbvc-ve-workspace__segment:focus-visible {
+  outline: 2px solid var(--dbvc-ve-color-focus);
+  outline-offset: 2px;
+}
+.dbvc-ve-workspace__segment[aria-checked="true"] {
+  border-color: var(--dbvc-ve-color-emphasis-background);
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
+}
+.dbvc-ve-workspace__sort {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.dbvc-ve-workspace__sort-select {
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 28px 4px 10px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-text-dark);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  line-height: 1.2;
+  cursor: pointer;
+}
+.dbvc-ve-workspace__sort-select:focus-visible {
+  outline: 2px solid var(--dbvc-ve-color-focus);
+  outline-offset: 2px;
+}
+.dbvc-ve-workspace__sort-select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Type tablist — BCC tab-strip style (D-074) */
+.dbvc-ve-workspace__types {
+  display: flex;
+  gap: 4px;
+  padding: 0 var(--dbvc-ve-workspace-section-padding-x) 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.dbvc-ve-workspace__type {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dbvc-ve-workspace__type:hover {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  background: var(--dbvc-ve-color-background-light);
+}
+.dbvc-ve-workspace__type[aria-selected="true"] {
+  color: var(--dbvc-ve-color-emphasis-text);
+  background: var(--dbvc-ve-color-emphasis-background);
+  border-color: var(--dbvc-ve-color-emphasis-background);
+}
+.dbvc-ve-workspace__type-affix {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.7;
+}
+.dbvc-ve-workspace__type-affix svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Status line — the drawer's single polite live region */
+.dbvc-ve-workspace__status {
+  margin: 0;
+  padding: 8px var(--dbvc-ve-workspace-section-padding-x) 4px;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+.dbvc-ve-workspace__status.is-error {
+  color: var(--dbvc-ve-color-error);
+}
+
+/* Results list */
+.dbvc-ve-workspace__results {
+  margin: 0;
+  padding: 4px var(--dbvc-ve-workspace-section-padding-x) 8px;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.dbvc-ve-workspace__row {
+  display: grid;
+  grid-template-columns: var(--dbvc-ve-workspace-glyph) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: var(--dbvc-ve-workspace-row-padding-y) 10px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+.dbvc-ve-workspace__row:hover {
+  border-color: var(--dbvc-ve-color-border);
+}
+.dbvc-ve-workspace__row.is-focused {
+  border-color: var(--dbvc-ve-color-secondary);
+}
+.dbvc-ve-workspace__row-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--dbvc-ve-workspace-glyph);
+  height: var(--dbvc-ve-workspace-glyph);
+  color: var(--dbvc-ve-color-text-muted);
+}
+.dbvc-ve-workspace__row-glyph svg {
+  width: 18px;
+  height: 18px;
+}
+.dbvc-ve-workspace__row-text {
+  min-width: 0;
+}
+.dbvc-ve-workspace__row-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--dbvc-ve-color-text-dark);
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.dbvc-ve-workspace__row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+}
+.dbvc-ve-workspace__row-type::after {
+  content: "·";
+  margin-left: 6px;
+  color: var(--dbvc-ve-color-border);
+}
+
+/* Status chip — text always present; colour is reinforcement only */
+.dbvc-ve-workspace__status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+.dbvc-ve-workspace__status-chip--publish {
+  border-color: var(--dbvc-ve-color-success-border);
+  background: var(--dbvc-ve-color-success-bg);
+  color: var(--dbvc-ve-color-success);
+}
+.dbvc-ve-workspace__status-chip--draft,
+.dbvc-ve-workspace__status-chip--pending,
+.dbvc-ve-workspace__status-chip--future {
+  border-color: var(--dbvc-ve-color-warning-border);
+  background: var(--dbvc-ve-color-warning-bg);
+  color: var(--dbvc-ve-color-warning);
+}
+.dbvc-ve-workspace__status-chip--private {
+  border-color: var(--dbvc-ve-color-info-border);
+  background: var(--dbvc-ve-color-info-bg);
+  color: var(--dbvc-ve-color-info);
+}
+.dbvc-ve-workspace__status-chip--term {
+  /* neutral — default chip */
+}
+
+/* Row actions — always-visible two buttons (D-074) */
+.dbvc-ve-workspace__row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.dbvc-ve-workspace__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dbvc-ve-workspace__action--primary {
+  border-color: var(--dbvc-ve-color-emphasis-background);
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
+}
+.dbvc-ve-workspace__action:hover {
+  border-color: var(--dbvc-ve-color-emphasis-foreground);
+}
+.dbvc-ve-workspace__action--primary:hover {
+  background: color-mix(in srgb, var(--dbvc-ve-color-emphasis-background) 88%, #ffffff);
+}
+.dbvc-ve-workspace__action-icon {
+  width: 12px;
+  height: 12px;
+}
+/* No-route rows: the single Edit action is still primary-styled so the row
+   never looks "actionless". When the status alone does not explain the missing
+   Open (published post on a non-viewable type, term in a non-queryable
+   taxonomy) an explicit text note carries the reason. */
+.dbvc-ve-workspace__row-note {
+  color: var(--dbvc-ve-color-warning);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+.dbvc-ve-workspace__row.is-no-route .dbvc-ve-workspace__row-glyph {
+  opacity: 0.7;
+}
+
+/* Footer */
+.dbvc-ve-workspace__footer {
+  padding: 4px var(--dbvc-ve-workspace-section-padding-x) 16px;
+}
+.dbvc-ve-workspace__load-more,
+.dbvc-ve-workspace__retry {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px dashed var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+.dbvc-ve-workspace__load-more:hover,
+.dbvc-ve-workspace__retry:hover {
+  border-style: solid;
+  border-color: var(--dbvc-ve-color-emphasis-foreground);
+}
+.dbvc-ve-workspace__end {
+  display: block;
+  padding: 8px 0;
+  text-align: center;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+/* Empty / error blocks (rendered instead of / above the list) */
+.dbvc-ve-workspace__empty,
+.dbvc-ve-workspace__error {
+  margin: 4px var(--dbvc-ve-workspace-section-padding-x) 8px;
+  padding: 14px;
+  border: 1px dashed var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface-muted);
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+}
+.dbvc-ve-workspace__error {
+  border-style: solid;
+  border-color: var(--dbvc-ve-color-error-border);
+  background: var(--dbvc-ve-color-error-bg);
+  color: var(--dbvc-ve-color-error);
+}
+.dbvc-ve-workspace__empty-title,
+.dbvc-ve-workspace__error-title {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  color: inherit;
+}
+
+/* Skeleton rows (S-04) */
+.dbvc-ve-workspace__row.is-skeleton {
+  pointer-events: none;
+}
+.dbvc-ve-workspace__skeleton-bar {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--dbvc-ve-color-border-muted), var(--dbvc-ve-color-light), var(--dbvc-ve-color-border-muted));
+}
+.dbvc-ve-workspace__skeleton-bar + .dbvc-ve-workspace__skeleton-bar {
+  margin-top: 6px;
+  width: 55%;
+}
+
+/* 2.5 Tools panel (S-18) */
+.dbvc-ve-workspace__tools {
+  margin: 0;
+  padding: 12px var(--dbvc-ve-workspace-section-padding-x) 16px;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.dbvc-ve-workspace__tool {
+  display: grid;
+  grid-template-columns: var(--dbvc-ve-workspace-glyph) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 12px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface-muted);
+  color: var(--dbvc-ve-color-text-dark);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.dbvc-ve-workspace__tool:hover {
+  border-color: var(--dbvc-ve-color-secondary);
+}
+.dbvc-ve-workspace__tool.is-unavailable {
+  cursor: default;
+  opacity: 0.6;
+}
+.dbvc-ve-workspace__tool-label {
+  display: block;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+.dbvc-ve-workspace__tool-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+}
+.dbvc-ve-workspace__tool-affordance {
+  color: var(--dbvc-ve-color-text-subtle);
+}
+.dbvc-ve-workspace__tool-affordance svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Skeletons, spinner, empty/error actions */
+.dbvc-ve-workspace__types.is-skeleton {
+  gap: 8px;
+  padding-bottom: 12px;
+}
+.dbvc-ve-workspace__skeleton-bar--tab {
+  width: 68px;
+  height: 26px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+}
+.dbvc-ve-workspace__skeleton-bar--glyph {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+.dbvc-ve-workspace__skeleton-bar--action {
+  width: 56px;
+  height: 26px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+}
+.dbvc-ve-workspace__skeleton-bar {
+  animation: dbvc-ve-workspace-shimmer 1.4s linear infinite;
+  background-size: 200% 100%;
+}
+@keyframes dbvc-ve-workspace-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.dbvc-ve-workspace__spinner {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  animation: dbvc-ve-workspace-spin 0.9s linear infinite;
+}
+@keyframes dbvc-ve-workspace-spin {
+  to { transform: rotate(360deg); }
+}
+.dbvc-ve-workspace__load-more.is-loading,
+.dbvc-ve-workspace__load-more:disabled {
+  border-style: solid;
+  color: var(--dbvc-ve-color-text-muted);
+  cursor: default;
+}
+.dbvc-ve-workspace__empty-actions {
+  margin-top: 10px;
+}
+.dbvc-ve-workspace__empty-actions .dbvc-ve-workspace__retry {
+  width: auto;
+  min-height: 32px;
+  padding: 6px 14px;
+  border-style: solid;
+}
+.dbvc-ve-workspace__error--mode {
+  border-color: var(--dbvc-ve-color-warning-border);
+  background: var(--dbvc-ve-color-warning-bg);
+  color: var(--dbvc-ve-color-warning);
+}
+.dbvc-ve-workspace__tool-text {
+  min-width: 0;
+}
+.dbvc-ve-workspace__tool:disabled {
+  cursor: default;
+}
+
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-workspace__skeleton-bar,
+  .dbvc-ve-workspace__spinner {
+    animation: none;
+  }
+}
+
+/* Dark mode — everything else rides the overlay.css token cascade (control
+   surface, emphasis fills, text/border tokens — R5.later-darkmode.d, D-080).
+   The status-chip tints below are the one component-level dark treatment
+   left: translucent color-mixes of the (deliberately un-flipped) brand-intent
+   tokens, kept in BOTH forms per D-079. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-workspace__status-chip--publish {
+    border-color: color-mix(in srgb, var(--dbvc-ve-color-success) 45%, transparent);
+    background: color-mix(in srgb, var(--dbvc-ve-color-success) 30%, transparent);
+    color: color-mix(in srgb, var(--dbvc-ve-color-success) 45%, #ffffff);
+  }
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-workspace__status-chip--draft,
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-workspace__status-chip--pending,
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-workspace__status-chip--future {
+    border-color: color-mix(in srgb, var(--dbvc-ve-color-warning) 45%, transparent);
+    background: color-mix(in srgb, var(--dbvc-ve-color-warning) 30%, transparent);
+    color: color-mix(in srgb, var(--dbvc-ve-color-warning) 45%, #ffffff);
+  }
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-workspace__status-chip--private {
+    border-color: color-mix(in srgb, var(--dbvc-ve-color-info) 45%, transparent);
+    background: color-mix(in srgb, var(--dbvc-ve-color-info) 35%, transparent);
+    color: color-mix(in srgb, var(--dbvc-ve-color-info) 35%, #ffffff);
+  }
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-workspace__row-note {
+    color: color-mix(in srgb, var(--dbvc-ve-color-warning) 45%, #ffffff);
+  }
+}
+/* Explicit "Dark" choice — mirror of the media-guarded rules above. */
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-workspace__status-chip--publish {
+  border-color: color-mix(in srgb, var(--dbvc-ve-color-success) 45%, transparent);
+  background: color-mix(in srgb, var(--dbvc-ve-color-success) 30%, transparent);
+  color: color-mix(in srgb, var(--dbvc-ve-color-success) 45%, #ffffff);
+}
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-workspace__status-chip--draft,
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-workspace__status-chip--pending,
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-workspace__status-chip--future {
+  border-color: color-mix(in srgb, var(--dbvc-ve-color-warning) 45%, transparent);
+  background: color-mix(in srgb, var(--dbvc-ve-color-warning) 30%, transparent);
+  color: color-mix(in srgb, var(--dbvc-ve-color-warning) 45%, #ffffff);
+}
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-workspace__status-chip--private {
+  border-color: color-mix(in srgb, var(--dbvc-ve-color-info) 45%, transparent);
+  background: color-mix(in srgb, var(--dbvc-ve-color-info) 35%, transparent);
+  color: color-mix(in srgb, var(--dbvc-ve-color-info) 35%, #ffffff);
+}
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-workspace__row-note {
+  color: color-mix(in srgb, var(--dbvc-ve-color-warning) 45%, #ffffff);
+}

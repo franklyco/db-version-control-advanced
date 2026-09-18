@@ -682,6 +682,7 @@ final class ElementInstrumentationService
         foreach ($descriptors as $descriptor) {
             $element_html = $this->ensureMarkerAttributesForDescriptor($element_html, $descriptor);
             $element_html = $this->verifyDescriptor($element_html, $descriptor);
+            $this->rememberRenderedHtmlTag($descriptor, $element_html);
         }
 
         return $element_html;
@@ -2372,6 +2373,8 @@ final class ElementInstrumentationService
             return $this->stripMarkerAttributesForToken($element_html, $descriptor->token);
         }
 
+        $this->rememberRenderedHtmlTag($descriptor, $element_html, $raw_value);
+
         if (($descriptor->render['context'] ?? '') === 'query_collection') {
             $descriptor->render['rendered_value'] = '';
             $descriptor->render['resolved_value'] = '';
@@ -2982,6 +2985,76 @@ final class ElementInstrumentationService
     }
 
     /**
+     * Store the actual rendered marker tag as private descriptor metadata for panel display.
+     *
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_html
+     * @param mixed              $raw_value
+     * @return void
+     */
+    private function rememberRenderedHtmlTag(EditableDescriptor $descriptor, $element_html, $raw_value = null)
+    {
+        $source_html_tag = $this->resolveRenderedSourceHtmlTag($element_html, $descriptor, $raw_value);
+        if ($source_html_tag !== '') {
+            $descriptor->render['html_tag'] = $source_html_tag;
+
+            return;
+        }
+
+        if (! empty($descriptor->render['html_tag'])) {
+            return;
+        }
+
+        $marker_tag = $this->findMarkerTag($element_html, $descriptor->token);
+        if ($marker_tag === '' || ! preg_match('/^<\s*([a-z][a-z0-9-]*)\b/i', $marker_tag, $matches)) {
+            return;
+        }
+
+        $html_tag = strtolower((string) $matches[1]);
+        if (! preg_match('/^[a-z][a-z0-9-]*$/', $html_tag)) {
+            return;
+        }
+
+        $descriptor->render['html_tag'] = $html_tag;
+    }
+
+    /**
+     * Prefer the actual source-bearing tag when Bricks wraps it in a marker container.
+     *
+     * @param string             $element_html
+     * @param EditableDescriptor $descriptor
+     * @param mixed              $raw_value
+     * @return string
+     */
+    private function resolveRenderedSourceHtmlTag($element_html, EditableDescriptor $descriptor, $raw_value)
+    {
+        $element_html = (string) $element_html;
+        $render_context = isset($descriptor->render['context'])
+            ? sanitize_key((string) $descriptor->render['context'])
+            : '';
+
+        if ($render_context === 'image_src' && preg_match('/<img\b/i', $element_html)) {
+            return 'img';
+        }
+
+        if (! is_string($raw_value) || $raw_value === '') {
+            return '';
+        }
+
+        $source_markup = ltrim($raw_value);
+        if (! preg_match('/^<(h[1-6]|p|div|section|article|header|footer|main|aside|nav|ul|ol|li|blockquote|pre|figure|figcaption|table)\b/i', $source_markup, $matches)) {
+            return '';
+        }
+
+        $source_tag = strtolower((string) $matches[1]);
+        if (! preg_match('/<' . preg_quote($source_tag, '/') . '\b/i', $element_html)) {
+            return '';
+        }
+
+        return $source_tag;
+    }
+
+    /**
      * @param string $element_html
      * @param string $token
      * @param string $attribute
@@ -3069,6 +3142,8 @@ final class ElementInstrumentationService
             return $content;
         }
 
+        $this->rememberRenderedHtmlTag($descriptor, $updated_tag);
+
         $updated_content = substr($content_string, 0, $offset)
             . $updated_tag
             . substr($content_string, $offset + strlen($tag));
@@ -3109,6 +3184,8 @@ final class ElementInstrumentationService
         if ($updated_tag === $tag) {
             return $content;
         }
+
+        $this->rememberRenderedHtmlTag($descriptor, $updated_tag);
 
         $updated_content = substr($content_string, 0, $offset)
             . $updated_tag
@@ -3184,17 +3261,9 @@ final class ElementInstrumentationService
      */
     private function injectMarkerIntoElementOccurrence($content, EditableDescriptor $descriptor, $element_id, $occurrence_index)
     {
-        $pattern = '/<([A-Za-z][A-Za-z0-9:-]*)([^>]*\bclass=(["\'])(?:(?:(?!\3).)*)\bbrxe-' . preg_quote($element_id, '/') . '\b(?:(?:(?!\3).)*)\3[^>]*)>/s';
-        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
-            return $content;
-        }
-
-        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
-            return $content;
-        }
-
-        $tag = (string) $matches[0][$occurrence_index][0];
-        $offset = (int) $matches[0][$occurrence_index][1];
+        $match = $this->findBricksElementOpeningTagMatch($content, $element_id, $occurrence_index);
+        $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+        $offset = isset($match['offset']) ? (int) $match['offset'] : 0;
         if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
             return $content;
         }
@@ -3203,6 +3272,8 @@ final class ElementInstrumentationService
         if ($updated_tag === $tag) {
             return $content;
         }
+
+        $this->rememberRenderedHtmlTag($descriptor, $updated_tag);
 
         return substr((string) $content, 0, $offset)
             . $updated_tag
@@ -3408,15 +3479,15 @@ final class ElementInstrumentationService
 
     /**
      * Fast single-occurrence opening tag lookup used before the heavier full-page
-     * regex repair path. It only returns a match when the class hit is inside an
-     * opening tag with a class attribute containing the target Bricks element id.
+     * regex repair path. By default it preserves repeated class-token matching;
+     * proven unique-wrapper fallbacks can explicitly allow the ID form.
      *
      * @param string $content
      * @param string $element_id
      * @param int    $occurrence_index
      * @return array<string, mixed>
      */
-    private function findBricksElementOpeningTagWindow($content, $element_id, $occurrence_index)
+    private function findBricksElementOpeningTagWindow($content, $element_id, $occurrence_index, $allow_unique_id = false)
     {
         $content_string = (string) $content;
         $element_id = sanitize_key((string) $element_id);
@@ -3432,31 +3503,31 @@ final class ElementInstrumentationService
         $seen = 0;
 
         while ($search_offset < $content_length) {
-            $class_position = strpos($content_string, $needle, $search_offset);
-            if ($class_position === false) {
+            $identity_position = strpos($content_string, $needle, $search_offset);
+            if ($identity_position === false) {
                 return [];
             }
 
-            $window_start = max(0, $class_position - 4096);
-            $prefix = substr($content_string, $window_start, $class_position - $window_start);
+            $window_start = max(0, $identity_position - 4096);
+            $prefix = substr($content_string, $window_start, $identity_position - $window_start);
             $relative_tag_start = strrpos($prefix, '<');
-            $tag_end = strpos($content_string, '>', $class_position);
+            $tag_end = strpos($content_string, '>', $identity_position);
             if ($relative_tag_start === false || $tag_end === false) {
-                $search_offset = $class_position + $needle_length;
+                $search_offset = $identity_position + $needle_length;
                 continue;
             }
 
             $tag_start = $window_start + $relative_tag_start;
             if ($tag_end < $tag_start || $tag_end - $tag_start > 8192) {
-                $search_offset = $class_position + $needle_length;
+                $search_offset = $identity_position + $needle_length;
                 continue;
             }
 
             $tag = substr($content_string, $tag_start, $tag_end - $tag_start + 1);
             if (! is_string($tag)
                 || ! preg_match('/^<[A-Za-z][A-Za-z0-9:-]*(?:\s|>)/', $tag)
-                || ! preg_match('/\bclass=(["\'])(?:(?:(?!\1).)*)\b' . preg_quote($needle, '/') . '\b(?:(?:(?!\1).)*)\1/s', $tag)) {
-                $search_offset = $class_position + $needle_length;
+                || ! $this->openingTagHasBricksElementIdentity($tag, $needle, $allow_unique_id)) {
+                $search_offset = $identity_position + $needle_length;
                 continue;
             }
 
@@ -3614,7 +3685,7 @@ final class ElementInstrumentationService
         }
 
         foreach ($this->resolveMissingMediaAnchorElementIds($descriptor) as $anchor_element_id) {
-            $match = $this->findBricksElementOpeningTagWindow($content, $anchor_element_id, $occurrence_index);
+            $match = $this->findBricksElementOpeningTagWindow($content, $anchor_element_id, $occurrence_index, true);
             if (empty($match)) {
                 continue;
             }
@@ -3678,7 +3749,7 @@ final class ElementInstrumentationService
      * @param string $element_id
      * @return array<int, array<string, mixed>>
      */
-    private function findBricksElementOpeningTagMatches($content, $element_id)
+    private function findBricksElementOpeningTagMatches($content, $element_id, $allow_unique_id = false)
     {
         $started_at = $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()
             ? $this->profiler->startTimer()
@@ -3696,31 +3767,31 @@ final class ElementInstrumentationService
         $opening_tags = [];
 
         while ($search_offset < $content_length) {
-            $class_position = strpos($content_string, $needle, $search_offset);
-            if ($class_position === false) {
+            $identity_position = strpos($content_string, $needle, $search_offset);
+            if ($identity_position === false) {
                 break;
             }
 
-            $window_start = max(0, $class_position - 4096);
-            $prefix = substr($content_string, $window_start, $class_position - $window_start);
+            $window_start = max(0, $identity_position - 4096);
+            $prefix = substr($content_string, $window_start, $identity_position - $window_start);
             $relative_tag_start = strrpos($prefix, '<');
-            $tag_end = strpos($content_string, '>', $class_position);
+            $tag_end = strpos($content_string, '>', $identity_position);
             if ($relative_tag_start === false || $tag_end === false) {
-                $search_offset = $class_position + $needle_length;
+                $search_offset = $identity_position + $needle_length;
                 continue;
             }
 
             $tag_start = $window_start + $relative_tag_start;
             if ($tag_end < $tag_start || $tag_end - $tag_start > 8192) {
-                $search_offset = $class_position + $needle_length;
+                $search_offset = $identity_position + $needle_length;
                 continue;
             }
 
             $tag = substr($content_string, $tag_start, $tag_end - $tag_start + 1);
             if (! is_string($tag)
                 || ! preg_match('/^<[A-Za-z][A-Za-z0-9:-]*(?:\s|>)/', $tag)
-                || ! preg_match('/\bclass=(["\'])(?:(?:(?!\1).)*)\b' . preg_quote($needle, '/') . '\b(?:(?:(?!\1).)*)\1/s', $tag)) {
-                $search_offset = $class_position + $needle_length;
+                || ! $this->openingTagHasBricksElementIdentity($tag, $needle, $allow_unique_id)) {
+                $search_offset = $identity_position + $needle_length;
                 continue;
             }
 
@@ -3745,6 +3816,38 @@ final class ElementInstrumentationService
         }
 
         return $opening_tags;
+    }
+
+    /**
+     * Match exact repeated class tokens and opt-in unique Bricks IDs.
+     *
+     * @param string $tag
+     * @param string $needle
+     * @return bool
+     */
+    private function openingTagHasBricksElementIdentity($tag, $needle, $allow_unique_id = false)
+    {
+        $tag = (string) $tag;
+        $needle = sanitize_key((string) $needle);
+        if ($tag === '' || $needle === '') {
+            return false;
+        }
+
+        if ($allow_unique_id
+            && preg_match('/\bid\s*=\s*(["\'])(.*?)\1/s', $tag, $id_match)
+            && isset($id_match[2])
+            && (string) $id_match[2] === $needle) {
+            return true;
+        }
+
+        if (! preg_match('/\bclass\s*=\s*(["\'])(.*?)\1/s', $tag, $class_match)
+            || ! isset($class_match[2])) {
+            return false;
+        }
+
+        $class_tokens = preg_split('/\s+/', trim((string) $class_match[2]));
+
+        return is_array($class_tokens) && in_array($needle, $class_tokens, true);
     }
 
     /**

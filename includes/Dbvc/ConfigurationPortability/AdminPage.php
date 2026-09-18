@@ -12,6 +12,7 @@ final class AdminPage
     private const ACTION_EXPORT = 'dbvc_config_portability_export';
     private const ACTION_DOWNLOAD = 'dbvc_config_portability_download';
     private const ACTION_UPLOAD = 'dbvc_config_portability_upload';
+    private const ACTION_SAVE_REVIEW_DRAFT = 'dbvc_config_portability_save_review_draft';
     private const ACTION_APPLY = 'dbvc_config_portability_apply';
     private const ACTION_ROLLBACK = 'dbvc_config_portability_rollback';
     private const NOTICE_TRANSIENT_PREFIX = 'dbvc_config_portability_notice_';
@@ -25,6 +26,7 @@ final class AdminPage
         add_action('admin_post_' . self::ACTION_EXPORT, [self::class, 'handle_export']);
         add_action('admin_post_' . self::ACTION_DOWNLOAD, [self::class, 'handle_download']);
         add_action('admin_post_' . self::ACTION_UPLOAD, [self::class, 'handle_upload']);
+        add_action('admin_post_' . self::ACTION_SAVE_REVIEW_DRAFT, [self::class, 'handle_save_review_draft']);
         add_action('admin_post_' . self::ACTION_APPLY, [self::class, 'handle_apply']);
         add_action('admin_post_' . self::ACTION_ROLLBACK, [self::class, 'handle_rollback']);
     }
@@ -58,6 +60,7 @@ final class AdminPage
         $session_id = isset($_GET['session_id']) ? sanitize_key((string) wp_unslash($_GET['session_id'])) : '';
         $summary = $package_id !== '' ? ExportPackageBuilder::get_export_summary($package_id) : null;
         $session = $session_id !== '' ? ImportSessionService::get_session($session_id) : null;
+        $review_filters = self::get_review_filters_from_request();
         $status = Registry::get_status();
         $domains = isset($status['domains']) && is_array($status['domains']) ? $status['domains'] : [];
 
@@ -68,7 +71,7 @@ final class AdminPage
 
             <?php self::render_notice($notice); ?>
             <?php self::render_export_summary($summary); ?>
-            <?php self::render_import_session($session); ?>
+            <?php self::render_import_session($session, $review_filters); ?>
 
             <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start;">
                 <div class="card" style="max-width:none;">
@@ -231,6 +234,53 @@ final class AdminPage
     /**
      * @return void
      */
+    public static function handle_save_review_draft(): void
+    {
+        self::assert_can_manage();
+
+        $session_id = isset($_POST['session_id']) ? sanitize_key((string) wp_unslash($_POST['session_id'])) : '';
+        if ($session_id === '') {
+            wp_die(esc_html__('Missing configuration portability import session.', 'dbvc'), 400);
+        }
+
+        check_admin_referer(self::ACTION_SAVE_REVIEW_DRAFT . '_' . $session_id, self::ACTION_SAVE_REVIEW_DRAFT . '_nonce');
+
+        $raw_decisions = isset($_POST['environment_decisions']) && is_array($_POST['environment_decisions'])
+            ? wp_unslash($_POST['environment_decisions'])
+            : [];
+        $decisions = self::sanitize_environment_decisions(is_array($raw_decisions) ? $raw_decisions : []);
+        $fingerprint = isset($_POST['review_fingerprint']) ? sanitize_text_field((string) wp_unslash($_POST['review_fingerprint'])) : '';
+
+        $result = ImportSessionService::save_review_draft($session_id, $decisions, $fingerprint);
+        if (\is_wp_error($result)) {
+            self::set_notice('error', $result->get_error_message());
+        } else {
+            $draft = ImportSessionService::get_review_draft($result);
+            self::set_notice(
+                'success',
+                $draft['status'] === 'active'
+                    ? __('Review draft saved. No settings were applied.', 'dbvc')
+                    : __('Review draft cleared. No settings were applied.', 'dbvc')
+            );
+        }
+
+        $redirect_args = ['session_id' => rawurlencode($session_id)];
+        $filters = isset($_POST['review_filters']) && is_array($_POST['review_filters'])
+            ? self::sanitize_review_filters(wp_unslash($_POST['review_filters']))
+            : [];
+        foreach ($filters as $key => $value) {
+            if ($value !== '') {
+                $redirect_args['review_' . $key] = $value;
+            }
+        }
+
+        wp_safe_redirect(add_query_arg($redirect_args, self::get_page_url()));
+        exit;
+    }
+
+    /**
+     * @return void
+     */
     public static function handle_apply(): void
     {
         self::assert_can_manage();
@@ -336,9 +386,10 @@ final class AdminPage
 
     /**
      * @param array<string, mixed>|\WP_Error|null $session
+     * @param array<string, string>                $review_filters
      * @return void
      */
-    private static function render_import_session($session): void
+    private static function render_import_session($session, array $review_filters = []): void
     {
         if ($session === null) {
             return;
@@ -355,6 +406,12 @@ final class AdminPage
         $session_id = sanitize_key((string) ($session['session_id'] ?? ''));
         $applied = ! empty($session['applied_at_gmt']);
         $rolled_back = ! empty($session['rolled_back_at_gmt']);
+        $review_draft = ImportSessionService::get_review_draft($session);
+        $draft_decisions = $review_draft['status'] === 'active' && isset($review_draft['decisions']) && is_array($review_draft['decisions'])
+            ? $review_draft['decisions']
+            : [];
+        $review_fingerprint = ImportSessionService::get_review_fingerprint($session);
+        $filtered_diffs = self::filter_review_diffs($diffs, $review_filters);
         ?>
         <div class="card" style="max-width:none;">
             <h2><?php esc_html_e('Import Review Session', 'dbvc'); ?></h2>
@@ -380,6 +437,7 @@ final class AdminPage
                 </ul>
             <?php endif; ?>
             <?php self::render_compatibility_warnings($compatibility_warnings); ?>
+            <?php self::render_review_draft_status($review_draft); ?>
 
             <?php if ($applied) : ?>
                 <?php $apply_summary = isset($session['apply_summary']) && is_array($session['apply_summary']) ? $session['apply_summary'] : []; ?>
@@ -412,19 +470,29 @@ final class AdminPage
 
             <?php if (! $applied && $session_id !== '') : ?>
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin:16px 0 24px;">
-                    <input type="hidden" name="action" value="<?php echo esc_attr(self::ACTION_APPLY); ?>" />
                     <input type="hidden" name="session_id" value="<?php echo esc_attr($session_id); ?>" />
+                    <input type="hidden" name="review_fingerprint" value="<?php echo esc_attr($review_fingerprint); ?>" />
                     <?php wp_nonce_field(self::ACTION_APPLY . '_' . $session_id, self::ACTION_APPLY . '_nonce'); ?>
-                    <?php self::render_environment_decisions($diffs); ?>
+                    <?php wp_nonce_field(self::ACTION_SAVE_REVIEW_DRAFT . '_' . $session_id, self::ACTION_SAVE_REVIEW_DRAFT . '_nonce'); ?>
+                    <?php self::render_review_filter_hidden_inputs($review_filters); ?>
+                    <?php self::render_environment_decisions($diffs, $draft_decisions); ?>
                     <label>
                         <input type="checkbox" name="confirm_apply" value="1" required />
                         <?php esc_html_e('Apply this reviewed package to the current site and capture a rollback backup first.', 'dbvc'); ?>
                     </label>
-                    <p><button type="submit" class="button button-primary"><?php esc_html_e('Apply Reviewed Settings', 'dbvc'); ?></button></p>
+                    <p>
+                        <button type="submit" name="action" value="<?php echo esc_attr(self::ACTION_SAVE_REVIEW_DRAFT); ?>" class="button" formnovalidate><?php esc_html_e('Save Review Draft', 'dbvc'); ?></button>
+                        <button type="submit" name="action" value="<?php echo esc_attr(self::ACTION_APPLY); ?>" class="button button-primary"><?php esc_html_e('Apply Reviewed Settings', 'dbvc'); ?></button>
+                    </p>
                 </form>
             <?php endif; ?>
 
-            <?php self::render_domain_diff_accordion($diffs); ?>
+            <?php self::render_review_filters($diffs, $session_id, $review_filters); ?>
+            <?php if (empty($filtered_diffs) && ! empty($diffs)) : ?>
+                <p><?php esc_html_e('No review rows match the selected filters.', 'dbvc'); ?></p>
+            <?php else : ?>
+                <?php self::render_domain_diff_accordion($filtered_diffs); ?>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -523,6 +591,17 @@ final class AdminPage
                 vertical-align: bottom;
                 white-space: nowrap;
             }
+            .dbvc-config-review-filters {
+                align-items: end;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin: 20px 0 12px;
+            }
+            .dbvc-config-review-filters label {
+                display: grid;
+                gap: 4px;
+            }
         </style>
         <?php
     }
@@ -554,6 +633,233 @@ final class AdminPage
             </ul>
         </div>
         <?php
+    }
+
+    /**
+     * @param array<string, mixed> $draft
+     * @return void
+     */
+    private static function render_review_draft_status(array $draft): void
+    {
+        $status = sanitize_key((string) ($draft['status'] ?? 'none'));
+        if ($status === 'active') {
+            ?>
+            <div class="notice notice-info inline">
+                <p>
+                    <?php
+                    echo esc_html(sprintf(
+                        __('Review draft saved at %1$s and available until %2$s. No settings were applied.', 'dbvc'),
+                        (string) ($draft['saved_at_gmt'] ?? ''),
+                        (string) ($draft['expires_at_gmt'] ?? '')
+                    ));
+                    ?>
+                </p>
+            </div>
+            <?php
+            return;
+        }
+
+        if (! in_array($status, ['stale', 'expired'], true)) {
+            return;
+        }
+
+        ?>
+        <div class="notice notice-warning inline">
+            <p>
+                <?php
+                echo esc_html(
+                    $status === 'expired'
+                        ? __('The saved review draft expired and was not restored. Save a new draft to replace it.', 'dbvc')
+                        : __('The saved review draft no longer matches this staged package and was not restored.', 'dbvc')
+                );
+                ?>
+            </p>
+        </div>
+        <?php
+    }
+
+    /**
+     * @param array<string, mixed> $diffs
+     * @param string               $session_id
+     * @param array<string, string> $filters
+     * @return void
+     */
+    private static function render_review_filters(array $diffs, $session_id, array $filters): void
+    {
+        if (empty($diffs) || $session_id === '') {
+            return;
+        }
+
+        $domains = [];
+        $groups = [];
+        $fields = [];
+        $statuses = [];
+        foreach ($diffs as $domain_key => $diff) {
+            $domain_key = sanitize_key((string) $domain_key);
+            if ($domain_key === '') {
+                continue;
+            }
+            $domains[$domain_key] = self::get_domain_label($domain_key);
+            $rows = is_array($diff) && isset($diff['rows']) && is_array($diff['rows']) ? $diff['rows'] : [];
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $group = sanitize_key((string) ($row['group'] ?? ''));
+                $field = sanitize_key((string) ($row['field'] ?? ''));
+                $status = sanitize_key((string) ($row['status'] ?? ''));
+                if ($group !== '') {
+                    $groups[$group] = ucwords(str_replace('_', ' ', $group));
+                }
+                if ($field !== '') {
+                    $fields[$field] = (string) ($row['label'] ?? $field);
+                }
+                if ($status !== '') {
+                    $statuses[$status] = self::get_status_label($status);
+                }
+            }
+        }
+
+        asort($domains, SORT_NATURAL | SORT_FLAG_CASE);
+        asort($groups, SORT_NATURAL | SORT_FLAG_CASE);
+        asort($fields, SORT_NATURAL | SORT_FLAG_CASE);
+        asort($statuses, SORT_NATURAL | SORT_FLAG_CASE);
+        ?>
+        <form method="get" action="<?php echo esc_url(admin_url('admin.php')); ?>" class="dbvc-config-review-filters">
+            <input type="hidden" name="page" value="<?php echo esc_attr(self::PAGE_SLUG); ?>" />
+            <input type="hidden" name="session_id" value="<?php echo esc_attr($session_id); ?>" />
+            <?php self::render_review_filter_select('domain', __('Domain', 'dbvc'), $domains, $filters['domain'] ?? ''); ?>
+            <?php self::render_review_filter_select('group', __('Group', 'dbvc'), $groups, $filters['group'] ?? ''); ?>
+            <?php self::render_review_filter_select('field', __('Field', 'dbvc'), $fields, $filters['field'] ?? ''); ?>
+            <?php self::render_review_filter_select('status', __('Status', 'dbvc'), $statuses, $filters['status'] ?? ''); ?>
+            <label>
+                <span><?php esc_html_e('Review state', 'dbvc'); ?></span>
+                <span><input type="checkbox" name="review_unresolved" value="1" <?php checked(($filters['unresolved'] ?? '') === '1'); ?> /> <?php esc_html_e('Unresolved only', 'dbvc'); ?></span>
+            </label>
+            <button type="submit" class="button"><?php esc_html_e('Filter Review', 'dbvc'); ?></button>
+            <a class="button button-link" href="<?php echo esc_url(add_query_arg('session_id', rawurlencode($session_id), self::get_page_url())); ?>"><?php esc_html_e('Clear Filters', 'dbvc'); ?></a>
+        </form>
+        <?php
+    }
+
+    /**
+     * @param string               $key
+     * @param string               $label
+     * @param array<string, string> $options
+     * @param string               $selected_value
+     * @return void
+     */
+    private static function render_review_filter_select($key, $label, array $options, $selected_value): void
+    {
+        ?>
+        <label>
+            <span><?php echo esc_html($label); ?></span>
+            <select name="review_<?php echo esc_attr($key); ?>">
+                <option value=""><?php esc_html_e('All', 'dbvc'); ?></option>
+                <?php foreach ($options as $value => $option_label) : ?>
+                    <option value="<?php echo esc_attr($value); ?>" <?php selected((string) $selected_value, (string) $value); ?>><?php echo esc_html($option_label); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <?php
+    }
+
+    /**
+     * @param array<string, mixed>  $diffs
+     * @param array<string, string> $filters
+     * @return array<string, mixed>
+     */
+    public static function filter_review_diffs(array $diffs, array $filters): array
+    {
+        $filters = self::sanitize_review_filters($filters);
+        $filtered = [];
+        foreach ($diffs as $domain_key => $diff) {
+            $domain_key = sanitize_key((string) $domain_key);
+            if ($domain_key === '' || ($filters['domain'] !== '' && $filters['domain'] !== $domain_key)) {
+                continue;
+            }
+
+            $rows = is_array($diff) && isset($diff['rows']) && is_array($diff['rows']) ? $diff['rows'] : [];
+            $matched_rows = [];
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $group = sanitize_key((string) ($row['group'] ?? ''));
+                $field = sanitize_key((string) ($row['field'] ?? ''));
+                $status = sanitize_key((string) ($row['status'] ?? ''));
+                if ($filters['group'] !== '' && $filters['group'] !== $group) {
+                    continue;
+                }
+                if ($filters['field'] !== '' && $filters['field'] !== $field) {
+                    continue;
+                }
+                if ($filters['status'] !== '' && $filters['status'] !== $status) {
+                    continue;
+                }
+                if ($filters['unresolved'] === '1' && $status === 'same') {
+                    continue;
+                }
+
+                $matched_rows[] = $row;
+            }
+
+            if (! empty($matched_rows)) {
+                $filtered[$domain_key] = is_array($diff) ? $diff : [];
+                $filtered[$domain_key]['rows'] = $matched_rows;
+            }
+        }
+
+        return $filtered;
+    }
+
+    /**
+     * @param array<string, string> $filters
+     * @return void
+     */
+    private static function render_review_filter_hidden_inputs(array $filters): void
+    {
+        $filters = self::sanitize_review_filters($filters);
+        foreach ($filters as $key => $value) {
+            if ($value === '') {
+                continue;
+            }
+            printf(
+                '<input type="hidden" name="review_filters[%1$s]" value="%2$s" />',
+                esc_attr($key),
+                esc_attr($value)
+            );
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function get_review_filters_from_request(): array
+    {
+        return self::sanitize_review_filters([
+            'domain' => isset($_GET['review_domain']) ? wp_unslash($_GET['review_domain']) : '',
+            'group' => isset($_GET['review_group']) ? wp_unslash($_GET['review_group']) : '',
+            'field' => isset($_GET['review_field']) ? wp_unslash($_GET['review_field']) : '',
+            'status' => isset($_GET['review_status']) ? wp_unslash($_GET['review_status']) : '',
+            'unresolved' => isset($_GET['review_unresolved']) ? wp_unslash($_GET['review_unresolved']) : '',
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array<string, string>
+     */
+    private static function sanitize_review_filters(array $filters): array
+    {
+        return [
+            'domain' => sanitize_key((string) ($filters['domain'] ?? '')),
+            'group' => sanitize_key((string) ($filters['group'] ?? '')),
+            'field' => sanitize_key((string) ($filters['field'] ?? '')),
+            'status' => sanitize_key((string) ($filters['status'] ?? '')),
+            'unresolved' => (string) ($filters['unresolved'] ?? '') === '1' ? '1' : '',
+        ];
     }
 
     /**
@@ -766,9 +1072,10 @@ final class AdminPage
 
     /**
      * @param array<string, mixed> $diffs
+     * @param array<string, mixed> $draft_decisions
      * @return void
      */
-    private static function render_environment_decisions(array $diffs): void
+    private static function render_environment_decisions(array $diffs, array $draft_decisions = []): void
     {
         $rows_by_domain = [];
         $blocked_rows = [];
@@ -813,6 +1120,13 @@ final class AdminPage
                             $input_name = 'environment_decisions[' . $domain_key . '][' . $field_key . ']';
                             $type = (string) ($row['type'] ?? 'text');
                             $input_type = in_array($type, ['secret', 'key_id'], true) ? 'password' : 'text';
+                            $draft_decision = isset($draft_decisions[$domain_key][$field_key]) && is_array($draft_decisions[$domain_key][$field_key])
+                                ? $draft_decisions[$domain_key][$field_key]
+                                : [];
+                            $draft_action = sanitize_key((string) ($draft_decision['action'] ?? ''));
+                            $draft_value = $input_type === 'password'
+                                ? ''
+                                : (isset($draft_decision['value']) && is_scalar($draft_decision['value']) ? (string) $draft_decision['value'] : '');
                             ?>
                             <tr>
                                 <td><?php echo esc_html($domain_key); ?></td>
@@ -820,19 +1134,20 @@ final class AdminPage
                                 <td><code><?php echo esc_html(self::format_preview_value($row['current_value'] ?? '')); ?></code></td>
                                 <td>
                                     <select name="<?php echo esc_attr($input_name . '[action]'); ?>" required>
-                                        <option value=""><?php esc_html_e('Choose...', 'dbvc'); ?></option>
-                                        <option value="keep"><?php esc_html_e('Keep Current', 'dbvc'); ?></option>
-                                        <option value="replace"><?php esc_html_e('Replace', 'dbvc'); ?></option>
+                                        <option value="" <?php selected($draft_action, ''); ?>><?php esc_html_e('Choose...', 'dbvc'); ?></option>
+                                        <option value="keep" <?php selected($draft_action, 'keep'); ?>><?php esc_html_e('Keep Current', 'dbvc'); ?></option>
+                                        <option value="replace" <?php selected($draft_action, 'replace'); ?>><?php esc_html_e('Replace', 'dbvc'); ?></option>
                                     </select>
                                 </td>
                                 <td>
-                                    <input type="<?php echo esc_attr($input_type); ?>" name="<?php echo esc_attr($input_name . '[value]'); ?>" class="regular-text" autocomplete="off" />
+                                    <input type="<?php echo esc_attr($input_type); ?>" name="<?php echo esc_attr($input_name . '[value]'); ?>" value="<?php echo esc_attr($draft_value); ?>" class="regular-text" autocomplete="off" />
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            <p class="description"><?php esc_html_e('Credential-like replacement text is never stored in a review draft and must be entered again before apply.', 'dbvc'); ?></p>
         <?php endif; ?>
 
         <?php if (! empty($blocked_rows)) : ?>

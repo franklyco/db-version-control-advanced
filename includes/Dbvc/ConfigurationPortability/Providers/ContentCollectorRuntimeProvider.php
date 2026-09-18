@@ -107,6 +107,14 @@ final class ContentCollectorRuntimeProvider extends AbstractOptionDomainProvider
         return $fields;
     }
 
+    public function get_import_dependencies(array $incoming): array
+    {
+        return array_merge(
+            $this->get_class_dependency($incoming, 'DBVC_CC_Contracts', __('Content Collector', 'dbvc')),
+            $this->get_class_dependency($incoming, 'DBVC_CC_V2_Contracts', __('Content Collector V2 runtime', 'dbvc'))
+        );
+    }
+
     protected function after_apply(array $applied): void
     {
         unset($applied);

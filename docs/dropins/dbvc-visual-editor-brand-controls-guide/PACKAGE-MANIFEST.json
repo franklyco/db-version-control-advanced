@@ -1,0 +1,311 @@
+{
+    "package_name": "DBVC Visual Editor Media Manager, Brand Controls, and Frontend Workspace Implementation Guide",
+    "package_slug": "dbvc-visual-editor-brand-controls-guide",
+    "version": "2.10.0",
+    "package_date": "2026-08-16",
+    "target_location": "DBVC/docs/dropins/dbvc-visual-editor-brand-controls-guide/",
+    "authoritative_codebase_note": "The latest DBVC and VerticalFramework repositories supersede conceptual names and assumptions in this guide.",
+    "repository_reconciliation": {
+        "dbvc_branch": "codex/visual-editor-linked-posts-plan",
+        "dbvc_commit": "5db4b4094c0d834b3cf482adb095273387b59dc8",
+        "status_at_refresh": "R1-A/R1-B/R1-C working tree based on clean synchronized commit; R1-D4A qualified static direction accepted; production toolbar/shell, API/state, server-driven laptop/desktop table, and protected lazy row expansion implemented for review; R1-E hardening in progress with keyboard focus continuity, reduced-motion behavior, named semantic regions/loading/live announcements, Chromium/Firefox/WebKit engine coverage, no-auto-scan proof, and synthetic 100/500/2,000-group storage/read/payload evidence; additional responsive/mobile work tabled program-wide by D-036; R0 documentation changes preserved",
+        "r1_implementation_authorized": "R1-A, R1-B, R1-C, and R1-D static mockup/frontend slice",
+        "r1a_status": "implemented for review",
+        "r1a_validation": "5 tests/65 assertions; combined Visual Editor focus 12 tests/80 assertions; touched PHP syntax clean",
+        "r1b_status": "implemented for review",
+        "r1b_validation": "5 tests/106 assertions; combined R1-A/R1-B 10 tests/171 assertions; combined current Visual Editor focus 17 tests/186 assertions; full PHP comparison 694 tests/7302 assertions with exactly the same six inherited failures; agent docs 54 records/408 surfaces/0 unmapped; touched PHP syntax clean",
+        "r1c_status": "implemented for review",
+        "r1c_validation": "6 tests/417 assertions; combined R1-A/R1-B/R1-C plus current Visual Editor instrumentation 23 tests/603 assertions; full PHP comparison 700 tests/7723 assertions with exactly the same six inherited failures; agent docs 54 records/415 surfaces/0 unmapped; touched PHP syntax clean",
+        "r1d_status": "D4A accepted as qualified static direction; four default-off production slices now provide the toolbar/shell, protected API/lifecycle/query state, server-driven laptop/desktop safe-results table, and lazy one-row safe field-status expansion; R1-E keyboard/reduced-motion, automated semantic/live-announcement, and synthetic scale/no-auto-scan hardening are complete; descriptors, Media Library, and mutation remain absent and further responsive/mobile work is tabled",
+        "r1d_validation": "D4A structural 30/30 and seven true-viewport screenshots; post-token axe index 33 passes/0 violations/38 incomplete and states 22 passes/0 violations/0 incomplete; production shell/table/expansion 4 tests/47 assertions; R1-E scale/no-auto-scan 2 tests/50 assertions; combined R1-A through R1-E 22/685; state/table/expansion controller 11 jsdom tests; 6 Chromium/Firefox/WebKit cases pass exact group identity, native Enter/Space operation, row-focus continuity, reduced-motion suppression, named dialog/results/scroll/expanded regions, busy/loading semantics, field-check completion announcements, table paging/replacement, geometry, and expanded/collapsed axe at 1440x900 and 1280x720; latest synthetic 100/500/2,000-group storage/read/payload measurements include a 41.441 ms, 0-query, 6,291,456-byte allocated-memory, 120,515-byte stored, 24,833-byte 50-row response at 2,000 groups; full PHP comparison 706 tests/7820 assertions with exactly the inherited six failures; targeted Media Manager lint passes with stale Baseline/Browserslist data warnings while the latest aggregate repository lint rerun did not complete; no authenticated WordPress, complete candidate-scan scale, real AT, real Safari, descriptor, Media Library, or mutation pass claimed",
+        "php_baseline": "inherited 6 failures out of 684 tests; latest R1-E comparison retained the same six identities out of 706 tests/7820 assertions",
+        "javascript_lint_baseline": "the formatted new Media Manager module and its state/Playwright tests are in the repository lint target; targeted Media Manager lint passes with stale baseline-browser-mapping and Browserslist data warnings; the latest aggregate repository lint rerun did not complete and no current repository-wide pass is claimed"
+    },
+    "verticalframework_evidence_path": "/Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical",
+    "priority_change": "Frontend Media Manager scan/report and direct remediation are R1 and R2.",
+    "release_order": [
+        {
+            "id": "R0",
+            "title": "Current-state discovery and baseline"
+        },
+        {
+            "id": "R1",
+            "title": "Frontend Media Manager scan and report"
+        },
+        {
+            "id": "R2",
+            "title": "Frontend Media Manager direct remediation"
+        },
+        {
+            "id": "R3",
+            "title": "Registry-backed Brand Control Center"
+        },
+        {
+            "id": "R4",
+            "title": "Expanded Global & Brand Control Center"
+        },
+        {
+            "id": "R5.1-R5.4",
+            "title": "Explicitly proven ACF option-owner field families"
+        },
+        {
+            "id": "R6",
+            "title": "Frontend Site Manager Workspace"
+        }
+    ],
+    "media_manager_scope": {
+        "entities": [
+            "published pages",
+            "published posts",
+            "published public CPTs",
+            "public taxonomy terms"
+        ],
+        "field_families": [
+            "native featured image",
+            "ACF image",
+            "ACF gallery"
+        ],
+        "r1": "bounded scan and frontend findings table only",
+        "r2": "native Media Library assignment/upload plus existing DBVC save contracts",
+        "deferred": [
+            "cross-entity bulk saves",
+            "custom uploader",
+            "files/video/oEmbed",
+            "broad Media Health",
+            "static Bricks image settings"
+        ]
+    },
+    "file_count_without_manifest_or_checksum": 46,
+    "files": [
+        {
+            "path": "00-GOVERNING-DIRECTIVES.md",
+            "bytes": 10328,
+            "sha256": "ce11c5014771ae8c18a203196fc3860902d9b6d283623fe03129217716e13e1e"
+        },
+        {
+            "path": "01-DISCOVERY-AND-CURRENT-STATE-REVIEW.md",
+            "bytes": 32391,
+            "sha256": "8676669d22b32b27069ff538bade32ed337688eac6d62012d776a7173af02b28"
+        },
+        {
+            "path": "02-TARGET-ARCHITECTURE-AND-BOUNDARIES.md",
+            "bytes": 13257,
+            "sha256": "b1d891a4657837ecd5c6c04de43687226871acef94676fb67babd19a9b16024a"
+        },
+        {
+            "path": "PACKAGE-UPDATE-NOTES.md",
+            "bytes": 23615,
+            "sha256": "1145effb48e7329ddd75b972b80f5d642d17b9870d580479e91aa7219523515a"
+        },
+        {
+            "path": "README.md",
+            "bytes": 15980,
+            "sha256": "9aeed587b8a4f4ab01708b9cd8edde8d42b35d869ec103f1c50674a381cef579"
+        },
+        {
+            "path": "media-manager/FIELD-ELIGIBILITY-AND-SCOPE.md",
+            "bytes": 7566,
+            "sha256": "6c5fc997aac80c648f09cd07e7e9ccf44567aadd04c9ff7e7ed225677e3ee4dc"
+        },
+        {
+            "path": "media-manager/MEDIA-MANAGER-PRODUCT-SPEC.md",
+            "bytes": 8260,
+            "sha256": "83f7e4c2f5fa9c6ef111d721bf6d3ee379abefd7d1378b03bc821567e7939aee"
+        },
+        {
+            "path": "media-manager/MUTATION-STALE-DATA-AND-REVALIDATION.md",
+            "bytes": 6455,
+            "sha256": "19418de2d8de2c272b541be7b534419656571082dab304b323caa0a75f59afc2"
+        },
+        {
+            "path": "media-manager/SCAN-AND-FINDING-CONTRACT.md",
+            "bytes": 10537,
+            "sha256": "260f01fd06d90c911d5f989ebf5d239bebf6cb854015cb484f4761afa8639969"
+        },
+        {
+            "path": "media-manager/TABLE-AND-ROW-INTERACTION-SPEC.md",
+            "bytes": 8050,
+            "sha256": "0f14e0d6a5c7e8809820d2bb0ca8ab2a4a191884835d4a63aca8a9c3325d4a03"
+        },
+        {
+            "path": "prompts/00-CODEX-KICKOFF.md",
+            "bytes": 4728,
+            "sha256": "61cccadfc61f5fc1f14f50a16e23994c734319bfc9e7587e38ca20f47f1c7ff6"
+        },
+        {
+            "path": "prompts/PACKAGE-UPDATE-RECONCILIATION.md",
+            "bytes": 1351,
+            "sha256": "a4976855e07d5b1eb5909cb8b7db8454ad554bb05b987fe408dda8c3d0b67336"
+        },
+        {
+            "path": "prompts/R1-CODEX-PROMPT.md",
+            "bytes": 5160,
+            "sha256": "d0137d88fdfed47410ea4768007ce5f3c3d7b9e548a3eea1ac5956d1ecd14a7d"
+        },
+        {
+            "path": "prompts/R2-CODEX-PROMPT.md",
+            "bytes": 2279,
+            "sha256": "4cce47e341ccd3476f218576e4434149c4a599dcaa5828f3a961f7f9d8b09258"
+        },
+        {
+            "path": "prompts/R3-CODEX-PROMPT.md",
+            "bytes": 2073,
+            "sha256": "d72f31290d7858caaecb11eb1cb754a43b27d45cc446a6e7a509b53e48c1b6e2"
+        },
+        {
+            "path": "prompts/R4-CODEX-PROMPT.md",
+            "bytes": 2045,
+            "sha256": "ee671c2fc95f2a0079f741bc85ed0d612b31fb8f28cf5b43065ea1f0ea8c74d1"
+        },
+        {
+            "path": "prompts/R5-CODEX-PROMPT.md",
+            "bytes": 2632,
+            "sha256": "9c28342180fe0dbdbbaea9a5a362a29699e47b1b96e61a2ca89237f72465febe"
+        },
+        {
+            "path": "prompts/R6-CODEX-PROMPT.md",
+            "bytes": 2488,
+            "sha256": "9fcab680515fd3a94242c4cbe90e9bd193cb47921581ff004916ee8f51d49451"
+        },
+        {
+            "path": "quality/MEDIA-MANAGER-TEST-MATRIX.md",
+            "bytes": 6936,
+            "sha256": "dc21d029e52091c0b9c63183b496acf3a8f9055134d0b9e11899aeceef5b9da0"
+        },
+        {
+            "path": "quality/OBSERVABILITY-ROLLBACK-AND-COMPATIBILITY.md",
+            "bytes": 5111,
+            "sha256": "8e01d320c26ff27276c09623cb32eef7fd01320fe7074de7d5f223dac52cd0b1"
+        },
+        {
+            "path": "quality/SECURITY-AND-DATA-SAFETY.md",
+            "bytes": 6329,
+            "sha256": "9714c58b941e999fbacf06b865fa6a866f596cac5494d2b38f29ff16ba20f8f8"
+        },
+        {
+            "path": "quality/TEST-QA-RELEASE-GATES.md",
+            "bytes": 13701,
+            "sha256": "d245568f386325f5bc8da841f4c65f4babd69ce9ce330bd0408af95ec9cd4ed3"
+        },
+        {
+            "path": "releases/R0-DISCOVERY-BASELINE.md",
+            "bytes": 5565,
+            "sha256": "f49dd057ba8ed6acc7863ff031cf39e73490780b9097fea4903aa9ff48021f45"
+        },
+        {
+            "path": "releases/R1-MEDIA-MANAGER-SCAN-AND-REPORT.md",
+            "bytes": 21837,
+            "sha256": "af5ce8583851751b052c7323f5967bcced4da8890984542f91fe48cc5701d582"
+        },
+        {
+            "path": "releases/R2-MEDIA-MANAGER-DIRECT-REMEDIATION.md",
+            "bytes": 7486,
+            "sha256": "cf878c5eb0e90eed6d362452547cc72b32bacac477688e8aa5f4687fb42c1cce"
+        },
+        {
+            "path": "releases/R3-REGISTRY-BACKED-BRAND-CONTROL-CENTER.md",
+            "bytes": 9933,
+            "sha256": "8b9a13290bec7b6600025e04bf44013f13a37c05e73efb369294a6dd2314e632"
+        },
+        {
+            "path": "releases/R4-EXPANDED-GLOBAL-BRAND-CONTROL-CENTER.md",
+            "bytes": 8625,
+            "sha256": "ec19f740f399e2e2a618583efba01620be5f5b49c65cdac3a3766d64ca7d11cf"
+        },
+        {
+            "path": "releases/R5-ACF-OPTION-FIELD-FAMILY-SUPPORT.md",
+            "bytes": 13387,
+            "sha256": "9535e9dbd6df1d026e750b338adaba9b880cb1ff00e5bbd634d72136d5537677"
+        },
+        {
+            "path": "releases/R6-FRONTEND-SITE-MANAGER-WORKSPACE.md",
+            "bytes": 11099,
+            "sha256": "d3c55abc37f31dd59d89c662fff2e2c5b562ba564a8d224fdbb12339708071bf"
+        },
+        {
+            "path": "tracking/DECISION-LOG.md",
+            "bytes": 19329,
+            "sha256": "790705a6c06a018f7cbca9483b4876619266fa6b267cc7c486e0876e55b14e1a"
+        },
+        {
+            "path": "tracking/EVIDENCE-LOG.md",
+            "bytes": 29109,
+            "sha256": "ca365acca966cf0a980265a449bc362cb3352fb9604d019ffe34c66aa534df93"
+        },
+        {
+            "path": "tracking/IMPLEMENTATION-TRACKER.md",
+            "bytes": 25353,
+            "sha256": "e87b6e9dc002ab4e04361823c59c4b88037b760d074b4b4da8d2f64c250186cc"
+        },
+        {
+            "path": "tracking/MEDIA-SCAN-COVERAGE-MATRIX.md",
+            "bytes": 9694,
+            "sha256": "aa6ee518594aac651cf9c99aeecef9b42b82d278cb6d223196f72e783d31211d"
+        },
+        {
+            "path": "tracking/RISK-REGISTER.md",
+            "bytes": 12335,
+            "sha256": "9b394f12d6d6a1fd65651945ff4231d54a186d16e89f999dc16cfd6e10b6bf8a"
+        },
+        {
+            "path": "ui-ux/CLAUDE-CODE-MEDIA-MANAGER-PROMPT-TEMPLATE.md",
+            "bytes": 2133,
+            "sha256": "91c31a6a843197090486b02004f3dfaa299d4649848b7c0096d11740cb9808de"
+        },
+        {
+            "path": "ui-ux/CLAUDE-CODE-MOCKUP-HANDOFF.md",
+            "bytes": 5893,
+            "sha256": "20e67fc865cab2a2a5cdb78bf56754e0b0781a090b5fd7d92969491b003ae419"
+        },
+        {
+            "path": "ui-ux/MEDIA-MANAGER-CLAUDE-MOCKUP-HANDOFF.md",
+            "bytes": 8629,
+            "sha256": "5daa82641a5406ea0d405c694052a12ee47fb38b7b80a4d93ec80dbcbb41d7e3"
+        },
+        {
+            "path": "ui-ux/MOCKUP-DELIVERABLE-CONTRACT.md",
+            "bytes": 3591,
+            "sha256": "ea6e2f0a00a578b59caef6efe73436708edb13e5558dc890dd7bf1d15b09ef9b"
+        },
+        {
+            "path": "ui-ux/MOCKUP-TO-PRODUCTION-INTEGRATION.md",
+            "bytes": 7591,
+            "sha256": "75d959c022ec04b0c1848274520d2cf01bf97091c9e21462032ffb9b7710a126"
+        },
+        {
+            "path": "ui-ux/REFERENCE-IMAGES.md",
+            "bytes": 1297,
+            "sha256": "6b8fdb43e4dcd5252a63203534dbfaef7b90736687475697cfa34236b6bbb3ad"
+        },
+        {
+            "path": "ui-ux/fixtures/media-manager-fixture.json",
+            "bytes": 3013,
+            "sha256": "c4e42233c170b4e74c6f50954bbf3ce578708410c5a8347e55d132a83c5ac3f1"
+        },
+        {
+            "path": "ui-ux/fixtures/media-manager-r1c-view-model.json",
+            "bytes": 11556,
+            "sha256": "c0a3e507f8bd060338aa2a069852468a4baf5c1466685b3bceec05a086fe5839"
+        },
+        {
+            "path": "ui-ux/reference-images/01-frontend-website-manager-shell.png",
+            "bytes": 1690846,
+            "sha256": "c0eca2b8bcbe372be1e7fc31508fbf0ded95a707ef1edea7ca8a903deac7146d"
+        },
+        {
+            "path": "ui-ux/reference-images/02-registry-brand-control-center.png",
+            "bytes": 1359870,
+            "sha256": "e027bdc03229bfcca2ab681832cc1bb789c909bd1726e477f4006446afd5bbdb"
+        },
+        {
+            "path": "ui-ux/reference-images/03-frontend-site-manager-workspace.png",
+            "bytes": 1542569,
+            "sha256": "71834a7aea0834fe160fad6e707a3671b63e2a21ce9f3fcc7f049fc4414e3301"
+        },
+        {
+            "path": "ui-ux/reference-images/04-media-manager-initial-concept.png",
+            "bytes": 1478360,
+            "sha256": "377886156f602cbc310270a4d202dd05fed28fed07b1da4bb9d623f988c41734"
+        }
+    ]
+}

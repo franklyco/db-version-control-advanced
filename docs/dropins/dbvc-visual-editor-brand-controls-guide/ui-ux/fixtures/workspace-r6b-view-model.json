@@ -1,0 +1,724 @@
+{
+  "fixtureOnly": true,
+  "contract": "R6-B workspace display view model (mirrors the R6-A object-search payload, E-142)",
+  "viewModelVersion": 1,
+  "notes": [
+    "Every value is fabricated. No real client content. Sample site name: 'Example Landscaping' — do not render any name from the concept PNGs.",
+    "Shapes match R6-A exactly: ObjectItem and TypeDescriptor keys are production names; do not add keys.",
+    "Post types beyond page/post are generic samples (project / testimonial). Do not hardcode VerticalFramework CPTs (R6 spec).",
+    "hasFrontendRoute=false rows must render Edit (backend, new tab) as their only action — no invented Open.",
+    "Users and attachments never appear in types[] or items[] (D-066, D-067)."
+  ],
+  "bootstrap": {
+    "workspace": {
+      "enabled": true,
+      "restBase": "/wp-json/dbvc/v1/visual-editor"
+    },
+    "controlCenter": {
+      "enabled": true
+    },
+    "mediaManager": {
+      "enabled": true
+    },
+    "toggleUrl": "/?dbvc_visual_editor=0&_dbvcve_nonce=fixture",
+    "pageContext": {
+      "entityType": "post",
+      "entityId": 12,
+      "isSupported": true,
+      "url": "https://example-site.test/"
+    },
+    "currentEditLink": {
+      "url": "https://example-site.test/wp-admin/post.php?post=12&action=edit",
+      "label": "Edit page"
+    }
+  },
+  "currentObject": {
+    "objectType": "post",
+    "id": 12,
+    "title": "Home",
+    "subtype": "page",
+    "typeLabel": "Page",
+    "status": "Published",
+    "statusKey": "publish",
+    "frontendUrl": "https://example-site.test/",
+    "hasFrontendRoute": true,
+    "backendUrl": "https://example-site.test/wp-admin/post.php?post=12&action=edit",
+    "canEdit": true
+  },
+  "types": [
+    {
+      "objectType": "post",
+      "subtype": "page",
+      "label": "Pages",
+      "singularLabel": "Page",
+      "hierarchical": true,
+      "viewable": true
+    },
+    {
+      "objectType": "post",
+      "subtype": "post",
+      "label": "Posts",
+      "singularLabel": "Post",
+      "hierarchical": false,
+      "viewable": true
+    },
+    {
+      "objectType": "post",
+      "subtype": "project",
+      "label": "Projects",
+      "singularLabel": "Project",
+      "hierarchical": false,
+      "viewable": true
+    },
+    {
+      "objectType": "post",
+      "subtype": "testimonial",
+      "label": "Testimonials",
+      "singularLabel": "Testimonial",
+      "hierarchical": false,
+      "viewable": false
+    },
+    {
+      "objectType": "term",
+      "subtype": "category",
+      "label": "Categories",
+      "singularLabel": "Category",
+      "hierarchical": true,
+      "viewable": true
+    },
+    {
+      "objectType": "term",
+      "subtype": "post_tag",
+      "label": "Tags",
+      "singularLabel": "Tag",
+      "hierarchical": false,
+      "viewable": true
+    },
+    {
+      "objectType": "term",
+      "subtype": "project_type",
+      "label": "Project Types",
+      "singularLabel": "Project Type",
+      "hierarchical": true,
+      "viewable": true
+    },
+    {
+      "objectType": "term",
+      "subtype": "service_area",
+      "label": "Service Areas",
+      "singularLabel": "Service Area",
+      "hierarchical": false,
+      "viewable": false
+    }
+  ],
+  "persisted": {
+    "isOpen": true,
+    "section": "navigate",
+    "activeType": {
+      "objectType": "all",
+      "subtype": ""
+    }
+  },
+  "queries": {
+    "populated": {
+      "request": {
+        "search": "",
+        "objectType": "all",
+        "subtype": "",
+        "page": 1,
+        "perPage": 20,
+        "includeTypes": true
+      },
+      "response": {
+        "ok": true,
+        "page": 1,
+        "perPage": 20,
+        "hasMore": true,
+        "query": {
+          "search": "",
+          "objectType": "all",
+          "subtype": ""
+        },
+        "items": [
+          {
+            "objectType": "post",
+            "id": 12,
+            "title": "Home",
+            "subtype": "page",
+            "typeLabel": "Page",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/home/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=12&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 3,
+            "title": "Landscape Design",
+            "subtype": "category",
+            "typeLabel": "Category",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/category/landscape-design/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=category&tag_ID=3",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 18,
+            "title": "About Us",
+            "subtype": "page",
+            "typeLabel": "Page",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/about-us/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=18&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 9,
+            "title": "Residential",
+            "subtype": "project_type",
+            "typeLabel": "Project Type",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/project-type/residential/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=project_type&tag_ID=9",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 21,
+            "title": "Services",
+            "subtype": "page",
+            "typeLabel": "Page",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/services/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=21&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 11,
+            "title": "Commercial",
+            "subtype": "project_type",
+            "typeLabel": "Project Type",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/project-type/commercial/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=project_type&tag_ID=11",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 44,
+            "title": "Spring Planting Guide for Small Urban Gardens with Limited Afternoon Sun",
+            "subtype": "post",
+            "typeLabel": "Post",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/spring-planting-guide/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=44&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 14,
+            "title": "Calgary",
+            "subtype": "service_area",
+            "typeLabel": "Service Area",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=service_area&tag_ID=14",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 45,
+            "title": "Winter Prep Checklist",
+            "subtype": "post",
+            "typeLabel": "Post",
+            "status": "Draft",
+            "statusKey": "draft",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=45&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 5,
+            "title": "Maintenance",
+            "subtype": "category",
+            "typeLabel": "Category",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/category/maintenance/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=category&tag_ID=5",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 61,
+            "title": "Lakeside Retreat Backyard",
+            "subtype": "project",
+            "typeLabel": "Project",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/lakeside-retreat-backyard/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=61&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 21,
+            "title": "drought-tolerant",
+            "subtype": "post_tag",
+            "typeLabel": "Tag",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/post-tag/drought-tolerant/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=post_tag&tag_ID=21",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 62,
+            "title": "Downtown Rooftop Terrace",
+            "subtype": "project",
+            "typeLabel": "Project",
+            "status": "Pending",
+            "statusKey": "pending",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=62&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 15,
+            "title": "Airdrie",
+            "subtype": "service_area",
+            "typeLabel": "Service Area",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=service_area&tag_ID=15",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 63,
+            "title": "Hillside Terracing & Retaining Walls",
+            "subtype": "project",
+            "typeLabel": "Project",
+            "status": "Scheduled",
+            "statusKey": "future",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=63&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 6,
+            "title": "Irrigation",
+            "subtype": "category",
+            "typeLabel": "Category",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/category/irrigation/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=category&tag_ID=6",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 70,
+            "title": "Sarah M. — Two-storey renovation",
+            "subtype": "testimonial",
+            "typeLabel": "Testimonial",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=70&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 22,
+            "title": "native-plants",
+            "subtype": "post_tag",
+            "typeLabel": "Tag",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/post-tag/native-plants/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=post_tag&tag_ID=22",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 71,
+            "title": "James T. — Front yard refresh",
+            "subtype": "testimonial",
+            "typeLabel": "Testimonial",
+            "status": "Private",
+            "statusKey": "private",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=71&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 12,
+            "title": "Public Spaces",
+            "subtype": "project_type",
+            "typeLabel": "Project Type",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/project-type/public-spaces/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=project_type&tag_ID=12",
+            "canEdit": true
+          }
+        ]
+      }
+    },
+    "filteredProjects": {
+      "request": {
+        "search": "",
+        "objectType": "post",
+        "subtype": "project",
+        "page": 1,
+        "perPage": 20
+      },
+      "response": {
+        "ok": true,
+        "page": 1,
+        "perPage": 20,
+        "hasMore": false,
+        "query": {
+          "search": "",
+          "objectType": "post",
+          "subtype": "project"
+        },
+        "items": [
+          {
+            "objectType": "post",
+            "id": 61,
+            "title": "Lakeside Retreat Backyard",
+            "subtype": "project",
+            "typeLabel": "Project",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/lakeside-retreat-backyard/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=61&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 62,
+            "title": "Downtown Rooftop Terrace",
+            "subtype": "project",
+            "typeLabel": "Project",
+            "status": "Pending",
+            "statusKey": "pending",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=62&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 63,
+            "title": "Hillside Terracing & Retaining Walls",
+            "subtype": "project",
+            "typeLabel": "Project",
+            "status": "Scheduled",
+            "statusKey": "future",
+            "frontendUrl": "",
+            "hasFrontendRoute": false,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=63&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 64,
+            "title": "Courtyard Water Feature",
+            "subtype": "project",
+            "typeLabel": "Project",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/courtyard-water-feature/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=64&action=edit",
+            "canEdit": true
+          }
+        ]
+      }
+    },
+    "searchMatches": {
+      "request": {
+        "search": "garden",
+        "objectType": "all",
+        "subtype": "",
+        "page": 1,
+        "perPage": 20
+      },
+      "response": {
+        "ok": true,
+        "page": 1,
+        "perPage": 20,
+        "hasMore": false,
+        "query": {
+          "search": "garden",
+          "objectType": "all",
+          "subtype": ""
+        },
+        "items": [
+          {
+            "objectType": "post",
+            "id": 44,
+            "title": "Spring Planting Guide for Small Urban Gardens with Limited Afternoon Sun",
+            "subtype": "post",
+            "typeLabel": "Post",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/spring-planting-guide/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=44&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 23,
+            "title": "garden-beds",
+            "subtype": "post_tag",
+            "typeLabel": "Tag",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/post-tag/garden-beds/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=post_tag&tag_ID=23",
+            "canEdit": true
+          }
+        ]
+      }
+    },
+    "searchNoMatches": {
+      "request": {
+        "search": "zebra",
+        "objectType": "post",
+        "subtype": "page",
+        "page": 1,
+        "perPage": 20
+      },
+      "response": {
+        "ok": true,
+        "page": 1,
+        "perPage": 20,
+        "hasMore": false,
+        "query": {
+          "search": "zebra",
+          "objectType": "post",
+          "subtype": "page"
+        },
+        "items": []
+      }
+    },
+    "emptyType": {
+      "request": {
+        "search": "",
+        "objectType": "post",
+        "subtype": "testimonial",
+        "page": 1,
+        "perPage": 20
+      },
+      "response": {
+        "ok": true,
+        "page": 1,
+        "perPage": 20,
+        "hasMore": false,
+        "query": {
+          "search": "",
+          "objectType": "post",
+          "subtype": "testimonial"
+        },
+        "items": []
+      }
+    },
+    "loadMorePage2": {
+      "request": {
+        "search": "",
+        "objectType": "all",
+        "subtype": "",
+        "page": 2,
+        "perPage": 20
+      },
+      "response": {
+        "ok": true,
+        "page": 2,
+        "perPage": 20,
+        "hasMore": false,
+        "query": {
+          "search": "",
+          "objectType": "all",
+          "subtype": ""
+        },
+        "items": [
+          {
+            "objectType": "post",
+            "id": 22,
+            "title": "Contact",
+            "subtype": "page",
+            "typeLabel": "Page",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/contact/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=22&action=edit",
+            "canEdit": true
+          },
+          {
+            "objectType": "term",
+            "id": 7,
+            "title": "Hardscaping",
+            "subtype": "category",
+            "typeLabel": "Category",
+            "status": "Term",
+            "statusKey": "term",
+            "frontendUrl": "https://example-site.test/category/hardscaping/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/term.php?taxonomy=category&tag_ID=7",
+            "canEdit": true
+          },
+          {
+            "objectType": "post",
+            "id": 23,
+            "title": "Privacy Policy",
+            "subtype": "page",
+            "typeLabel": "Page",
+            "status": "Published",
+            "statusKey": "publish",
+            "frontendUrl": "https://example-site.test/privacy-policy/",
+            "hasFrontendRoute": true,
+            "backendUrl": "https://example-site.test/wp-admin/post.php?post=23&action=edit",
+            "canEdit": true
+          }
+        ]
+      }
+    },
+    "error": {
+      "request": {
+        "search": "",
+        "objectType": "all",
+        "subtype": "",
+        "page": 1,
+        "perPage": 20
+      },
+      "response": {
+        "ok": false,
+        "status": 500,
+        "message": "Object search failed."
+      }
+    },
+    "modeInactive": {
+      "request": {
+        "search": "",
+        "objectType": "all",
+        "subtype": "",
+        "page": 1,
+        "perPage": 20
+      },
+      "response": {
+        "ok": false,
+        "status": 403,
+        "message": "Visual Editor mode is not active."
+      }
+    }
+  },
+  "tools": [
+    {
+      "action": "tool-review-fields",
+      "label": "Review fields",
+      "available": true,
+      "detail": "12 marked fields on this page"
+    },
+    {
+      "action": "tool-control-center",
+      "label": "Brand & Globals",
+      "available": true,
+      "detail": "Global Brand Controls drawer"
+    },
+    {
+      "action": "tool-media-manager",
+      "label": "Media Manager",
+      "available": true,
+      "detail": "Last scan complete · 6 entities with missing images"
+    },
+    {
+      "action": "tool-edit-object",
+      "label": "Edit active object",
+      "available": true,
+      "detail": "Opens the WordPress editor in a new tab"
+    },
+    {
+      "action": "tool-exit",
+      "label": "Exit Visual Editor",
+      "available": true,
+      "detail": ""
+    }
+  ],
+  "toolsAllFlagsOff": [
+    {
+      "action": "tool-review-fields",
+      "label": "Review fields",
+      "available": true,
+      "detail": "12 marked fields on this page"
+    },
+    {
+      "action": "tool-control-center",
+      "label": "Brand & Globals",
+      "available": false,
+      "detail": "Not enabled on this site"
+    },
+    {
+      "action": "tool-media-manager",
+      "label": "Media Manager",
+      "available": false,
+      "detail": "Not enabled on this site"
+    },
+    {
+      "action": "tool-edit-object",
+      "label": "Edit active object",
+      "available": false,
+      "detail": "No backend edit link for this page"
+    },
+    {
+      "action": "tool-exit",
+      "label": "Exit Visual Editor",
+      "available": true,
+      "detail": ""
+    }
+  ]
+}

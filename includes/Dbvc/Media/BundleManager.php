@@ -221,13 +221,41 @@ final class BundleManager
             return null;
         }
 
-        $root = self::get_bundle_root();
+        $root = self::get_bundle_root(false);
         if (! $root) {
             return null;
         }
 
         $path = trailingslashit($root) . $proposal_id;
         return is_dir($path) ? $path : null;
+    }
+
+    /**
+     * Delete the ingested media bundle owned by one proposal.
+     *
+     * @param string $proposal_id
+     * @return bool
+     */
+    public static function delete_bundle(string $proposal_id): bool
+    {
+        $proposal_id = trim($proposal_id);
+        if ($proposal_id === '' || sanitize_file_name($proposal_id) !== $proposal_id) {
+            return false;
+        }
+
+        $bundle_dir = self::get_proposal_directory($proposal_id);
+        if (! $bundle_dir) {
+            return true;
+        }
+
+        self::purge_directory($bundle_dir);
+        $deleted = ! is_dir($bundle_dir) || @rmdir($bundle_dir);
+        Logger::log('media:download', $deleted ? 'Proposal media bundle deleted' : 'Proposal media bundle deletion failed', [
+            'proposal_id' => $proposal_id,
+            'path'        => $bundle_dir,
+        ]);
+
+        return $deleted;
     }
 
     /**
@@ -297,7 +325,7 @@ final class BundleManager
      */
     private static function ensure_proposal_directory(string $proposal_id): ?string
     {
-        $root = self::get_bundle_root();
+        $root = self::get_bundle_root(true);
         if (! $root) {
             return null;
         }
@@ -316,7 +344,7 @@ final class BundleManager
      *
      * @return string|null
      */
-    private static function get_bundle_root(): ?string
+    private static function get_bundle_root(bool $create = true): ?string
     {
         $upload_dir = wp_get_upload_dir();
         if (! empty($upload_dir['error'])) {
@@ -325,15 +353,23 @@ final class BundleManager
 
         $sync_root = trailingslashit($upload_dir['basedir']) . 'sync';
         if (! is_dir($sync_root)) {
+            if (! $create) {
+                return null;
+            }
             wp_mkdir_p($sync_root);
         }
 
         $bundle_root = trailingslashit($sync_root) . 'media-bundles';
         if (! is_dir($bundle_root)) {
+            if (! $create) {
+                return null;
+            }
             wp_mkdir_p($bundle_root);
         }
 
-        self::ensure_security($bundle_root);
+        if ($create) {
+            self::ensure_security($bundle_root);
+        }
         return $bundle_root;
     }
 

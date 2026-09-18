@@ -126,6 +126,16 @@ final class CoreImportExportProvider extends AbstractOptionDomainProvider
         ];
     }
 
+    public function get_import_dependencies(array $incoming): array
+    {
+        return array_merge(
+            $this->get_value_dependencies($incoming, 'dbvc_post_types', 'post_type'),
+            $this->get_value_dependencies($incoming, 'dbvc_new_post_types_whitelist', 'post_type'),
+            $this->get_value_dependencies($incoming, 'dbvc_taxonomies', 'taxonomy'),
+            $this->get_value_dependencies($incoming, 'dbvc_options_groups', 'acf_options_group')
+        );
+    }
+
     protected function after_apply(array $applied): void
     {
         if (! isset($applied['dbvc_export_filename_format'])) {

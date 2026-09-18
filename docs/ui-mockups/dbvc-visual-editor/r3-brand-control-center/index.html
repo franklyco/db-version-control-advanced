@@ -1,0 +1,736 @@
+<!doctype html>
+<!--
+  DBVC Visual Editor - R3 Global Brand Control Center static mockup (default view).
+
+  PURELY STATIC. No JavaScript, no runtime renderer, no fixture object at load.
+  Every row in the table below is hand-authored into the DOM so a reviewer can
+  read the intended production markup without following any JS logic.
+
+  Interactions in this file are visual-only. Tabs, filter chips, and Open buttons
+  are present in the DOM as the shape production will use, but they do not react
+  to clicks in this file (there is no click handler, and this mockup deliberately
+  never wires one up). The R1 Media Manager mockup made the same choice with its
+  optional local JS - here we go one step further and ship no JS at all.
+
+  Fixture source: see the "FIXTURE DATA" block below - the same 33 records the
+  first draft carried as a JS object, now pre-rendered inline as <tr> markup.
+  When R3-C production translates this mockup, the fixture below is the shape
+  the list route response (schematic §3.1) must match.
+
+  State gallery: states.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>DBVC Visual Editor - R3 Global Brand Control Center (static mockup)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="dbvc-ve-control-center-mockup">
+
+<!--
+================================================================================
+FIXTURE DATA (33 records) - preserved as a comment so a future production
+translator can see exactly what the mockup rendered.
+
+Every record uses only the safe list-projection keys from schematic §3.1:
+publicId, label, category, group, ownerType, ownerSubtype, fieldFamily, status,
+meta. Plus a display-only `priority` field that the priority filter chip uses -
+maintainer confirmed treating this as a first-class field on the list response
+until further notice. No source, no fieldKey, no path, no descriptor, no token.
+
+  publicId                                          | category | group           | priority | status       | field
+  --------------------------------------------------+----------+-----------------+----------+--------------+-------------
+  shared_globals:brand_primary_logo                 | brand    | Identity        | must     | available    | image
+  shared_globals:brand_secondary_logo               | brand    | Identity        | should   | available    | image
+  shared_globals:brand_favicon                      | brand    | Identity        | must     | available    | image
+  shared_globals:brand_tagline                      | brand    | Voice           | should   | available    | other
+  shared_globals:brand_short_bio                    | brand    | Voice           | should   | inspect_only | other
+  shared_globals:brand_color_accent                 | brand    | Palette         | nice     | unsupported  | other
+  shared_globals:contact_primary_phone              | contact  | Reach           | must     | available    | other
+  shared_globals:contact_primary_email              | contact  | Reach           | must     | available    | other
+  shared_globals:contact_office_address             | contact  | Location        | should   | available    | other
+  shared_globals:contact_hours                      | contact  | Location        | should   | inspect_only | other
+  shared_globals:contact_maps_url                   | contact  | Location        | nice     | available    | other
+  shared_globals:content_default_posts              | content  | Featured        | must     | available    | relationship
+  shared_globals:content_featured_case_studies      | content  | Featured        | should   | available    | relationship
+  shared_globals:content_home_cta_link              | content  | CTAs            | should   | available    | post_object
+  shared_globals:content_press_grid                 | content  | Featured        | nice     | unavailable  | gallery
+  shared_globals:design_hero_bg                     | design   | Media           | should   | available    | image
+  shared_globals:design_pattern_swatch              | design   | Media           | nice     | available    | image
+  shared_globals:design_gallery_defaults            | design   | Media           | should   | available    | gallery
+  shared_globals:design_button_style                | design   | Tokens          | nice     | inspect_only | other
+  shared_globals:design_heading_font                | design   | Type            | nice     | unsupported  | other
+  shared_globals:design_video_intro                 | design   | Media           | nice     | unavailable  | other
+  shared_globals:layout_header_ctas                 | layout   | Header          | must     | available    | relationship
+  shared_globals:layout_footer_columns              | layout   | Footer          | should   | inspect_only | other
+  shared_globals:layout_footer_social_links         | layout   | Footer          | should   | available    | other
+  shared_globals:layout_announcement_bar            | layout   | Global          | nice     | available    | other
+  shared_globals:layout_menu_primary_notes          | layout   | Header          | nice     | unsupported  | other
+  shared_globals:legal_privacy_link                 | legal    | Policies        | must     | available    | post_object
+  shared_globals:legal_terms_link                   | legal    | Policies        | must     | available    | post_object
+  shared_globals:legal_footer_copyright             | legal    | Footer          | should   | available    | other
+  shared_globals:seo_default_title                  | seo      | Meta            | must     | available    | other
+  shared_globals:seo_default_description            | seo      | Meta            | must     | available    | other
+  shared_globals:seo_og_default_image               | seo      | Social          | should   | available    | image
+  shared_globals:seo_schema_org_type                | seo      | Structured Data | nice     | inspect_only | other
+
+Every row carries badge label "Shared Global" (matches the existing Shared
+Globals popover badge convention in the component map §7). ownerType is
+"option" and ownerSubtype is "acf_options" for every fixture row - a second
+provider would carry different values.
+================================================================================
+-->
+
+<!-- Faux WordPress admin bar (32px). The drawer top aligns to its bottom edge. -->
+<div class="dbvc-ve-control-center-mockup__admin-bar" aria-hidden="true">
+  <span>WordPress</span>
+  <span>Greenfield Landscapes</span>
+  <span>Howdy, Rhett</span>
+</div>
+
+<!-- Faux live site behind the drawer. Presentational only, aria-hidden, no focusable nodes.
+     Demonstrates that the drawer keeps the site visible on the right (directives §7). -->
+<div class="dbvc-ve-control-center-mockup__stage" aria-hidden="true">
+  <div class="dbvc-ve-control-center-mockup__site-bar">
+    <span class="dbvc-ve-control-center-mockup__wordmark">Greenfield Landscapes</span>
+    <span class="dbvc-ve-control-center-mockup__nav">
+      <span>Services</span><span>Projects</span><span>About</span><span>Blog</span><span>Contact</span>
+    </span>
+    <span class="dbvc-ve-control-center-mockup__site-cta">Get a Quote</span>
+  </div>
+  <div class="dbvc-ve-control-center-mockup__hero">
+    <span class="dbvc-ve-control-center-mockup__hero-eyebrow">Live site &middot; visible beside the drawer</span>
+    <span class="dbvc-ve-control-center-mockup__hero-title">Garden design that grows with you.</span>
+    <p class="dbvc-ve-control-center-mockup__hero-body">
+      The drawer sits on the left edge without a backdrop so the site stays readable on the right.
+      When a control is opened, the main editor panel appears over/beside the drawer &mdash; the drawer
+      itself stays open.
+    </p>
+  </div>
+</div>
+
+<!--
+  Visual Editor toolbar continuity (mockup-only classes; token values mirror the real
+  .dbvc-ve-toolbar so the drawer reads as the same product). The Layers slot (Shared
+  Globals popover) is intentionally rendered untouched. The Sliders slot is the ONE
+  new toolbar entry, `data-dbvc-ve-toolbar-action="open-control-center"`, and is
+  rendered active because the drawer is open. Icon-registry key `sliders` has
+  already landed in overlay-app.js's toolbar builder.
+-->
+<div class="dbvc-ve-control-center-mockup__toolbar" aria-hidden="true">
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Pause">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="5" width="4" height="14"></rect>
+      <rect x="14" y="5" width="4" height="14"></rect>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Shared Globals (unchanged)">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l9 4.5-9 4.5-9-4.5L12 3z"></path>
+      <path d="M3 12l9 4.5 9-4.5"></path>
+      <path d="M3 16.5l9 4.5 9-4.5"></path>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Object Search">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="6"></circle><path d="M20 20l-4-4"></path>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Media Manager">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2.5"></rect>
+      <circle cx="8.75" cy="9.75" r="1.6"></circle>
+      <path d="M4 16.5l4.5-4a1.8 1.8 0 0 1 2.4 0l3 2.7a1.8 1.8 0 0 0 2.4 0L20 12.6"></path>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-divider" aria-hidden="true"></span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button is-new is-active" title="Global Brand Controls (new)">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4" y1="7" x2="20" y2="7"></line>
+      <circle cx="9" cy="7" r="2.4" fill="currentColor" stroke="none"></circle>
+      <line x1="4" y1="12" x2="20" y2="12"></line>
+      <circle cx="15" cy="12" r="2.4" fill="currentColor" stroke="none"></circle>
+      <line x1="4" y1="17" x2="20" y2="17"></line>
+      <circle cx="7" cy="17" r="2.4" fill="currentColor" stroke="none"></circle>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-divider" aria-hidden="true"></span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Globe">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M3 12h18"></path><path d="M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"></path>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Edit">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 20h4l10.5-10.5-4-4L4 16z"></path><path d="M14 4l4 4"></path>
+    </svg>
+  </span>
+  <span class="dbvc-ve-control-center-mockup__toolbar-button" title="Exit">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4"></path>
+      <path d="M16 8l5 4-5 4"></path><path d="M21 12H9"></path>
+    </svg>
+  </span>
+</div>
+
+<!--
+  The R3 drawer. Root class = `.dbvc-ve-control-center`. Left-anchored, fixed
+  width, backdrop-less, above the panel but below the toolbar. See §5.1 for
+  the drawer shell contract. All 33 rows below are pre-rendered inline; no
+  JavaScript is involved.
+-->
+<aside class="dbvc-ve-control-center"
+       role="complementary"
+       aria-labelledby="dbvc-ve-cc-title">
+
+  <header class="dbvc-ve-control-center__header">
+    <span class="dbvc-ve-control-center__header-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="4" y1="7" x2="20" y2="7"></line>
+        <circle cx="9" cy="7" r="2.4" fill="currentColor" stroke="none"></circle>
+        <line x1="4" y1="12" x2="20" y2="12"></line>
+        <circle cx="15" cy="12" r="2.4" fill="currentColor" stroke="none"></circle>
+        <line x1="4" y1="17" x2="20" y2="17"></line>
+        <circle cx="7" cy="17" r="2.4" fill="currentColor" stroke="none"></circle>
+      </svg>
+    </span>
+    <div class="dbvc-ve-control-center__title-block">
+      <h2 class="dbvc-ve-control-center__title" id="dbvc-ve-cc-title">Global Brand Controls</h2>
+      <span class="dbvc-ve-control-center__summary-chip"><strong>33</strong> controls</span>
+    </div>
+    <button type="button" class="dbvc-ve-control-center__close"
+            data-dbvc-ve-control-center-action="close"
+            aria-label="Close Global Brand Control Center">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </header>
+
+  <div class="dbvc-ve-control-center__tabs" role="tablist" aria-label="Category">
+    <button type="button" role="tab" aria-selected="true" data-category="all"
+            class="dbvc-ve-control-center__tab">
+      All <span class="dbvc-ve-control-center__tab-count">33</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="brand"
+            class="dbvc-ve-control-center__tab">
+      Brand <span class="dbvc-ve-control-center__tab-count">6</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="contact"
+            class="dbvc-ve-control-center__tab">
+      Contact <span class="dbvc-ve-control-center__tab-count">5</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="content"
+            class="dbvc-ve-control-center__tab">
+      Content <span class="dbvc-ve-control-center__tab-count">4</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="design"
+            class="dbvc-ve-control-center__tab">
+      Design <span class="dbvc-ve-control-center__tab-count">6</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="layout"
+            class="dbvc-ve-control-center__tab">
+      Layout <span class="dbvc-ve-control-center__tab-count">5</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="legal"
+            class="dbvc-ve-control-center__tab">
+      Legal <span class="dbvc-ve-control-center__tab-count">3</span>
+    </button>
+    <button type="button" role="tab" aria-selected="false" data-category="seo"
+            class="dbvc-ve-control-center__tab">
+      SEO <span class="dbvc-ve-control-center__tab-count">4</span>
+    </button>
+  </div>
+
+  <div class="dbvc-ve-control-center__filters">
+    <label class="dbvc-ve-control-center__sr-only" for="dbvc-ve-cc-search">Search controls</label>
+    <input type="search" id="dbvc-ve-cc-search"
+           class="dbvc-ve-control-center__search"
+           placeholder="Search controls&hellip;"
+           maxlength="100">
+    <div class="dbvc-ve-control-center__chip-row" role="group" aria-label="Status filter">
+      <span class="dbvc-ve-control-center__chip-label">Status</span>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="available">Available</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="inspect_only">View only</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="unsupported">Unsupported</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="unavailable">Unavailable</button>
+    </div>
+    <div class="dbvc-ve-control-center__chip-row" role="group" aria-label="Priority and field filters">
+      <span class="dbvc-ve-control-center__chip-label">Priority</span>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="must">Must</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="should">Should</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="nice">Nice</button>
+      <span class="dbvc-ve-control-center__chip-label" style="margin-left:8px;">Field</span>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="image">Image</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="gallery">Gallery</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="relationship">Relationship</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="post_object">Post</button>
+      <button type="button" class="dbvc-ve-control-center__chip" aria-pressed="false" data-value="other">Other</button>
+    </div>
+  </div>
+
+  <div class="dbvc-ve-control-center__table-wrap">
+    <table class="dbvc-ve-control-center__table" role="table">
+      <caption class="dbvc-ve-control-center__sr-only">
+        Registered global brand controls. Each row lists a control that can be opened in the main editor panel.
+      </caption>
+      <thead class="dbvc-ve-control-center__thead">
+        <tr>
+          <th class="dbvc-ve-control-center__th" scope="col">Control</th>
+          <th class="dbvc-ve-control-center__th dbvc-ve-control-center__th--action" scope="col">
+            <span class="dbvc-ve-control-center__sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody class="dbvc-ve-control-center__tbody">
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:brand_primary_logo" data-category="brand" data-status="available" data-priority="must" data-field-family="image">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Primary Logo</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Brand</span>
+                <span class="dbvc-ve-control-center__meta-part">Identity</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; image</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:brand_primary_logo">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:brand_secondary_logo" data-category="brand" data-status="available" data-priority="should" data-field-family="image">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Secondary / Wordmark Logo</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Brand</span>
+                <span class="dbvc-ve-control-center__meta-part">Identity</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; image</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:brand_secondary_logo">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:brand_favicon" data-category="brand" data-status="available" data-priority="must" data-field-family="image">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Favicon</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Brand</span>
+                <span class="dbvc-ve-control-center__meta-part">Identity</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; image</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:brand_favicon">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:brand_tagline" data-category="brand" data-status="available" data-priority="should" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Brand Tagline</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Brand</span>
+                <span class="dbvc-ve-control-center__meta-part">Voice</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:brand_tagline">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-inspect_only" data-public-id="shared_globals:brand_short_bio" data-category="brand" data-status="inspect_only" data-priority="should" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--inspect_only" aria-hidden="true" title="View only"></span>
+              <span class="dbvc-ve-control-center__label">Short &ldquo;About&rdquo; Blurb</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Brand</span>
+                <span class="dbvc-ve-control-center__meta-part">Voice</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--view" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:brand_short_bio">View</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="shared_globals:brand_color_accent" data-category="brand" data-status="unsupported" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true" title="Unsupported"></span>
+              <span class="dbvc-ve-control-center__label">Accent Color</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Brand</span>
+                <span class="dbvc-ve-control-center__meta-part">Palette</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><span class="dbvc-ve-control-center__action-none" title="Color-picker fields are not supported by any registered provider yet.">Unsupported</span></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:contact_primary_phone" data-category="contact" data-status="available" data-priority="must" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Primary Phone Number</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Contact</span>
+                <span class="dbvc-ve-control-center__meta-part">Reach</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:contact_primary_phone">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:contact_primary_email" data-category="contact" data-status="available" data-priority="must" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Primary Email</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Contact</span>
+                <span class="dbvc-ve-control-center__meta-part">Reach</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:contact_primary_email">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:contact_office_address" data-category="contact" data-status="available" data-priority="should" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Office Address</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Contact</span>
+                <span class="dbvc-ve-control-center__meta-part">Location</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:contact_office_address">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-inspect_only" data-public-id="shared_globals:contact_hours" data-category="contact" data-status="inspect_only" data-priority="should" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--inspect_only" aria-hidden="true" title="View only"></span>
+              <span class="dbvc-ve-control-center__label">Business Hours</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Contact</span>
+                <span class="dbvc-ve-control-center__meta-part">Location</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--view" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:contact_hours">View</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:contact_maps_url" data-category="contact" data-status="available" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Google Maps URL</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Contact</span>
+                <span class="dbvc-ve-control-center__meta-part">Location</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:contact_maps_url">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:content_default_posts" data-category="content" data-status="available" data-priority="must" data-field-family="relationship">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Default &ldquo;Featured Posts&rdquo; Collection</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Content</span>
+                <span class="dbvc-ve-control-center__meta-part">Featured</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; relationship</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:content_default_posts">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:content_featured_case_studies" data-category="content" data-status="available" data-priority="should" data-field-family="relationship">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Featured Case Studies</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Content</span>
+                <span class="dbvc-ve-control-center__meta-part">Featured</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; relationship</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:content_featured_case_studies">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:content_home_cta_link" data-category="content" data-status="available" data-priority="should" data-field-family="post_object">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Home CTA Post</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Content</span>
+                <span class="dbvc-ve-control-center__meta-part">CTAs</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; post_object</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:content_home_cta_link">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-unavailable" data-public-id="shared_globals:content_press_grid" data-category="content" data-status="unavailable" data-priority="nice" data-field-family="gallery">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unavailable" aria-hidden="true" title="Unavailable"></span>
+              <span class="dbvc-ve-control-center__label">Press Mentions Grid</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Content</span>
+                <span class="dbvc-ve-control-center__meta-part">Featured</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; gallery</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><span class="dbvc-ve-control-center__action-none" title="Not available in this build. Provider is not registered.">Unavailable</span></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:design_hero_bg" data-category="design" data-status="available" data-priority="should" data-field-family="image">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Default Hero Background</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Design</span>
+                <span class="dbvc-ve-control-center__meta-part">Media</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; image</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:design_hero_bg">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:design_pattern_swatch" data-category="design" data-status="available" data-priority="nice" data-field-family="image">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Pattern / Texture Swatch</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Design</span>
+                <span class="dbvc-ve-control-center__meta-part">Media</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; image</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:design_pattern_swatch">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:design_gallery_defaults" data-category="design" data-status="available" data-priority="should" data-field-family="gallery">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Fallback Gallery</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Design</span>
+                <span class="dbvc-ve-control-center__meta-part">Media</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; gallery</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:design_gallery_defaults">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-inspect_only" data-public-id="shared_globals:design_button_style" data-category="design" data-status="inspect_only" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--inspect_only" aria-hidden="true" title="View only"></span>
+              <span class="dbvc-ve-control-center__label">Default Button Style</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Design</span>
+                <span class="dbvc-ve-control-center__meta-part">Tokens</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--view" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:design_button_style">View</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="shared_globals:design_heading_font" data-category="design" data-status="unsupported" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true" title="Unsupported"></span>
+              <span class="dbvc-ve-control-center__label">Heading Font</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Design</span>
+                <span class="dbvc-ve-control-center__meta-part">Type</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><span class="dbvc-ve-control-center__action-none" title="Typography settings need a design-token provider.">Unsupported</span></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-unavailable" data-public-id="shared_globals:design_video_intro" data-category="design" data-status="unavailable" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unavailable" aria-hidden="true" title="Unavailable"></span>
+              <span class="dbvc-ve-control-center__label">Homepage Intro Video</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Design</span>
+                <span class="dbvc-ve-control-center__meta-part">Media</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><span class="dbvc-ve-control-center__action-none" title="File uploads outside the Media Library are not part of R3.">Unavailable</span></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:layout_header_ctas" data-category="layout" data-status="available" data-priority="must" data-field-family="relationship">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Header CTAs</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Layout Elements</span>
+                <span class="dbvc-ve-control-center__meta-part">Header</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; relationship</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:layout_header_ctas">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-inspect_only" data-public-id="shared_globals:layout_footer_columns" data-category="layout" data-status="inspect_only" data-priority="should" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--inspect_only" aria-hidden="true" title="View only"></span>
+              <span class="dbvc-ve-control-center__label">Footer Columns</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Layout Elements</span>
+                <span class="dbvc-ve-control-center__meta-part">Footer</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--view" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:layout_footer_columns">View</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:layout_footer_social_links" data-category="layout" data-status="available" data-priority="should" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Footer Social Links</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Layout Elements</span>
+                <span class="dbvc-ve-control-center__meta-part">Footer</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:layout_footer_social_links">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:layout_announcement_bar" data-category="layout" data-status="available" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Site-wide Announcement</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Layout Elements</span>
+                <span class="dbvc-ve-control-center__meta-part">Global</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:layout_announcement_bar">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-unsupported" data-public-id="shared_globals:layout_menu_primary_notes" data-category="layout" data-status="unsupported" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported" aria-hidden="true" title="Unsupported"></span>
+              <span class="dbvc-ve-control-center__label">Primary Menu Notes</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Layout Elements</span>
+                <span class="dbvc-ve-control-center__meta-part">Header</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><span class="dbvc-ve-control-center__action-none" title="WYSIWYG writes are not part of R3.">Unsupported</span></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:legal_privacy_link" data-category="legal" data-status="available" data-priority="must" data-field-family="post_object">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Privacy Policy Link</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Legal</span>
+                <span class="dbvc-ve-control-center__meta-part">Policies</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; post_object</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:legal_privacy_link">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:legal_terms_link" data-category="legal" data-status="available" data-priority="must" data-field-family="post_object">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Terms of Service Link</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Legal</span>
+                <span class="dbvc-ve-control-center__meta-part">Policies</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; post_object</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:legal_terms_link">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:legal_footer_copyright" data-category="legal" data-status="available" data-priority="should" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Footer Copyright Text</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">Legal</span>
+                <span class="dbvc-ve-control-center__meta-part">Footer</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:legal_footer_copyright">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:seo_default_title" data-category="seo" data-status="available" data-priority="must" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Default Meta Title</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">SEO</span>
+                <span class="dbvc-ve-control-center__meta-part">Meta</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:seo_default_title">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:seo_default_description" data-category="seo" data-status="available" data-priority="must" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Default Meta Description</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">SEO</span>
+                <span class="dbvc-ve-control-center__meta-part">Meta</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:seo_default_description">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-available" data-public-id="shared_globals:seo_og_default_image" data-category="seo" data-status="available" data-priority="should" data-field-family="image">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available" aria-hidden="true" title="Available"></span>
+              <span class="dbvc-ve-control-center__label">Default Open Graph Image</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">SEO</span>
+                <span class="dbvc-ve-control-center__meta-part">Social</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; image</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:seo_og_default_image">Open</button></td>
+          </tr>
+          <tr class="dbvc-ve-control-center__row is-inspect_only" data-public-id="shared_globals:seo_schema_org_type" data-category="seo" data-status="inspect_only" data-priority="nice" data-field-family="other">
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label" data-label="Control">
+              <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--inspect_only" aria-hidden="true" title="View only"></span>
+              <span class="dbvc-ve-control-center__label">Organization Schema Type</span>
+              <div class="dbvc-ve-control-center__meta">
+                <span class="dbvc-ve-control-center__meta-part">SEO</span>
+                <span class="dbvc-ve-control-center__meta-part">Structured Data</span>
+                <span class="dbvc-ve-control-center__badge">Shared Global</span>
+              </div>
+              <div class="dbvc-ve-control-center__owner">option/acf_options &middot; other</div>
+            </td>
+            <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action" data-label="Action"><button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--view" data-dbvc-ve-control-center-action="open" data-public-id="shared_globals:seo_schema_org_type">View</button></td>
+          </tr>
+        </tbody>
+    </table>
+  </div>
+
+  <!--
+    Shared polite live region. Component-map §6 says there is only one; this is the
+    mockup's copy. In this static file it carries a fixed opening announcement -
+    production populates it in response to real events.
+  -->
+  <p class="dbvc-ve-control-center__sr-only"
+     role="status" aria-live="polite" aria-atomic="true">
+    Global Brand Controls opened. Showing all 33 registered controls.
+  </p>
+
+  <footer class="dbvc-ve-control-center__footer">
+    <span><strong>33</strong> of 33 controls</span>
+  </footer>
+
+</aside>
+
+</body>
+</html>

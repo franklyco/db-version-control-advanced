@@ -53,7 +53,7 @@ Server logic:
 - Run `dbvc_mask_parse_list` on `dbvc_mask_meta_keys` + `dbvc_mask_subkeys`.
 - For each entity diff path that falls under `meta.*` or term meta, check if the key or dot-path matches the mask patterns.
 - When post-field masking is enabled, emit pseudo-paths like `post.post_date` for each selected field and reuse the same action pipeline as meta.
-- Include only entities marked `needs_review` / `diff_state.needs_review` or flagged `media_needs_review`.
+- Include only changed post fields, post meta, and term meta that match the configured masking patterns. Declined new entities and media resolver conflicts are not masking candidates.
 - Determine `default_action` through settings (default to `ignore`, future preference keys stored per proposal).
 - Server returns chunk metadata (page, per_page, total_pages, has_more) so clients can stream the list without exhausting memory.
 
@@ -173,9 +173,9 @@ The React components should import the doc URL from a shared constant so only on
   - After editing `src/admin-app/`, run `npm run build` so the panel markup/styles in `build/admin-app.*` reflect the latest code; otherwise WordPress still serves the previous assets and the panel will not appear.
 
 - **Table header status badges**
-  - Move the key counts (Needs Review, Unresolved meta, Resolver conflicts, Pending decisions) into pill badges aligned with the All Entities table header.
+  - Use the canonical review lanes: Fields need review, Meta needs review, Media needs review, Resolver conflicts, Masking candidates, Duplicate groups, and New entities pending.
   - Clicking a badge toggles the corresponding filter, removing extra row controls.
   - Badge colors align with existing badge palette (`dbvc-badge--needs_review`, etc.) for quick recognition.
-  - When masking auto-clears meta, badges update in place so reviewers immediately see the reduced counts.
+  - When masking choices are saved, the Masking candidates badge updates in place without changing media resolver counts.
 
 Once these questions are answered, we can proceed with coding the API, UI modal, and importer tie-ins.

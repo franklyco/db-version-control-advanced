@@ -1,0 +1,509 @@
+<!doctype html>
+<!--
+  DBVC Visual Editor — R4 states gallery.
+  Every R4 state from the release doc § states, plus the view-mode-toggle demo.
+  PURELY STATIC. Each card is an inline drawer (max 520px wide, ~620px tall).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>DBVC Visual Editor — R4 states gallery</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="dbvc-ve-control-center-mockup dbvc-ve-control-center-mockup--gallery">
+
+<header class="dbvc-ve-control-center-mockup__gallery-header">
+  <h1 class="dbvc-ve-control-center-mockup__gallery-title">R4 states gallery</h1>
+  <p class="dbvc-ve-control-center-mockup__gallery-lede">
+    Every state R4 must render, plus the view-mode toggle demo. Each cell is an inline drawer instance.
+    Rows inside are pre-rendered inline — nothing here is interactive. See index.html for the happy-path drawer.
+  </p>
+</header>
+
+<div class="dbvc-ve-control-center-mockup__gallery-grid">
+
+  <!-- ================ 01: loading-initial ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">01 · loading-initial</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">First open of the drawer; awaiting list route.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary" aria-labelledby="s01-title">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon" aria-hidden="true">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title" id="s01-title">Global Brand Controls</h2>
+          <span class="dbvc-ve-control-center__summary-chip">Loading…</span>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__panel-state">
+        <div class="dbvc-ve-control-center__loading-spinner" aria-hidden="true"></div>
+        <p class="dbvc-ve-control-center__panel-state-title">Loading Global Brand Controls</p>
+        <p class="dbvc-ve-control-center__panel-state-body">Fetching registered controls from every provider on this site.</p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 02: loading-refresh (dimmed overlay) ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">02 · loading-refresh</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Filter / tab / view-mode changed; list stays visible with dimmed overlay.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+          <span class="dbvc-ve-control-center__summary-chip">Refreshing…</span>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__tabs" role="tablist">
+        <button type="button" class="dbvc-ve-control-center__tab" aria-selected="true">All <span class="dbvc-ve-control-center__tab-count">400</span></button>
+        <button type="button" class="dbvc-ve-control-center__tab" aria-selected="false">Brand <span class="dbvc-ve-control-center__tab-count">78</span></button>
+      </div>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-available">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Default Featured Posts</span>
+                </div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <button type="button" class="dbvc-ve-control-center__action">Open</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="dbvc-ve-control-center__refresh-overlay">
+          <span class="dbvc-ve-control-center__loading-spinner" aria-hidden="true" style="width:14px;height:14px;border-width:2px;"></span>
+          Loading matching controls…
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 03: no-controls-registered ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">03 · no-controls-registered</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">No provider has returned any records.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+          <span class="dbvc-ve-control-center__summary-chip"><strong>0</strong> controls</span>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__panel-state">
+        <p class="dbvc-ve-control-center__panel-state-title">No global controls registered yet</p>
+        <p class="dbvc-ve-control-center__panel-state-body">Once a provider registers controls, they will appear here.</p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 04: no-search-matches ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">04 · no-search-matches</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">400 rows registered but the current search filters to zero.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+          <span class="dbvc-ve-control-center__summary-chip"><strong>400</strong> controls</span>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__filters">
+        <div class="dbvc-ve-control-center__search-wrap">
+          <span class="dbvc-ve-control-center__search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+          </span>
+          <input type="search" class="dbvc-ve-control-center__search" value="wombat" readonly>
+          <button type="button" class="dbvc-ve-control-center__search-clear" aria-label="Clear search">&times;</button>
+        </div>
+      </div>
+      <div class="dbvc-ve-control-center__panel-state">
+        <p class="dbvc-ve-control-center__panel-state-title">No controls match “wombat”</p>
+        <p class="dbvc-ve-control-center__panel-state-body">Search covers labels, descriptions, group titles, and owner labels. Try a shorter or different term.</p>
+        <div class="dbvc-ve-control-center__panel-state-actions">
+          <button type="button" class="dbvc-ve-control-center__button dbvc-ve-control-center__button--secondary">Clear filters</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 05: provider-error (per-provider notice) ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">05 · provider-error</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">One provider failed; other providers keep rendering. Notice is dismissible.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+          <span class="dbvc-ve-control-center__summary-chip"><strong>399</strong> controls · 1 provider offline</span>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__notice--provider-error" role="status">
+        <span>Some controls could not be loaded — the “vertical” provider reported an error. Other providers are still available.</span>
+        <button type="button" class="dbvc-ve-control-center__notice-dismiss">Dismiss</button>
+      </div>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-available">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Default Featured Posts</span>
+                  <p class="dbvc-ve-control-center__description">Sitewide fallback list of connected posts.</p>
+                </div>
+                <div class="dbvc-ve-control-center__meta"><span class="dbvc-ve-control-center__badge">Shared Global</span></div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-relationship"><strong>10</strong> connected</span>
+                </span>
+                <button type="button" class="dbvc-ve-control-center__action">Open</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 06: unavailable-source ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">06 · unavailable-source</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Row's underlying option page/field is gone. Muted, no Open button.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-unavailable">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unavailable"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Homepage Intro Video</span>
+                  <p class="dbvc-ve-control-center__description">Legacy hero-video field; its ACF field group was removed.</p>
+                </div>
+                <div class="dbvc-ve-control-center__meta"><span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span></div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-empty">—<span class="dbvc-ve-control-center__sr-only">field not found</span></span>
+                </span>
+                <span class="dbvc-ve-control-center__action-none" title="This control's source is no longer present.">Unavailable</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 07: unsupported-family (with value summary shown) ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">07 · unsupported-family</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Family has no descriptor factory yet (waiting on R5.x). Value summary still shown.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-unsupported">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--unsupported"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Accent Color</span>
+                </div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-color">
+                    <span class="dbvc-ve-control-center__value-color-swatch" style="background:#ff5b21;"></span>
+                    <span class="dbvc-ve-control-center__value-color-hex">#ff5b21</span>
+                  </span>
+                </span>
+                <span class="dbvc-ve-control-center__action-none" title="R5.2+color_picker will unlock this family.">Unsupported</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 08: inspect-only-source ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">08 · inspect-only</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Row can be viewed in the panel but not saved.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-inspect_only">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--inspect_only"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Business Hours</span>
+                  <p class="dbvc-ve-control-center__description">Weekly hours grid; capability check reports view-only for your role.</p>
+                </div>
+                <div class="dbvc-ve-control-center__meta"><span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span></div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-text">Mon–Fri 9am–5pm</span>
+                </span>
+                <button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--view">View</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 09: permission-filtered (row visible but capability lost) ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">09 · permission-filtered</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Rare edge case — row visible, but viewer lost capability between list load and open.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-permission-filtered">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Legal Compliance Statement</span>
+                  <p class="dbvc-ve-control-center__description">Regulated field — you don't currently have edit rights to it.</p>
+                </div>
+                <div class="dbvc-ve-control-center__meta"><span class="dbvc-ve-control-center__badge dbvc-ve-control-center__badge--vertical">Vertical</span></div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-locked">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                    <span class="dbvc-ve-control-center__sr-only">You don't have permission to view this control's value</span>
+                    Locked
+                  </span>
+                </span>
+                <span class="dbvc-ve-control-center__action-none">No access</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 10: descriptor-loading (row-scoped Opening…) ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">10 · descriptor-loading</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Row's Open button clicked, POST /open in flight. Row-scoped, other rows still interactive.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-available">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Default Featured Posts</span>
+                </div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-relationship"><strong>10</strong> connected</span>
+                </span>
+                <button type="button" class="dbvc-ve-control-center__action dbvc-ve-control-center__action--opening" aria-busy="true" disabled>
+                  Opening…
+                  <span class="dbvc-ve-control-center__spinner" aria-hidden="true" style="border-color:rgba(0,22,115,0.28);border-top-color:currentColor;"></span>
+                </button>
+              </td>
+            </tr>
+            <tr class="dbvc-ve-control-center__row-notice dbvc-ve-control-center__row-notice--descriptor-loading">
+              <td class="dbvc-ve-control-center__row-notice-cell" colspan="2">
+                <div class="dbvc-ve-control-center__notice">Loading control… the main editor panel will open when the descriptor is ready.</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 11: save-and-reload (drawer strip after main-panel save) ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">11 · save-and-reload</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Main panel just saved; drawer briefly shows confirmation strip. Fades after ~3s.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__save-status-strip" role="status">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>
+        Saved <strong>Default Featured Posts</strong>
+      </div>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody>
+            <tr class="dbvc-ve-control-center__row is-available is-focused-source">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Default Featured Posts</span>
+                </div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-relationship"><strong>10</strong> connected</span>
+                </span>
+                <button type="button" class="dbvc-ve-control-center__action">Open</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 12: view-mode toggle — provider-partitioned ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">12 · view-mode: By provider</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Category tabs → provider tabs. Group sub-headers still driven by ACF field-group titles.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+          <span class="dbvc-ve-control-center__summary-chip"><strong>400</strong> controls · 2 providers</span>
+        </div>
+        <div class="dbvc-ve-control-center__view-toggle" role="tablist" aria-label="Category view">
+          <button type="button" role="tab" aria-selected="false" data-view-mode="category" class="dbvc-ve-control-center__view-toggle-option">By category</button>
+          <button type="button" role="tab" aria-selected="true" data-view-mode="provider" class="dbvc-ve-control-center__view-toggle-option">By provider</button>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__tabs" role="tablist" aria-label="Provider">
+        <button type="button" role="tab" aria-selected="true" data-category="all" class="dbvc-ve-control-center__tab">All <span class="dbvc-ve-control-center__tab-count">400</span></button>
+        <button type="button" role="tab" aria-selected="false" data-category="shared_globals" class="dbvc-ve-control-center__tab">Shared Globals <span class="dbvc-ve-control-center__tab-count">1</span></button>
+        <button type="button" role="tab" aria-selected="false" data-category="vertical" class="dbvc-ve-control-center__tab">Vertical <span class="dbvc-ve-control-center__tab-count">399</span></button>
+      </div>
+      <div class="dbvc-ve-control-center__table-wrap">
+        <table class="dbvc-ve-control-center__table">
+          <tbody class="dbvc-ve-control-center__group">
+            <tr class="dbvc-ve-control-center__group-header">
+              <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+                <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="true">
+                  <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+                  </span>
+                  <span class="dbvc-ve-control-center__group-title">Shared Globals › Site Settings</span>
+                  <span class="dbvc-ve-control-center__group-count">1 control</span>
+                </button>
+              </td>
+            </tr>
+            <tr class="dbvc-ve-control-center__row is-available">
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--label">
+                <span class="dbvc-ve-control-center__status-dot dbvc-ve-control-center__status-dot--available"></span>
+                <div class="dbvc-ve-control-center__label-block">
+                  <span class="dbvc-ve-control-center__label">Default Featured Posts</span>
+                </div>
+              </td>
+              <td class="dbvc-ve-control-center__row-cell dbvc-ve-control-center__row-cell--action">
+                <span class="dbvc-ve-control-center__value-summary">
+                  <span class="dbvc-ve-control-center__value-relationship"><strong>10</strong> connected</span>
+                </span>
+                <button type="button" class="dbvc-ve-control-center__action">Open</button>
+              </td>
+            </tr>
+          </tbody>
+          <tbody class="dbvc-ve-control-center__group is-collapsed">
+            <tr class="dbvc-ve-control-center__group-header">
+              <td class="dbvc-ve-control-center__group-header-cell" colspan="2">
+                <button type="button" class="dbvc-ve-control-center__group-toggle" aria-expanded="false">
+                  <span class="dbvc-ve-control-center__group-toggle-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+                  </span>
+                  <span class="dbvc-ve-control-center__group-title">Vertical › Brand › Voice</span>
+                  <span class="dbvc-ve-control-center__group-count">5 controls</span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ================ 13: reduced-motion (badge) ================ -->
+  <section class="dbvc-ve-control-center-mockup__gallery-cell">
+    <span class="dbvc-ve-control-center-mockup__gallery-caption">13 · reduced-motion</span>
+    <span class="dbvc-ve-control-center-mockup__gallery-note">Under prefers-reduced-motion: reduce, slide-in and spinner rotation are suppressed. R4 also suppresses group-header disclosure rotation.</span>
+    <aside class="dbvc-ve-control-center dbvc-ve-control-center--inline" role="complementary">
+      <header class="dbvc-ve-control-center__header">
+        <span class="dbvc-ve-control-center__header-icon">▤</span>
+        <div class="dbvc-ve-control-center__title-block">
+          <h2 class="dbvc-ve-control-center__title">Global Brand Controls</h2>
+          <span class="dbvc-ve-control-center__summary-chip">Motion reduced</span>
+        </div>
+        <button type="button" class="dbvc-ve-control-center__close" aria-label="Close">&times;</button>
+      </header>
+      <div class="dbvc-ve-control-center__panel-state">
+        <p class="dbvc-ve-control-center__panel-state-title">Reduced-motion mode</p>
+        <p class="dbvc-ve-control-center__panel-state-body">Drawer slide-in, spinner rotations, and group-header chevron rotation are disabled. Content still renders identically.</p>
+      </div>
+    </aside>
+  </section>
+
+</div>
+
+</body>
+</html>

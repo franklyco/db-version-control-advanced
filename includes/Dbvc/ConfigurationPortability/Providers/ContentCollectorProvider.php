@@ -135,6 +135,11 @@ final class ContentCollectorProvider extends AbstractOptionArrayDomainProvider
         ];
     }
 
+    public function get_import_dependencies(array $incoming): array
+    {
+        return $this->get_class_dependency($incoming, 'DBVC_CC_Contracts', __('Content Collector', 'dbvc'));
+    }
+
     protected function get_option_key(): string
     {
         return class_exists('DBVC_CC_Contracts') ? \DBVC_CC_Contracts::OPTION_SETTINGS : 'dbvc_cc_settings';

@@ -61,6 +61,15 @@ final class MasterToolsProvider extends AbstractOptionArrayDomainProvider
         ];
     }
 
+    public function get_import_dependencies(array $incoming): array
+    {
+        return array_merge(
+            $this->get_class_dependency($incoming, 'DBVC_Master_Settings', __('Master Tools settings', 'dbvc')),
+            $this->get_value_dependencies($incoming, 'sample_post_types', 'post_type'),
+            $this->get_value_dependencies($incoming, 'sample_taxonomies', 'taxonomy')
+        );
+    }
+
     protected function get_option_key(): string
     {
         return class_exists('DBVC_Master_Settings') ? \DBVC_Master_Settings::OPTION_SETTINGS : 'dbvc_master_settings';

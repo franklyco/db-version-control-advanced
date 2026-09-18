@@ -331,6 +331,33 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             return self::import_wsform_form($payload, true);
         }
 
+        public static function export_wsform_form_snapshot_for_entity_editor(int $form_id)
+        {
+            $form_id = absint($form_id);
+            if ($form_id <= 0) {
+                return new WP_Error('dbvc_wsform_snapshot_invalid_form', __('Invalid WS Form ID for snapshot.', 'dbvc'));
+            }
+
+            $filtered = apply_filters('dbvc_third_party_wsform_form_snapshot_payload', null, $form_id);
+            if (is_wp_error($filtered)) {
+                return $filtered;
+            }
+            if (is_array($filtered)) {
+                return function_exists('dbvc_normalize_for_json') ? dbvc_normalize_for_json($filtered) : $filtered;
+            }
+
+            if (! self::is_wsform_available()) {
+                return new WP_Error('dbvc_wsform_unavailable', __('WS Form is not available on this site.', 'dbvc'));
+            }
+
+            $payload = self::build_wsform_form_export_payload($form_id);
+            if (! is_array($payload)) {
+                return new WP_Error('dbvc_wsform_snapshot_failed', __('Unable to capture the current WS Form before update.', 'dbvc'));
+            }
+
+            return $payload;
+        }
+
         public static function import_wsform_settings_for_entity_editor(array $payload)
         {
             $result = self::import_wsform_settings($payload);
@@ -554,8 +581,26 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                     if ($source_status === 'publish') {
                         $ws_form->db_publish(true);
                     }
-                } catch (Exception $e) {
-                    return new WP_Error('dbvc_wsform_import_failed', $e->getMessage());
+                } catch (Throwable $e) {
+                    if (class_exists('DBVC_Sync_Logger')) {
+                        DBVC_Sync_Logger::log('WS Form import failed', [
+                            'uid'           => $uid,
+                            'source_status' => $source_status,
+                            'existing_id'   => $existing_id,
+                            'form_id'       => isset($ws_form->id) ? (int) $ws_form->id : 0,
+                            'error_class'   => get_class($e),
+                            'error'         => $e->getMessage(),
+                        ]);
+                    }
+
+                    return new WP_Error(
+                        'dbvc_wsform_import_failed',
+                        sprintf(__('WS Form import failed: %s', 'dbvc'), $e->getMessage()),
+                        [
+                            'status'      => 500,
+                            'error_class' => get_class($e),
+                        ]
+                    );
                 }
 
                 if (! $return_details) {

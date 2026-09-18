@@ -67,7 +67,28 @@ final class AssetLoader
         $style_version = $this->resolveAssetVersion('assets/css/overlay.css');
         $api_version = $this->resolveAssetVersion('assets/js/api-client.js');
         $overlay_version = $this->resolveAssetVersion('assets/js/overlay-app.js');
-        $overlay_dependencies = ['dbvc-visual-editor-api-client'];
+        // RK-011 Slice 1: shared wp.media frame factory. Same wiring pattern as
+        // api-client.js — a small standalone module both overlay and media-manager
+        // depend on, so the frame construction stays deduplicated.
+        $media_frame_factory_version = $this->resolveAssetVersion('assets/js/media-frame-factory.js');
+        $media_manager_enabled = $this->isMediaManagerEnabled();
+        $media_manager_style_version = $this->resolveAssetVersion('assets/css/media-manager.css');
+        $media_manager_script_version = $this->resolveAssetVersion('assets/js/media-manager-app.js');
+        // R3-C-2: Brand Control Center drawer assets are only enqueued when both the master
+        // Visual Editor switch and OPTION_CONTROL_CENTER_ENABLED are on (D-063). Bricks
+        // Builder exclusion inherits — this whole enqueue path is already skipped inside
+        // Bricks by the parent shouldLoadFrontendAssets() check.
+        $control_center_enabled = $this->isControlCenterEnabled();
+        $control_center_style_version = $this->resolveAssetVersion('assets/css/control-center.css');
+        $control_center_script_version = $this->resolveAssetVersion('assets/js/brand-control-center-app.js');
+        // R6-D-1: Site Manager Workspace drawer. Same gate shape as the BCC
+        // (master switch AND OPTION_WORKSPACE_ENABLED, default off). Depends on
+        // the BCC script when that is enabled so its capture-phase Escape
+        // handler registers AFTER the BCC's (contract §6 ordering).
+        $workspace_enabled = $this->isWorkspaceEnabled();
+        $workspace_style_version = $this->resolveAssetVersion('assets/css/workspace.css');
+        $workspace_script_version = $this->resolveAssetVersion('assets/js/workspace-app.js');
+        $overlay_dependencies = ['dbvc-visual-editor-api-client', 'dbvc-visual-editor-media-frame-factory'];
 
         if (function_exists('wp_enqueue_editor')) {
             wp_enqueue_editor();
@@ -101,12 +122,81 @@ final class AssetLoader
         );
 
         wp_enqueue_script(
+            'dbvc-visual-editor-media-frame-factory',
+            $base_url . 'assets/js/media-frame-factory.js',
+            [],
+            $media_frame_factory_version,
+            true
+        );
+
+        wp_enqueue_script(
             'dbvc-visual-editor-overlay',
             $base_url . 'assets/js/overlay-app.js',
             $overlay_dependencies,
             $overlay_version,
             true
         );
+
+        if ($media_manager_enabled) {
+            wp_enqueue_style(
+                'dbvc-visual-editor-media-manager',
+                $base_url . 'assets/css/media-manager.css',
+                ['dbvc-visual-editor-overlay'],
+                $media_manager_style_version
+            );
+
+            wp_enqueue_script(
+                'dbvc-visual-editor-media-manager',
+                $base_url . 'assets/js/media-manager-app.js',
+                ['dbvc-visual-editor-overlay'],
+                $media_manager_script_version,
+                true
+            );
+        }
+
+        if ($control_center_enabled) {
+            wp_enqueue_style(
+                'dbvc-visual-editor-control-center',
+                $base_url . 'assets/css/control-center.css',
+                ['dbvc-visual-editor-overlay'],
+                $control_center_style_version
+            );
+
+            wp_enqueue_script(
+                'dbvc-visual-editor-control-center',
+                $base_url . 'assets/js/brand-control-center-app.js',
+                ['dbvc-visual-editor-overlay'],
+                $control_center_script_version,
+                true
+            );
+        }
+
+        if ($workspace_enabled) {
+            $workspace_dependencies = ['dbvc-visual-editor-overlay'];
+
+            if ($control_center_enabled) {
+                $workspace_dependencies[] = 'dbvc-visual-editor-control-center';
+            }
+
+            if ($media_manager_enabled) {
+                $workspace_dependencies[] = 'dbvc-visual-editor-media-manager';
+            }
+
+            wp_enqueue_style(
+                'dbvc-visual-editor-workspace',
+                $base_url . 'assets/css/workspace.css',
+                ['dbvc-visual-editor-overlay'],
+                $workspace_style_version
+            );
+
+            wp_enqueue_script(
+                'dbvc-visual-editor-workspace',
+                $base_url . 'assets/js/workspace-app.js',
+                $workspace_dependencies,
+                $workspace_script_version,
+                true
+            );
+        }
 
         wp_localize_script(
             'dbvc-visual-editor-overlay',
@@ -123,6 +213,33 @@ final class AssetLoader
                 'toggleUrl' => $this->edit_mode->buildToggleUrl(),
                 'supportsWpEditor' => function_exists('wp_enqueue_editor') && (wp_script_is('wp-editor', 'enqueued') || wp_script_is('wp-editor', 'done') || wp_script_is('wp-editor', 'to_do')),
                 'supportsWpMedia' => function_exists('wp_enqueue_media') && wp_script_is('media-editor', 'enqueued'),
+                'canUpload' => current_user_can('upload_files'),
+                'mediaManager' => [
+                    'enabled' => $media_manager_enabled,
+                    'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor/media-manager')),
+                    // R2-H Slice 2c: open the Media Manager from the durable, cross-user
+                    // Media Index (instant, read-time per-user filtered) with the
+                    // ephemeral scan as an automatic fallback. Filterable so a site can
+                    // force the scan-only path if needed.
+                    'indexList' => (bool) apply_filters('dbvc_visual_editor_media_index_list_enabled', $media_manager_enabled),
+                ],
+                // R3-C-2: Brand Control Center drawer bootstrap. `restBase` is the
+                // session-neutral prefix; the drawer builds session-scoped URLs as
+                // `restBase + '/session/' + sessionId + '/control-center/{controls|open}'`
+                // — matches the R3-C-1 route shape (session-scoped so the open route can
+                // attach its minted descriptor to the same Visual Editor session the
+                // popover uses).
+                'controlCenter' => [
+                    'enabled' => $control_center_enabled,
+                    'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor')),
+                ],
+                // R6-D-1: Site Manager Workspace bootstrap. `restBase` is the
+                // same session-neutral prefix; the drawer calls the existing
+                // `object-search` route through DBVCVisualEditorApi (R6-D-2).
+                'workspace' => [
+                    'enabled' => $workspace_enabled,
+                    'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor')),
+                ],
                 'strings' => [
                     'modeActive' => __('Visual Editor active', 'dbvc'),
                     'supportedCount' => __('marked fields', 'dbvc'),
@@ -138,6 +255,43 @@ final class AssetLoader
                     'panelEmpty' => __('No field is selected yet.', 'dbvc'),
                     'panelLoading' => __('Loading field details…', 'dbvc'),
                     'panelSaving' => __('Saving…', 'dbvc'),
+                    // true_false: labels for the boolean panel controller
+                    // (checkbox + label) and the drawer's boolean chip
+                    // fallback when the server summary is unlocalized.
+                    'panelBooleanOn' => __('On', 'dbvc'),
+                    'panelBooleanOff' => __('Off', 'dbvc'),
+                    // R5.later-y (2026-09-04) — palette overview panel. Header
+                    // text pluralised via {count}; empty state fires when the
+                    // palette has no color leaves; per-cell aria-label
+                    // injects the color's {label} for screen-reader
+                    // disambiguation. R5.later-y-2 (2026-09-05) — updated
+                    // header wording to reflect inline auto-save (was
+                    // "Click a swatch to edit it individually" pre-R5.later-y-2)
+                    // and added per-cell save status announcements
+                    // (Saving… / Saved / Save failed) that populate the
+                    // aria-live status slot inside each cell.
+                    'panelPaletteOverviewHeaderOne' => __('{count} color in this palette. Each color saves automatically when changed.', 'dbvc'),
+                    'panelPaletteOverviewHeaderMany' => __('{count} colors in this palette. Each color saves automatically when changed.', 'dbvc'),
+                    'panelPaletteOverviewEmpty' => __('No colors in this palette yet.', 'dbvc'),
+                    'panelPaletteOverviewCellLabel' => __('Edit {label}', 'dbvc'),
+                    'panelPaletteOverviewCellSaving' => __('Saving…', 'dbvc'),
+                    'panelPaletteOverviewCellSaved' => __('Saved', 'dbvc'),
+                    'panelPaletteOverviewCellError' => __('Save failed', 'dbvc'),
+                    // R5.later-b (2026-09-05) — Option Y bulk-palette
+                    // popover. Full-attention modal surface for palette
+                    // editing at a larger canvas + per-swatch Copy-hex
+                    // + a Copy-all-as-CSS-variables header action.
+                    // `controlCenterPaletteExpand` labels the compact
+                    // Expand icon button on palette parent rows.
+                    'controlCenterPaletteExpand' => __('Expand {name}', 'dbvc'),
+                    'panelPaletteBulkLoading' => __('Loading palette…', 'dbvc'),
+                    'panelPaletteBulkFailed' => __('Could not load palette.', 'dbvc'),
+                    'panelPaletteBulkFallbackTitle' => __('Palette editor', 'dbvc'),
+                    'panelPaletteBulkClose' => __('Close palette editor', 'dbvc'),
+                    'panelPaletteBulkCopyHex' => __('Copy hex', 'dbvc'),
+                    'panelPaletteBulkCopyAll' => __('Copy all as CSS variables', 'dbvc'),
+                    'panelPaletteBulkCopied' => __('Copied to clipboard.', 'dbvc'),
+                    'panelPaletteBulkCopyFailed' => __('Could not copy to clipboard.', 'dbvc'),
                     'panelReady' => __('Select a marker to inspect or edit it.', 'dbvc'),
                     'panelSaved' => __('Saved successfully.', 'dbvc'),
                     'panelSource' => __('Source', 'dbvc'),
@@ -146,6 +300,7 @@ final class AssetLoader
                     'panelSaveContractDetail' => __('Contract detail', 'dbvc'),
                     'panelSourceLabel' => __('Label', 'dbvc'),
                     'panelSourceExpression' => __('Dynamic tag', 'dbvc'),
+                    'panelRenderedHtmlTag' => __('Rendered HTML tag', 'dbvc'),
                     'panelSourceRepeater' => __('acf repeater', 'dbvc'),
                     'panelSourceFlexible' => __('acf flexible', 'dbvc'),
                     'panelScopeReadonly' => __('inspect only', 'dbvc'),
@@ -217,6 +372,8 @@ final class AssetLoader
                     'panelCollectionResults' => __('Search results', 'dbvc'),
                     'panelCollectionEmpty' => __('No connected posts are set yet.', 'dbvc'),
                     'panelCollectionNoResults' => __('No matching posts were found.', 'dbvc'),
+                    'panelCollectionTermsEmpty' => __('No linked terms are set yet.', 'dbvc'),
+                    'panelCollectionTermsNoResults' => __('No matching terms were found.', 'dbvc'),
                     'panelCollectionSearching' => __('Searching…', 'dbvc'),
                     'panelCollectionAdd' => __('Add', 'dbvc'),
                     'panelCollectionReplace' => __('Replace', 'dbvc'),
@@ -307,7 +464,190 @@ final class AssetLoader
                     'toolbarStatus' => __('Visual Editor status', 'dbvc'),
                     'toolbarReviewFields' => __('Review fields', 'dbvc'),
                     'toolbarGoToObject' => __('Go to object', 'dbvc'),
+                    'toolbarMediaManager' => __('Media Manager', 'dbvc'),
                     'toolbarSharedGlobals' => __('Shared globals', 'dbvc'),
+                    'toolbarControlCenter' => __('Global Brand Controls', 'dbvc'),
+                    'controlCenterTitle' => __('Global Brand Controls', 'dbvc'),
+                    'controlCenterClose' => __('Close Global Brand Control Center', 'dbvc'),
+                    // VE-prefs-1: toolbar Preferences popover (appearance override).
+                    'toolbarPreferences' => __('Visual Editor preferences', 'dbvc'),
+                    'preferencesTitle' => __('Preferences', 'dbvc'),
+                    'preferencesAppearanceLabel' => __('Appearance', 'dbvc'),
+                    'preferencesAppearanceSystem' => __('System', 'dbvc'),
+                    'preferencesAppearanceLight' => __('Light', 'dbvc'),
+                    'preferencesAppearanceDark' => __('Dark', 'dbvc'),
+                    'preferencesAppearanceHint' => __('System follows your operating system setting. Applies to Visual Editor surfaces only.', 'dbvc'),
+                    'preferencesAnnounceScheme' => __('Appearance set to {scheme}.', 'dbvc'),
+                    // R6-D-1: Site Manager Workspace drawer strings (contract §10;
+                    // copy accepted from the R6-C mockup, D-074).
+                    'toolbarWorkspace' => __('Site Manager', 'dbvc'),
+                    'workspaceEyebrow' => __('Visual Editor', 'dbvc'),
+                    'workspaceTitle' => __('Site Manager', 'dbvc'),
+                    'workspaceClose' => __('Close Site Manager', 'dbvc'),
+                    'workspaceCurrentLabel' => __('Current object', 'dbvc'),
+                    'workspaceCurrentHere' => __('You are here', 'dbvc'),
+                    'workspaceCurrentPage' => __('Current page', 'dbvc'),
+                    'workspaceCurrentTerm' => __('Current term', 'dbvc'),
+                    'workspaceSectionsLabel' => __('Site Manager sections', 'dbvc'),
+                    'workspaceSectionNavigate' => __('Navigate', 'dbvc'),
+                    'workspaceSectionTools' => __('Tools', 'dbvc'),
+                    'workspaceSearchLabel' => __('Search objects', 'dbvc'),
+                    'workspaceSearchPlaceholder' => __('Search pages, posts, and terms…', 'dbvc'),
+                    'workspaceSearchClear' => __('Clear search', 'dbvc'),
+                    'workspaceTypesLabel' => __('Object types', 'dbvc'),
+                    // R6.1-b: kind filter + sort select.
+                    'workspaceKindLabel' => __('Show', 'dbvc'),
+                    'workspaceKindAll' => __('All', 'dbvc'),
+                    'workspaceKindContent' => __('Content', 'dbvc'),
+                    'workspaceKindTaxonomies' => __('Taxonomies', 'dbvc'),
+                    'workspaceSortLabel' => __('Sort', 'dbvc'),
+                    'workspaceSortRecent' => __('Recently updated', 'dbvc'),
+                    'workspaceSortTitleAsc' => __('Title A → Z', 'dbvc'),
+                    'workspaceSortTitleDesc' => __('Title Z → A', 'dbvc'),
+                    'workspaceSortNewest' => __('Newest first', 'dbvc'),
+                    'workspaceSortOldest' => __('Oldest first', 'dbvc'),
+                    'workspaceSortRelevance' => __('Best match', 'dbvc'),
+                    'workspaceTypeAll' => __('All', 'dbvc'),
+                    'workspaceTypeBackendOnly' => __('(backend only)', 'dbvc'),
+                    'workspaceStatusIdle' => __('Search or pick a type to start.', 'dbvc'),
+                    'workspaceStatusTypesLoading' => __('Loading object types…', 'dbvc'),
+                    'workspaceStatusSearching' => __('Searching…', 'dbvc'),
+                    'workspaceStatusShowing' => __('Showing {count}', 'dbvc'),
+                    'workspaceStatusShowingMore' => __('Showing {count} · more available', 'dbvc'),
+                    'workspaceStatusNoResults' => __('No results', 'dbvc'),
+                    'workspaceEmptyType' => __('No {label} yet.', 'dbvc'),
+                    'workspaceEmptyTypeHint' => __('New items are created in the WordPress admin; they will appear here once they exist.', 'dbvc'),
+                    'workspaceEmptySearch' => __('No matches for “{search}” in {label}.', 'dbvc'),
+                    'workspaceEmptySearchHint' => __('Try a different word, or search all types.', 'dbvc'),
+                    'workspaceError' => __('Object search failed.', 'dbvc'),
+                    'workspaceErrorHint' => __('The last request did not complete. The rows below are from the previous result and may be stale.', 'dbvc'),
+                    'workspaceRetry' => __('Retry', 'dbvc'),
+                    'workspaceModeInactive' => __('Visual Editor mode is no longer active.', 'dbvc'),
+                    'workspaceModeInactiveHint' => __('Refresh the page to continue. Your place on the site is unchanged.', 'dbvc'),
+                    'workspaceReload' => __('Refresh page', 'dbvc'),
+                    'workspaceLoadMore' => __('Load more', 'dbvc'),
+                    'workspaceLoading' => __('Loading…', 'dbvc'),
+                    'workspaceEnd' => __('No more results', 'dbvc'),
+                    'workspaceResultsLabel' => __('Objects', 'dbvc'),
+                    'workspaceOpenFrontend' => __('Open', 'dbvc'),
+                    'workspaceOpenBackend' => __('Edit', 'dbvc'),
+                    'workspaceOpensNewTab' => __('(opens in a new tab)', 'dbvc'),
+                    'workspaceNoPublicPage' => __('No public page', 'dbvc'),
+                    'workspaceNoPublicArchive' => __('No public archive', 'dbvc'),
+                    'workspaceToolsLabel' => __('Tools', 'dbvc'),
+                    'workspaceToolReviewFields' => __('Review fields', 'dbvc'),
+                    'workspaceToolReviewFieldsDetail' => __('Marked fields on this page', 'dbvc'),
+                    'workspaceToolControlCenter' => __('Brand & Globals', 'dbvc'),
+                    'workspaceToolControlCenterDetail' => __('Global Brand Controls drawer', 'dbvc'),
+                    'workspaceToolMediaManager' => __('Media Manager', 'dbvc'),
+                    'workspaceToolMediaManagerDetail' => __('Missing-image scan and site media index', 'dbvc'),
+                    'workspaceToolEditObject' => __('Edit active object', 'dbvc'),
+                    'workspaceToolEditObjectDetail' => __('Opens the WordPress editor in a new tab', 'dbvc'),
+                    'workspaceToolExit' => __('Exit Visual Editor', 'dbvc'),
+                    'workspaceToolUnavailable' => __('Not enabled on this site', 'dbvc'),
+                    'workspaceToolNoEditLink' => __('No backend edit link for this page', 'dbvc'),
+                    'workspaceAnnounceOpened' => __('Site Manager opened.', 'dbvc'),
+                    'workspaceAnnounceClosed' => __('Site Manager closed.', 'dbvc'),
+                    'controlCenterSummary' => __('{count} controls', 'dbvc'),
+                    'controlCenterSearchLabel' => __('Search controls', 'dbvc'),
+                    // R4-C-1a: placeholder widened to reflect the R4-A `q`
+                    // param matching label OR description.
+                    'controlCenterSearchPlaceholder' => __('Search labels, descriptions, owner…', 'dbvc'),
+                    'controlCenterRefreshing' => __('Refreshing…', 'dbvc'),
+                    'controlCenterProviderErrorSingular' => __('{count} provider unavailable — {names}', 'dbvc'),
+                    'controlCenterProviderErrorPlural' => __('{count} providers unavailable — {names}', 'dbvc'),
+                    'controlCenterProviderErrorDismiss' => __('Dismiss', 'dbvc'),
+                    // R4-C-1b: value-summary chip label for relationship /
+                    // post_object families. Text prefaces the connected-item
+                    // count that renders in the row's action cell.
+                    'controlCenterValueRelationshipConnected' => __('connected', 'dbvc'),
+                    // R5.1-a: text-family chip truncation suffix — appended
+                    // after the preview when the value was longer than the
+                    // 32-character preview cap. Shows the ORIGINAL character
+                    // count so the viewer can see how much was cut.
+                    'controlCenterValueTextTruncated' => __('({count})', 'dbvc'),
+                    // R5.2-a: choice-family chip suffix for multi-checkbox
+                    // summaries — appended after the count.
+                    'controlCenterValueChoiceSelected' => __('selected', 'dbvc'),
+                    // R5.2-b: wysiwyg-family chip suffix — word count for
+                    // the stripped-text preview.
+                    'controlCenterValueWysiwygWords' => __('· {count} words', 'dbvc'),
+                    // R4-C-2: header segmented view-mode toggle (By category
+                    // vs By provider), collapsible group headers, search
+                    // wrap Clear button, and default provider labels.
+                    'controlCenterViewToggleLabel' => __('Category view', 'dbvc'),
+                    'controlCenterViewByCategory' => __('By category', 'dbvc'),
+                    'controlCenterViewByProvider' => __('By provider', 'dbvc'),
+                    'controlCenterGroupExpand' => __('Expand group', 'dbvc'),
+                    'controlCenterGroupCollapse' => __('Collapse group', 'dbvc'),
+                    'controlCenterGroupControlsCount' => __('{count} controls', 'dbvc'),
+                    'controlCenterGroupUnnamed' => __('Other', 'dbvc'),
+                    // R5.7-b — tree row disclosure + row-count chip.
+                    // {name} is the parent row's label; keeps the aria-label
+                    // scannable ("Expand Menus" vs generic "Expand").
+                    'controlCenterTreeExpand' => __('Expand {name}', 'dbvc'),
+                    'controlCenterTreeCollapse' => __('Collapse {name}', 'dbvc'),
+                    'controlCenterTreeChildCountOne' => __('{count} row', 'dbvc'),
+                    'controlCenterTreeChildCountMany' => __('{count} rows', 'dbvc'),
+                    // R5.later-c: tree-parent aggregate chip in the value-inline slot.
+                    'controlCenterValueAggregateRepeaterOne' => __('{count} row', 'dbvc'),
+                    'controlCenterValueAggregateRepeaterMany' => __('{count} rows', 'dbvc'),
+                    'controlCenterValueAggregatePaletteOne' => __('{count} color', 'dbvc'),
+                    'controlCenterValueAggregatePaletteMany' => __('{count} colors', 'dbvc'),
+                    'controlCenterProviderShared' => __('Shared Globals', 'dbvc'),
+                    'controlCenterProviderVertical' => __('Vertical', 'dbvc'),
+                    'controlCenterProviderUnknown' => __('Other', 'dbvc'),
+                    'controlCenterClearSearch' => __('Clear search', 'dbvc'),
+                    // R4-D-1: transient confirmation strip shown briefly
+                    // after the editor panel saves the row the drawer
+                    // opened. Same string doubles as the polite-live-region
+                    // announcement text.
+                    'controlCenterSaveStatus' => __('Saved {label}.', 'dbvc'),
+                    'controlCenterTabAll' => __('All', 'dbvc'),
+                    'controlCenterTablist' => __('Category', 'dbvc'),
+                    'controlCenterStatusLabel' => __('Status', 'dbvc'),
+                    'controlCenterPriorityLabel' => __('Priority', 'dbvc'),
+                    'controlCenterFieldLabel' => __('Field', 'dbvc'),
+                    'controlCenterStatusAvailable' => __('Available', 'dbvc'),
+                    'controlCenterStatusInspectOnly' => __('View only', 'dbvc'),
+                    'controlCenterStatusUnsupported' => __('Unsupported', 'dbvc'),
+                    'controlCenterStatusUnavailable' => __('Unavailable', 'dbvc'),
+                    'controlCenterActionOpen' => __('Open', 'dbvc'),
+                    'controlCenterActionView' => __('View', 'dbvc'),
+                    'controlCenterActionOpening' => __('Opening…', 'dbvc'),
+                    'controlCenterActionUnsupported' => __('Unsupported', 'dbvc'),
+                    'controlCenterActionUnavailable' => __('Unavailable', 'dbvc'),
+                    'controlCenterClearFilters' => __('Clear filters', 'dbvc'),
+                    'controlCenterDismiss' => __('Dismiss', 'dbvc'),
+                    'controlCenterRetry' => __('Retry', 'dbvc'),
+                    'controlCenterFooterCount' => __('{visible} of {total} controls', 'dbvc'),
+                    'controlCenterFooterHidden' => __('{hidden} hidden by filters', 'dbvc'),
+                    'controlCenterLoadingTitle' => __('Loading Global Brand Controls', 'dbvc'),
+                    'controlCenterLoadingBody' => __('Fetching registered controls for this session.', 'dbvc'),
+                    'controlCenterEmptyTitle' => __('No global controls registered yet', 'dbvc'),
+                    'controlCenterEmptyBody' => __('Once a provider registers controls, they will appear here.', 'dbvc'),
+                    'controlCenterEmptyFilteredTitle' => __('No controls match these filters', 'dbvc'),
+                    'controlCenterEmptyFilteredBody' => __('Clear the filters to see every registered control again.', 'dbvc'),
+                    'controlCenterErrorTitle' => __('Controls could not be loaded', 'dbvc'),
+                    'controlCenterErrorBody' => __('The registered-controls request failed. Retry when you are ready.', 'dbvc'),
+                    'controlCenterOpenErrorUnknown' => __('That control is no longer available.', 'dbvc'),
+                    'controlCenterOpenErrorForbidden' => __('You cannot edit that control right now.', 'dbvc'),
+                    'controlCenterOpenErrorRefresh' => __('The control changed since it was listed. Refresh the drawer before trying again.', 'dbvc'),
+                    'controlCenterAnnounceOpened' => __('Global Brand Controls opened. Showing {count} registered controls.', 'dbvc'),
+                    'controlCenterAnnounceClosed' => __('Global Brand Controls closed.', 'dbvc'),
+                    'controlCenterAnnounceFiltered' => __('{count} controls visible after filters.', 'dbvc'),
+                    'controlCenterAnnounceOpenSuccess' => __('Opened {label}.', 'dbvc'),
+                    'controlCenterAnnounceOpenError' => __('Could not open {label}. {message}', 'dbvc'),
+                    'controlCenterCategoryGlobals' => __('Globals', 'dbvc'),
+                    'controlCenterCategoryBrand' => __('Brand', 'dbvc'),
+                    'controlCenterCategoryContact' => __('Contact', 'dbvc'),
+                    'controlCenterCategoryContent' => __('Content', 'dbvc'),
+                    'controlCenterCategoryDesign' => __('Design', 'dbvc'),
+                    'controlCenterCategoryLayout' => __('Layout', 'dbvc'),
+                    'controlCenterCategoryLegal' => __('Legal', 'dbvc'),
+                    'controlCenterCategorySeo' => __('SEO', 'dbvc'),
+                    'controlCenterCategoryGeneral' => __('General', 'dbvc'),
+                    'controlCenterOwnerHint' => __('{ownerType}/{ownerSubtype} · {fieldFamily}', 'dbvc'),
                     'toolbarSharedGlobalsLoading' => __('Loading shared globals...', 'dbvc'),
                     'toolbarSharedGlobalsFailed' => __('Shared globals could not be loaded.', 'dbvc'),
                     'toolbarMore' => __('More options', 'dbvc'),
@@ -333,6 +673,147 @@ final class AssetLoader
                     'toolbarSharedGlobalEditable' => __('Writable on page', 'dbvc'),
                     'toolbarSharedGlobalConfigured' => __('Configured global', 'dbvc'),
                     'toolbarSharedGlobalInspectOnly' => __('Inspect only', 'dbvc'),
+                    'mediaManagerTitle' => __('Media Manager', 'dbvc'),
+                    'mediaManagerSubtitle' => __('Read-only scan of published content for empty image fields.', 'dbvc'),
+                    'mediaManagerClose' => __('Close Media Manager', 'dbvc'),
+                    'mediaManagerShellTitle' => __('Ready to check media', 'dbvc'),
+                    'mediaManagerShellDescription' => __('Open the Media Manager to check for a current read-only scan.', 'dbvc'),
+                    'mediaManagerReadOnly' => __('R1 is read-only. No media assignments or content values can be changed from this panel.', 'dbvc'),
+                    'mediaManagerActionRefresh' => __('Check again', 'dbvc'),
+                    'mediaManagerActionStart' => __('Start new scan', 'dbvc'),
+                    'mediaManagerActionNext' => __('Continue scan', 'dbvc'),
+                    'mediaManagerActionRetry' => __('Retry scan', 'dbvc'),
+                    'mediaManagerActionCancel' => __('Cancel scan', 'dbvc'),
+                    'mediaManagerProgressLabel' => __('Processed', 'dbvc'),
+                    'mediaManagerStateLoadingTitle' => __('Checking Media Manager state', 'dbvc'),
+                    'mediaManagerStateLoadingDescription' => __('Waiting for the protected scan service to respond.', 'dbvc'),
+                    'mediaManagerStateNoScanTitle' => __('No current scan', 'dbvc'),
+                    'mediaManagerStateNoScanDescription' => __('Start a read-only scan to check published content for missing media.', 'dbvc'),
+                    'mediaManagerStateIndexTitle' => __('Site media index', 'dbvc'),
+                    'mediaManagerStateIndexDescription' => __('Showing entities with missing media from the durable site index. Start a new scan for a fresh full check.', 'dbvc'),
+                    'mediaManagerStateScanningTitle' => __('Scan in progress', 'dbvc'),
+                    'mediaManagerStateScanningDescription' => __('Continue the bounded scan when you are ready for the next chunk.', 'dbvc'),
+                    'mediaManagerStateCompleteTitle' => __('Scan complete', 'dbvc'),
+                    'mediaManagerStateCompleteDescription' => __('The current scan is ready. Search or filter the bounded results below.', 'dbvc'),
+                    'mediaManagerStateFailedTitle' => __('Scan could not continue', 'dbvc'),
+                    'mediaManagerStateFailedDescription' => __('The scan stopped safely. Retry is available only when the server permits it.', 'dbvc'),
+                    'mediaManagerStateCanceledTitle' => __('Scan canceled', 'dbvc'),
+                    'mediaManagerStateCanceledDescription' => __('No content was changed. You can start a new read-only scan.', 'dbvc'),
+                    'mediaManagerStateInvalidatedTitle' => __('Scan configuration changed', 'dbvc'),
+                    'mediaManagerStateInvalidatedDescription' => __('Start a fresh scan before relying on these results.', 'dbvc'),
+                    'mediaManagerStateStaleTitle' => __('Scan state changed', 'dbvc'),
+                    'mediaManagerStateStaleDescription' => __('A newer scan revision is authoritative. Check again before continuing.', 'dbvc'),
+                    'mediaManagerStateRequestErrorTitle' => __('Media Manager is unavailable', 'dbvc'),
+                    'mediaManagerStateRequestErrorDescription' => __('The protected scan request could not be completed.', 'dbvc'),
+                    'mediaManagerStateInvalidResponse' => __('The Media Manager returned an invalid scan response.', 'dbvc'),
+                    'mediaManagerStateClientUnavailable' => __('The Media Manager request client is unavailable.', 'dbvc'),
+                    'mediaManagerResultsTitle' => __('Missing media results', 'dbvc'),
+                    'mediaManagerSummaryCopy' => __('{entities} entities with findings · {findings} supported empty fields in the current scan', 'dbvc'),
+                    'mediaManagerIndexSummaryCopy' => __('{entities} entities with missing media from the site index', 'dbvc'),
+                    'mediaManagerSearchLabel' => __('Search entities', 'dbvc'),
+                    'mediaManagerSearchPlaceholder' => __('Search entities…', 'dbvc'),
+                    'mediaManagerEntityFilterLabel' => __('Entity type', 'dbvc'),
+                    'mediaManagerFieldFilterLabel' => __('Field type', 'dbvc'),
+                    'mediaManagerFilterAll' => __('All', 'dbvc'),
+                    'mediaManagerFilterPosts' => __('Posts', 'dbvc'),
+                    'mediaManagerFilterTerms' => __('Terms', 'dbvc'),
+                    'mediaManagerFamilyFeaturedImage' => __('Featured image', 'dbvc'),
+                    'mediaManagerFamilyAcfImage' => __('ACF image', 'dbvc'),
+                    'mediaManagerFamilyAcfGallery' => __('ACF gallery', 'dbvc'),
+                    'mediaManagerSortLabel' => __('Sort', 'dbvc'),
+                    'mediaManagerSortEntityAsc' => __('Entity (A–Z)', 'dbvc'),
+                    'mediaManagerSortEntityDesc' => __('Entity (Z–A)', 'dbvc'),
+                    'mediaManagerSortMissingDesc' => __('Missing fields (most first)', 'dbvc'),
+                    'mediaManagerSortMissingAsc' => __('Missing fields (fewest first)', 'dbvc'),
+                    'mediaManagerSortScannedDesc' => __('Recently scanned', 'dbvc'),
+                    'mediaManagerSortScannedAsc' => __('Oldest scanned', 'dbvc'),
+                    'mediaManagerClearFilters' => __('Clear filters', 'dbvc'),
+                    'mediaManagerRetryResults' => __('Retry results', 'dbvc'),
+                    'mediaManagerResultsLoading' => __('Loading matching entities…', 'dbvc'),
+                    'mediaManagerResultsLoadingMore' => __('Loading more matching entities…', 'dbvc'),
+                    'mediaManagerTableCaption' => __('Published entities with empty supported media fields. Results use bounded cursor pages.', 'dbvc'),
+                    'mediaManagerColumnEntity' => __('Entity', 'dbvc'),
+                    'mediaManagerColumnType' => __('Type', 'dbvc'),
+                    'mediaManagerColumnMissing' => __('Missing', 'dbvc'),
+                    'mediaManagerColumnFamilies' => __('Field types', 'dbvc'),
+                    'mediaManagerColumnScanned' => __('Scanned', 'dbvc'),
+                    'mediaManagerColumnUpdated' => __('Updated', 'dbvc'),
+                    'mediaManagerColumnFrontend' => __('Front end', 'dbvc'),
+                    'mediaManagerOpenFrontend' => __('Open', 'dbvc'),
+                    'mediaManagerNoFrontendRoute' => __('No route', 'dbvc'),
+                    'mediaManagerUntitledEntity' => __('Untitled content', 'dbvc'),
+                    'mediaManagerExpandRow' => __('Show missing media fields for {entity}', 'dbvc'),
+                    'mediaManagerCollapseRow' => __('Hide missing media fields for {entity}', 'dbvc'),
+                    'mediaManagerExpandedRegionLabel' => __('Missing media fields for {entity}', 'dbvc'),
+                    'mediaManagerExpandedTitle' => __('Missing media fields', 'dbvc'),
+                    'mediaManagerExpansionLoading' => __('Checking the current field state…', 'dbvc'),
+                    'mediaManagerExpansionLoadingAnnouncement' => __('Checking missing media fields for {entity}.', 'dbvc'),
+                    'mediaManagerExpansionCompleteAnnouncement' => __('Field check complete for {entity}. {summary}.', 'dbvc'),
+                    'mediaManagerExpansionErrorAnnouncement' => __('Fields could not be checked for {entity}. {message}', 'dbvc'),
+                    'mediaManagerExpansionErrorTitle' => __('Fields could not be checked', 'dbvc'),
+                    'mediaManagerExpansionInvalid' => __('The Media Manager returned an invalid field response.', 'dbvc'),
+                    'mediaManagerExpansionSummary' => __('{missing} still missing · {changed} changed · {resolved} no longer confirmed · {unavailable} unavailable', 'dbvc'),
+                    'mediaManagerUnknownField' => __('Media field', 'dbvc'),
+                    'mediaManagerFieldStatusMissing' => __('Still missing', 'dbvc'),
+                    'mediaManagerFieldStatusChanged' => __('Changed since scan', 'dbvc'),
+                    'mediaManagerFieldStatusResolved' => __('No longer confirmed missing', 'dbvc'),
+                    'mediaManagerFieldStatusUnavailable' => __('Could not revalidate', 'dbvc'),
+                    'mediaManagerFieldStatusAssigned' => __('Has media', 'dbvc'),
+                    'mediaManagerThumbCount' => __('+{count}', 'dbvc'),
+                    'mediaManagerAssignChooseImage' => __('Choose image', 'dbvc'),
+                    'mediaManagerAssignChooseGallery' => __('Choose gallery images', 'dbvc'),
+                    'mediaManagerAssignReplaceImage' => __('Replace image', 'dbvc'),
+                    'mediaManagerAssignReplaceGallery' => __('Replace selection', 'dbvc'),
+                    'mediaManagerAssignClear' => __('Clear selection', 'dbvc'),
+                    'mediaManagerAssignUnsavedBadge' => __('Unsaved selection', 'dbvc'),
+                    'mediaManagerAssignStagedSingle' => __('1 image selected but not saved.', 'dbvc'),
+                    'mediaManagerAssignStagedPlural' => __('{count} images selected but not saved.', 'dbvc'),
+                    'mediaManagerAssignFrameImageTitle' => __('Select image', 'dbvc'),
+                    'mediaManagerAssignFrameImageButton' => __('Use this image', 'dbvc'),
+                    'mediaManagerAssignFrameGalleryTitle' => __('Select gallery images', 'dbvc'),
+                    'mediaManagerAssignFrameGalleryButton' => __('Use selected images', 'dbvc'),
+                    'mediaManagerAssignPreparing' => __('Opening the Media Library for this field…', 'dbvc'),
+                    'mediaManagerAssignOpening' => __('Opening Media Library…', 'dbvc'),
+                    'mediaManagerAssignUploadUnavailable' => __('Uploading new files is not available for your account. Choose from existing Media Library images.', 'dbvc'),
+                    'mediaManagerFieldStatusSaved' => __('Saved', 'dbvc'),
+                    'mediaManagerRowResolved' => __('Resolved', 'dbvc'),
+                    'mediaManagerAssignStagedAnnouncement' => __('{count} image(s) selected for {label} but not saved yet.', 'dbvc'),
+                    'mediaManagerAssignClearedAnnouncement' => __('Selection cleared. Nothing was saved.', 'dbvc'),
+                    'mediaManagerAssignUnsupported' => __('Media selection is unavailable in this browser session.', 'dbvc'),
+                    'mediaManagerAssignError' => __('The media descriptor could not be prepared.', 'dbvc'),
+                    'mediaManagerAssignStatusChanged' => __('This field changed since the scan. Refresh the scan before assigning media.', 'dbvc'),
+                    'mediaManagerAssignStatusResolved' => __('This field is no longer confirmed missing. Refresh the scan.', 'dbvc'),
+                    'mediaManagerAssignStatusUnavailable' => __('This field can no longer be edited. Refresh the scan.', 'dbvc'),
+                    'mediaManagerAssignSave' => __('Save assignment', 'dbvc'),
+                    'mediaManagerAssignSaving' => __('Saving…', 'dbvc'),
+                    'mediaManagerAssignSavingAnnouncement' => __('Saving media assignment…', 'dbvc'),
+                    'mediaManagerAssignSavedAnnouncement' => __('Media assigned for {label}. This field is no longer empty.', 'dbvc'),
+                    'mediaManagerAssignSaveError' => __('The media assignment could not be saved.', 'dbvc'),
+                    'mediaManagerReplaceImage' => __('Replace image', 'dbvc'),
+                    'mediaManagerReplaceGallery' => __('Replace selection', 'dbvc'),
+                    'mediaManagerReplaceChooseImage' => __('Choose different image', 'dbvc'),
+                    'mediaManagerReplaceChooseGallery' => __('Choose different images', 'dbvc'),
+                    'mediaManagerReplaceUnsavedBadge' => __('Unsaved replacement', 'dbvc'),
+                    'mediaManagerReplaceStagedSingle' => __('1 image selected to replace the current media.', 'dbvc'),
+                    'mediaManagerReplaceStagedPlural' => __('{count} images selected to replace the current media.', 'dbvc'),
+                    'mediaManagerReplacePreparing' => __('Opening the Media Library to replace this field…', 'dbvc'),
+                    'mediaManagerReplaceSave' => __('Save replacement', 'dbvc'),
+                    'mediaManagerReplaceSaving' => __('Replacing…', 'dbvc'),
+                    'mediaManagerReplaceSavingAnnouncement' => __('Saving media replacement…', 'dbvc'),
+                    'mediaManagerReplaceSavedAnnouncement' => __('Media replaced for {label}. This field now points to the new selection.', 'dbvc'),
+                    'mediaManagerReplaceSaveError' => __('The media replacement could not be saved.', 'dbvc'),
+                    'mediaManagerValueUnavailable' => __('Not available', 'dbvc'),
+                    'mediaManagerNoResultsYetTitle' => __('No findings loaded yet', 'dbvc'),
+                    'mediaManagerNoResultsYetDescription' => __('Continue the bounded scan to check more published entities.', 'dbvc'),
+                    'mediaManagerNoMatchesTitle' => __('No entities match these filters', 'dbvc'),
+                    'mediaManagerNoMatchesDescription' => __('Clear the search or widen the entity and field filters. The scan itself is unchanged.', 'dbvc'),
+                    'mediaManagerNoFindingsTitle' => __('No missing media assignments found', 'dbvc'),
+                    'mediaManagerNoFindingsDescription' => __('The current completed scan returned no accessible entities with supported empty media fields.', 'dbvc'),
+                    'mediaManagerIndexEmptyTitle' => __('No missing media in the site index', 'dbvc'),
+                    'mediaManagerIndexEmptyDescription' => __('The durable media index found no accessible entities with supported empty media fields.', 'dbvc'),
+                    'mediaManagerLoadedCount' => __('{count} entities loaded for this query.', 'dbvc'),
+                    'mediaManagerResultsAnnouncement' => __('{count} entities loaded for the current query.', 'dbvc'),
+                    'mediaManagerLoadMore' => __('Load more', 'dbvc'),
                     'statusbarEditEntity' => __('Edit', 'dbvc'),
                     'statusbarEditCurrentPage' => __('Edit current page', 'dbvc'),
                     'statusbarEditCurrentPost' => __('Edit current post', 'dbvc'),
@@ -428,5 +909,42 @@ final class AssetLoader
         }
 
         return defined('DBVC_PLUGIN_VERSION') ? DBVC_PLUGIN_VERSION : '1.0.0';
+    }
+
+    /**
+     * @return bool
+     */
+    private function isMediaManagerEnabled()
+    {
+        return class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_media_manager_enabled')
+            && \DBVC_Visual_Editor_Addon::is_media_manager_enabled();
+    }
+
+    /**
+     * R3-C-2 — mirror of {@see isMediaManagerEnabled()}. The two-part kill switch
+     * (master Visual Editor switch AND `dbvc_visual_editor_control_center_enabled`)
+     * is enforced by `DBVC_Visual_Editor_Addon::is_control_center_enabled()`.
+     *
+     * @return bool
+     */
+    private function isControlCenterEnabled()
+    {
+        return class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_control_center_enabled')
+            && \DBVC_Visual_Editor_Addon::is_control_center_enabled();
+    }
+
+    /**
+     * R6-D-1 gate for the Site Manager Workspace drawer (master switch AND
+     * `dbvc_visual_editor_workspace_enabled`, both default off).
+     *
+     * @return bool
+     */
+    private function isWorkspaceEnabled()
+    {
+        return class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_workspace_enabled')
+            && \DBVC_Visual_Editor_Addon::is_workspace_enabled();
     }
 }

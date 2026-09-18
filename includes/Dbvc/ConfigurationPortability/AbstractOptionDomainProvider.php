@@ -9,6 +9,23 @@ if (! defined('WPINC')) {
 abstract class AbstractOptionDomainProvider implements DomainProviderInterface
 {
     /**
+     * Return concrete target-site dependencies for fields present in an incoming payload.
+     *
+     * Providers override this only when their settings depend on registered WordPress
+     * objects or optional add-on classes. Dependencies are import-session metadata and
+     * are not written into exported packages.
+     *
+     * @param array<string, mixed> $incoming
+     * @return array<int, array<string, string>>
+     */
+    public function get_import_dependencies(array $incoming): array
+    {
+        unset($incoming);
+
+        return [];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function get_current_values(): array
@@ -359,7 +376,7 @@ abstract class AbstractOptionDomainProvider implements DomainProviderInterface
      * @param array<string, mixed> $incoming
      * @return array<string, array<string, mixed>>
      */
-    private function flatten_incoming_fields(array $incoming): array
+    protected function flatten_incoming_fields(array $incoming): array
     {
         $groups = isset($incoming['groups']) && is_array($incoming['groups']) ? $incoming['groups'] : [];
         $fields = [];
@@ -377,6 +394,82 @@ abstract class AbstractOptionDomainProvider implements DomainProviderInterface
         }
 
         return $fields;
+    }
+
+    /**
+     * Build dependencies from a selected incoming list or map field.
+     *
+     * @param array<string, mixed> $incoming
+     * @param string               $field_key
+     * @param string               $type
+     * @param bool                 $use_map_keys
+     * @return array<int, array<string, string>>
+     */
+    protected function get_value_dependencies(array $incoming, $field_key, $type, $use_map_keys = false): array
+    {
+        $field_key = sanitize_key((string) $field_key);
+        $incoming_fields = $this->flatten_incoming_fields($incoming);
+        if ($field_key === '' || ! isset($incoming_fields[$field_key])) {
+            return [];
+        }
+
+        $value = $incoming_fields[$field_key]['value'] ?? [];
+        if (! is_array($value)) {
+            $value = preg_split('/[\r\n,]+/', (string) $value);
+        } elseif ($use_map_keys) {
+            $value = array_keys($value);
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $dependencies = [];
+        foreach ($value as $identifier) {
+            if (! is_scalar($identifier)) {
+                continue;
+            }
+
+            $identifier = $type === 'acf_options_group'
+                ? sanitize_text_field((string) $identifier)
+                : sanitize_key((string) $identifier);
+            if ($identifier === '') {
+                continue;
+            }
+
+            $dependencies[$type . ':' . $identifier] = [
+                'type' => sanitize_key((string) $type),
+                'identifier' => $identifier,
+                'field' => $field_key,
+            ];
+        }
+
+        return array_values($dependencies);
+    }
+
+    /**
+     * Build a class dependency only when the incoming payload contains fields.
+     *
+     * @param array<string, mixed> $incoming
+     * @param string               $class_name
+     * @param string               $label
+     * @return array<int, array<string, string>>
+     */
+    protected function get_class_dependency(array $incoming, $class_name, $label = ''): array
+    {
+        $incoming_fields = $this->flatten_incoming_fields($incoming);
+        if (empty($incoming_fields)) {
+            return [];
+        }
+
+        $field_keys = array_keys($incoming_fields);
+
+        return [[
+            'type' => 'class',
+            'identifier' => ltrim((string) $class_name, '\\'),
+            'field' => sanitize_key((string) ($field_keys[0] ?? '')),
+            'label' => sanitize_text_field((string) $label),
+        ]];
     }
 
     /**

@@ -1,0 +1,132 @@
+# R2-H — Persistent Media Index (Phase 1)
+
+Supersedes the discovery in `PROPOSAL-PERSISTENT-MEDIA-INDEX.md`. Moves the Media Manager from an ephemeral, per-session, on-demand scan to a **durable, shared, incrementally-maintained index** so the Manager opens instantly and stays current. Default-off, gated behind the existing Media Manager flag.
+
+## Settled decisions (D-053)
+
+1. **Storage:** a **custom table** (`{prefix}dbvc_ve_media_field_index`) is the working store — queryable, per-entity, incrementally updatable, excluded from content backups by default. A **JSON export** into the DBVC `wp-content/` sync folder makes the index **backup-portable** (the table is the source of truth; JSON is a derived, importable mirror).
+2. **Scope:** the index is **cross-user, site-wide** (one shared index, not per-user). Because it cannot bake per-user eligibility into stored rows, **eligibility/capability is re-checked at read time for the requesting user** on every listed/expanded row. This is the load-bearing security consequence and is built in from Slice 1's contract.
+3. **Background work:** **Action Scheduler when available**, with a guarded/chunked **WP-Cron fallback** so sites without it still function. The first-run full index build and periodic reconciliation run as background chunks; cheap per-entity invalidation runs synchronously on hooks.
+
+## Security model (redesigned for a shared index)
+
+- **Opaque, non-authoritative refs, stable per index generation.** Group/finding/value refs are derived by HMAC over entity identity + the current **index generation** (a stable version string that changes when the index is rebuilt), not a per-scan generation. Refs remain opaque; no owner id, field key/selector, ACF object id, path, or fingerprint is exposed.
+- **Read-time authority.** The stored row is never trusted as authority. On list/expand/mutate the server re-resolves the entity from the opaque ref and re-runs the eligibility policy (published/public/show-UI/exclusions **and** the requesting user's per-object capability) before returning or writing anything. A row a user may not see is filtered out at read time even if it is in the index.
+- **Mutation unchanged.** Assign/replace continue to go through the R2-A bridge + audited mutation pipeline with the expected-empty / expected-current-value preconditions; the index is a read accelerator, never a write authority.
+
+## Table schema (Slice 1)
+
+`{prefix}dbvc_ve_media_field_index` — one row per eligible entity:
+
+- `id` PK; `entity_type` (post/term), `entity_id`, `entity_subtype` (unique together);
+- `entity_ref` (opaque, generation-scoped), `label`, `frontend_url` (cached, refreshed on re-index);
+- `missing_count`, `populated_count`, `family_counts_json` (per-family missing breakdown);
+- `content_hash` (hash of the entity's media-field state, to skip no-op re-index);
+- `index_generation`, `indexed_at`, `is_dirty` (needs re-index);
+- indexes on the unique entity key, `is_dirty`, `index_generation`, and `missing_count`.
+
+Per-field detail is still computed **live on expand** (the existing single-entity rescan), so the table stays a compact per-entity summary and the detail panel is always fresh.
+
+## Invalidation-event catalog (Slice 3)
+
+The index must mark an entity dirty (or re-index it) on: `save_post` + status transitions; `added/updated/deleted_post_meta` for media-related meta; `edited_term`; attachment **deletion** (`delete_attachment`); ACF field-group save/delete (media-field topology changes → generation bump); post-type/taxonomy (de)registration; Media-Manager exclusion-option changes (generation bump). Capability/role changes need no index write — read-time filtering already covers them.
+
+## Slices
+
+- **Slice 1 — storage layer (foundation).** The custom table + `MediaIndexStore` repository (schema/`maybeUpgrade`, upsert/get/list/mark-dirty/delete, generation handling). No reads wired in, no hooks, no behavior change. _This document's first implementation target._
+- **Slice 2 — populate + read-time filtered read model.** Write scan results into the index on completion (via a `dbvc_visual_editor_media_scan_completed` action → `MediaIndexProjector`), and a `MediaIndexReadModel` that lists from the index with **read-time per-user eligibility filtering**. _Building the durable store + the proven safe read; the live REST/frontend flip is deferred to Slice 2b because the current list→expand→mutate path is coupled to the per-scan snapshot ref/generation — flipping the source requires unifying refs onto the index generation and an expand-from-identity path (sequenced with Slice 3)._
+- **Slice 2b — index-backed read plumbing (server).** Index-generation-scoped opaque refs (`vemx_…`, resolvable only via the store), a detached per-entity snapshot built on demand (never clobbers the user's latest full scan), and `GET .../media-manager/index` + `POST .../media-manager/index/expand` REST routes — expand returns the live detail plus a scan/group ref the existing assign/replace routes consume unchanged. No UI behavior changes.
+- **Slice 2c — frontend flip.** Server-side index query parity (search / entity-family / field-family / sort over the index) so no filter control is lost, then the Manager opens from the index (instant) with read-time-filtered rows and expands via the index route, with the ephemeral scan as fallback; jsdom coverage.
+- **Slice 3 — incremental invalidation.** The hook catalog above marks entities dirty / re-indexes a single entity; lazy re-scan of a dirty entity on next view.
+- **Slice 4 — background reconcile + scheduler.** A scheduled reconcile that re-indexes dirty entities in bounded chunks, the deferred attachment-deletion invalidation (flags the generation dirty), and a scheduler that runs it via Action Scheduler with a WP-Cron fallback.
+- **Slice 4b-1 — structural first-run build.** A cross-user `MediaIndexBuilder` that enumerates the STRUCTURAL eligible set (no per-object capability — the index is site-wide and capability is re-checked at read time) in bounded chunks with a cursor persisted across runs, drained by the scheduler (Action Scheduler async chain / WP-Cron single-event chaining) until complete. Fixes the completion-hook gap where the index only held one user's editable set: the manual-scan hook now refreshes-in-place (no generation rotate/clobber).
+- **Slice 4b-2 — topology/exclusion rebuild triggers.** ACF field-group save/delete, post-type/taxonomy (de)registration, and Media-Manager exclusion-option changes rotate the generation and rebuild (atomic build-into-fresh-generation-then-swap).
+- **Slice 5 — JSON export/import.** Derived JSON mirror in the sync folder for backup portability, with a guarded import.
+
+## Gates (every slice)
+
+- Default-off; no behavior change until a slice explicitly wires a read/write path. The ephemeral on-demand scan remains the fallback until Slice 2 flips the read source.
+- No new mutation authority; assign/replace preconditions unchanged.
+- Read-time per-user eligibility filtering is mandatory the moment the index feeds any user-visible list (Slice 2 onward).
+- Cross-user rows never leak an owner id/field key/selector/path/fingerprint.
+
+## Slice 1 checkpoint (2026-08-18): implemented
+
+`MediaIndexStore` (`addons/visual-editor/src/MediaManager/MediaIndexStore.php`) creates and owns the `{prefix}dbvc_ve_media_field_index` table via the standard `SCHEMA_VERSION`/`maybeUpgrade`/`dbDelta` pattern (schema-versioned; table named `media_field_index` to avoid confusion with the core DBVC `dbvc_media_index` attachment-file table). It exposes `upsertEntity` (insert or in-place update keyed by entity identity), `getEntity`, `listEntities`/`countEntities` (filter by generation, `onlyMissing`, `onlyDirty`; bounded pagination), `markDirty`/`markGenerationDirty`, `deleteEntity`/`pruneOtherGenerations`/`deleteAll`, and `currentGeneration`/`rotateGeneration` (opaque `vmig_…` index generation). All inputs are sanitized; reads are prepared. **This slice is storage-only and behavior-neutral:** `register()` is intentionally not wired into the bootstrap and nothing in the Media Manager reads or writes the index yet (Slice 2 wires population + read-time listing). `VisualEditorMediaIndexStoreTest` (6 tests/32 assertions) covers schema, upsert-in-place, filtered list/count, dirty marking, delete/prune, and generation rotation. Full suite 761 with the same six inherited failures; agent docs 54/419/0 (the new table mapped).
+
+## Slice 2 checkpoint (2026-08-18): implemented (population + read-time filtered read model)
+
+`MediaScanCoordinator` now fires a `dbvc_visual_editor_media_scan_completed` action once a scan reaches `complete`. `MediaIndexProjector` subscribes (wired in `Addon::register()`, gated on `is_media_manager_enabled`) and rebuilds the index from the completed snapshot under a fresh generation (per-entity identity, cached label/url, missing count, per-family breakdown, and a content hash; the prior generation is pruned). `MediaIndexReadModel::getList` lists index rows missing-media-first and enforces the shared-index security contract: for every row it re-resolves the entity and re-runs `EligibilityPolicy` for the **current user**, dropping any row that user may not see — the stored row is never authority. Rows expose only a per-entity summary (label/url/counts), no field key/selector/path. `VisualEditorMediaIndexPhase2Test` (5 tests/44 assertions) proves population from a real completed scan, the completion-hook path, eligible listing + no-raw-target projection, an entity unpublished after indexing filtered out at read time (row retained in the table), and a subscriber seeing zero rows. **The live REST/frontend list source is NOT flipped yet** (Slice 2b) — the index is built and safely readable, but the interactive list/expand/mutate path still uses the ephemeral snapshot until the ref/generation unification lands. Full suite 766 with the same six inherited failures; agent docs 54/420/0 (new completion-action hook mapped).
+
+## Slice 3 checkpoint (2026-08-18): implemented (incremental invalidation)
+
+`MediaIndexInvalidator` (wired in `Addon::register()`, MM-gated) subscribes to `save_post`, `trashed_post`, `deleted_post`, `edited_term`, and `delete_term`, and keeps just the one affected entity current between full scans. On a save/term edit it runs a **bounded single-entity rescan** and upserts the row into the current index generation via `MediaIndexProjector::indexGroup` (extracted so full rebuild and incremental re-index share one row builder); an entity that is no longer indexable (unpublished, excluded, deleted, or carrying no supported media fields) has its row removed (a new `MediaIndexStore::deleteEntityById` deletes by unique id for the hard-delete path where the subtype is gone). Autosaves and revisions are skipped. Index **membership** uses the same eligibility as the scan that built it; the per-user **read-time** filter still applies on read. `VisualEditorMediaIndexInvalidatorTest` (5 tests) proves re-index lowers the missing count when a field is filled, the `save_post` path re-indexes, an unpublished entity is removed, a deleted post's row is removed, and a term edit re-indexes. **Deferred to Slice 4** (documented in the class): attachment-deletion reverse lookup, ACF field-group topology changes, exclusion-option changes, and direct-metadata writes that do not fire `save_post` — these pair with the background reconcile. Full suite 771 with the same six inherited failures; agent docs 54/420/0.
+
+## Slice 4 checkpoint (2026-08-18): implemented (background reconcile + scheduler)
+
+`MediaIndexReconciler::run()` (the scheduled callback) re-indexes up to a bounded chunk of dirty entities via the invalidator's single-entity rescan — each is upserted afresh (clearing its dirty flag) or removed if no longer indexable. `MediaIndexInvalidator::onAttachmentDeleted` (hooked on `delete_attachment`) flags the whole current generation dirty (an attachment deletion can empty any referencing field; a targeted reverse lookup is deferred), so the reconcile recomputes affected rows over time. `MediaIndexScheduler` (wired in `Addon::register()`, MM-gated) registers the reconcile callback and schedules the recurring job through **Action Scheduler when available, else stock WP-Cron** (`ensureScheduled`/`unregister`). `VisualEditorMediaIndexReconcileTest` (4 tests) proves the reconcile re-indexes dirty entities and clears the flag, removes a dirty entity that lost eligibility, an attachment deletion flags the generation dirty, and the scheduler registers/clears the recurring job via the WP-Cron fallback (Action Scheduler is absent in the test env). **Slice 4b (deferred, documented):** the automatic first-run chunked full build (driving a background coordinator scan) and the ACF field-group / exclusion-option full-rebuild triggers. Full suite 775 with the same six inherited failures; agent docs 54/420/0.
+
+## Slice 2b checkpoint (2026-08-18): implemented (index-backed read plumbing, server)
+
+`MediaIndexStore` now derives a stable opaque `entity_ref` (`vemx_[a-f0-9]{24}` = HMAC of the entity identity under the index generation) at upsert time and exposes `getByEntityRef` (a forged/stale ref resolves to nothing). `MediaScanCoordinator::snapshotEntity` builds a **complete, detached** single-entity snapshot via `ScanSnapshotStore::createDetached` — user/blog-bound and loadable by its `scan_ref`, but it never updates the user's "latest scan" pointer, so it cannot disturb a real full scan. The new `MediaIndexController` (wired in `Routes`, MM-gated `canAccess`) adds `GET .../media-manager/index` (the read-time-filtered index list) and `POST .../media-manager/index/expand` — which resolves an opaque ref, **re-checks eligibility for the requesting user**, builds the detached snapshot, runs the existing `expandGroup`, and returns the live detail plus the snapshot's scan/group refs so the existing assign/replace routes drive mutation unchanged. `VisualEditorMediaIndexControllerTest` (5 tests/40 assertions) proves the ref is opaque and store-only-resolvable, expand returns live detail with a usable `vems_` scan ref **without clobbering `loadLatest`**, and a forged ref (404) / an entity the user can no longer view (403) fail closed. **No UI behavior changes** — the frontend still uses the ephemeral snapshot; the flip is Slice 2c. Full suite 780 with the same six inherited failures; agent docs 54/422/0 (two new index routes mapped).
+
+## Slice 2c checkpoint (2026-08-19): implemented (frontend flip, with index query parity)
+
+Done in two behavior-safe steps. **2c-server (query parity, behavior-neutral):** `MediaIndexStore::listEntities` now honors `search` (label `LIKE`), `entityFamily` (`entity_type`), and `sort` (whitelisted `ORDER BY`), and `MediaIndexReadModel::getList` applies `fieldFamily` after hydration and echoes the normalized query — so the durable list carries the **same search/entity/field/sort surface as the scan list** and the flip loses no filter control (`VisualEditorMediaIndexQueryTest`, 5 tests). **2c-frontend (the flip):** gated behind a filterable bootstrap flag `mediaManager.indexList` (`dbvc_visual_editor_media_index_list_enabled`, default = Media-Manager-enabled). When on, the Manager **opens from `GET .../index`** (instant, read-time-filtered), renders `vemx_`-keyed rows, and **expands via `POST .../index/expand`**: the response's detached snapshot becomes the per-expansion working identity (`state.expansion.scan` + working `vemg_` group), so the existing descriptor/assign/replace flow drives mutation unchanged while the list row stays keyed by the opaque `vemx_` ref. The frontend **falls back to the ephemeral scan automatically** when the index request fails or returns no rows (e.g. an index not yet built on this site), and "Start new scan" always returns to the scan source. Search/filter/sort and offset paging route through the index in index mode; a save reconciles the `vemx_`-keyed row in place with no index reload. jsdom +4 (38 total): index open (source `index`, no `/scans` touched), index-expand-then-save posting to the **detached** scan ref with in-place reconcile, and both fallbacks. Existing 34 jsdom + the scan-mode PHP path are unchanged (the flag is absent in those fixtures). Media-manager lint clean; combined Media Manager PHP 101 tests; full suite 785 with the same six inherited failures; agent docs 54/423/0 (new filter hook mapped). Remaining Phase 1: Slice 4b (first-run full build + topology/exclusion rebuild triggers), Slice 5 (JSON export/import).
+
+## Slice 5 checkpoint (2026-08-19): implemented (derived JSON mirror — backup portability)
+
+Completes Phase 1. The custom table remains source of truth; a derived JSON file at
+`{sync}/visual-editor/media-index.json` is written at every completion boundary
+(rebuild swap, first-run build completion, reconcile sweeps that changed rows) so a
+backup capturing the DBVC sync folder round-trips the index.
+
+`MediaIndexJsonExporter` (new; MM-gated in `Addon::register`):
+
+- `exportAll()` writes an envelope `{schema: 1, exported_at, source, generation, count, entities: [...]}` into the sync subfolder, honoring `dbvc_is_safe_file_path` and `wp_mkdir_p`. Only the SERVING generation is exported (rebuilds-in-flight are internal state). Each entity carries identity, cached label/URL, counts, family breakdown, content hash, `indexed_at`, and dirty flag — the envelope-level `generation` is authoritative, so the per-row `index_generation` column is omitted from the exported entities to keep the mirror self-describing.
+- `importIfEmpty()` is the guarded restore path: when the table is empty AND the JSON file exists AND validates (schema match, well-formed generation, non-empty entities), it sets `OPTION_GENERATION` to the file's generation, upserts every row, and marks the builder state complete for that generation so the scheduler drain does not re-fire immediately after a restore. A no-op when the table has any rows (the normal runtime case).
+- Two new `do_action`s let integrators observe: `dbvc_visual_editor_media_index_exported($file_path, $count)` and `dbvc_visual_editor_media_index_imported($file_path, $imported)`. Two new completion hooks it subscribes to: `dbvc_visual_editor_media_index_build_completed($generation, $rebuild_active)` from `MediaIndexBuilder` (fires once per build, whether initial or rebuild swap) and `dbvc_visual_editor_media_index_reconciled($processed)` from `MediaIndexReconciler` (fires when a sweep actually touched rows).
+
+Verified (`VisualEditorMediaIndexJsonExportTest`, 5 tests/41 assertions):
+
+- Export writes a well-formed envelope containing only the SERVING generation rows (a stray non-serving row is filtered out); the exported entities omit the per-row `index_generation` column since the envelope carries it.
+- Import populates an empty table with the mirror's rows under the mirror's generation and marks the builder state complete for that generation (no re-drain post-restore).
+- Import is a no-op when the table already has rows.
+- Round-trip: export → deleteAll → import restores identical identity fields (type/id/subtype/missing_count/label) and the same `entity_ref` (refs are HMAC-derived from identity + generation, and the mirror's generation is preserved).
+- Export does not throw when the sync base cannot pass the safety check (returns an empty string).
+
+Combined Media Manager PHP 115 tests; full suite 799 with the same six inherited failures; jsdom 38; agent docs 54/431/0 (four new `do_action` extension points and two now-discovered option keys mapped). **R2-H Phase 1 complete.**
+
+## Slice 4b-2 checkpoint (2026-08-19): implemented (topology/exclusion rebuild triggers + atomic swap)
+
+Closes the last correctness gap in Phase 1: after a schema/topology change (ACF field-group save/delete, post-type/taxonomy (de)registration, or a Media-Manager exclusion-option edit) the index needed to be rebuilt from scratch **without** ever letting reads observe a half-built copy. The fix is an atomic **build-into-fresh-generation-then-swap**.
+
+`MediaIndexStore` (schema v2) splits the "current generation" concept in two:
+
+- `currentGeneration()` is the **serving** generation — what `MediaIndexReadModel` continues to read. It only changes on the swap.
+- `buildingGeneration()` is the **building** generation while a rebuild is in progress, empty otherwise. The unique key spans `(entity_type, entity_id, entity_subtype, index_generation)` so a per-entity building row coexists with its serving counterpart mid-rebuild.
+- `activeBuildGeneration()` returns whichever generation writers should target (building during a rebuild, serving otherwise).
+- `beginRebuild()` mints a fresh building generation (dropping any orphaned rows from a prior in-flight rebuild first); `completeRebuild()` atomically swaps the serving pointer and prunes every other generation.
+
+`MediaIndexBuilder` targets `activeBuildGeneration()`, so during a rebuild it writes into the building generation without touching serving rows. When its final chunk marks the build complete AND a rebuild was in flight, it calls `completeRebuild()` — the swap and prune land in one step. `MediaIndexInvalidator` **dual-writes** into both the serving and the building generations while a rebuild is active, so a mid-rebuild save (or an attachment deletion that flags the generation dirty) survives the swap and never gets lost when the pointer flips.
+
+The new `MediaIndexRebuildController` wires the trigger surface (MM-gated, registered in `Addon::register()`):
+
+- `acf/update_field_group`, `acf/delete_field_group`, `acf/trash_field_group`, `acf/untrash_field_group` (ACF field-group save/delete/(un)trash).
+- `update_option_dbvc_visual_editor_excluded_post_types` / `_excluded_taxonomies` (plus add/delete siblings) — the two Media-Manager exclusion options.
+- `wp_loaded` (priority 20): compute a compact **topology fingerprint** over the sorted set of public+show-UI post types and taxonomies plus the current exclusion lists. When it drifts from the stored value, trigger a rebuild — this catches post-type/taxonomy (de)registration without firing on every request. The first fingerprint after activation primes the option without a rebuild (the first-run builder already handles initial population).
+
+Triggers are non-clobbering: `triggerRebuild()` is a no-op when a rebuild is already in flight, and a `dbvc_visual_editor_media_index_rebuild_skipped` extension point fires so integrators can observe missed triggers. When a rebuild starts, `dbvc_visual_editor_media_index_rebuild_started` fires with the reason.
+
+Verified (`VisualEditorMediaIndexRebuildTest`, 4 tests/40 assertions):
+
+- A rebuild keeps serving the OLD generation until completion: partial-chunk writes land in the building generation, the read model still returns the complete serving-gen list, and on completion the serving pointer swaps and the old generation is pruned in one step.
+- Every trigger surface initiates a rebuild (ACF field-group save, exclusion-option change), and a concurrent trigger while a rebuild is already in flight is a no-op (the building generation does not change out from under the drain).
+- The topology fingerprint check primes silently on the first call, is stable when nothing changed, triggers a rebuild when a public post type is registered, and returns to idle after the drain completes.
+- The invalidator dual-writes into both generations during a rebuild, so a mid-rebuild save survives the swap.
+
+Combined Media Manager PHP 110 tests; full suite 794 with the same six inherited failures (a seventh, `ContentCollectorV2Phase8Test::test_phase_eight_preflight_and_execute_routes_bridge_package_import`, is order-dependent flaky in mixed runs and passes in isolation — NOT a regression); jsdom 38; agent docs 54/425/0 (two new `do_action` extension points mapped: `dbvc_visual_editor_media_index_rebuild_started`, `_rebuild_skipped`). Phase 1 remaining: Slice 5 (JSON export/import).
+
+## Slice 4b-1 checkpoint (2026-08-19): implemented (structural first-run build)
+
+Closes a correctness gap: the completion hook (Slice 2) only ever populated the index from one user's on-demand scan, so the shared cross-user index held only whatever that user could edit. `EligibilityPolicy` gains a `$structural` mode that skips **only** the per-object capability check (keeping status/public/show-UI/exclusion checks); the read path still uses the capability-enforcing policy, so the D-053 read-time-authority contract is intact. The new `MediaIndexBuilder` runs its own structural pipeline (structural policy → catalog → scanner) to enumerate every structurally-eligible entity via `ScanCandidateProvider` in bounded chunks, scanning each with an ad-hoc `vmsg_` scan generation and upserting rows under the `vmig_` index generation; it persists a `{generation, cursor, status, processed}` build-state option across runs and marks itself complete when the candidate cursor is exhausted. `MediaIndexScheduler` drains the build as a self-continuing chain — an Action Scheduler async action when available, else a WP-Cron single event re-armed each incomplete chunk (`BUILD_HOOK`), stopping when complete. Because the builder is now authoritative, the manual-scan completion hook is rewired from `onScanCompleted` (rotate a fresh, capability-limited generation + prune) to `onScanRefreshed` → `refreshFromSnapshot` (**upsert the scanned entities into the current generation, no rotate/prune**), so an on-demand scan refreshes what it touched without clobbering the cross-user index or its generation. The first build fills the current (empty) generation directly; the atomic build-into-fresh-generation-then-swap for topology/exclusion rebuilds is Slice 4b-2. Verified (`VisualEditorMediaIndexBuilderTest`, 5 tests/26 assertions): the structural build indexes posts the acting subscriber cannot edit while a capability-scoped build indexes none; the build advances across multiple small chunks (cursor persisted) and completes; the `needsBuild`/`reset` lifecycle; a manual-scan refresh leaves the generation and the untouched entity's row intact; and the scheduler arms the WP-Cron drain, drives it to completion, and stops. Combined Media Manager PHP 106 tests; full suite 790 with the same six inherited failures; agent docs 54/423/0. Remaining Phase 1: Slice 4b-2 (topology/exclusion rebuild triggers), Slice 5 (JSON export/import).

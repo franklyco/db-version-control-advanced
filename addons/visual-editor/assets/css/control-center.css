@@ -1,0 +1,1258 @@
+/*
+ * DBVC Visual Editor — R3-C-2 Brand Control Center drawer.
+ *
+ * Production translation of the accepted static mockup at
+ *   docs/ui-mockups/dbvc-visual-editor/r3-brand-control-center/styles.css
+ *
+ * Rules of engagement:
+ * - Every selector is scoped under `.dbvc-ve-control-center` and its
+ *   `__*` element classes (BEM). No unscoped element selectors.
+ * - Every color / font / spacing draws from the shared `--dbvc-ve-*`
+ *   tokens declared in `overlay.css`. Component-local sizing lives on
+ *   `.dbvc-ve-control-center` itself so overlay.css does not need to
+ *   care about drawer geometry.
+ * - The one net-new `:root` token — `--dbvc-ve-z-drawer: 120015` —
+ *   was added to overlay.css in the same slice.
+ * - Drops all `.dbvc-ve-control-center-mockup__*` scaffolding (mockup-only).
+ */
+
+.dbvc-ve-control-center {
+  --dbvc-ve-control-center-width: 480px;
+  --dbvc-ve-control-center-admin-bar: 32px;
+  --dbvc-ve-control-center-toolbar-strip: 76px;
+  --dbvc-ve-control-center-header-padding-y: 14px;
+  --dbvc-ve-control-center-section-padding-x: 18px;
+  --dbvc-ve-control-center-row-padding-y: 10px;
+  --dbvc-ve-control-center-focus-ring: 2px solid var(--dbvc-ve-color-focus);
+  --dbvc-ve-control-center-shadow: 8px 0 40px rgba(0, 10, 54, 0.22),
+    1px 0 0 rgba(0, 10, 54, 0.08);
+  --dbvc-ve-control-center-chip-padding: 3px 9px;
+
+  position: fixed;
+  top: var(--dbvc-ve-control-center-admin-bar);
+  left: 0;
+  bottom: var(--dbvc-ve-control-center-toolbar-strip);
+  width: var(--dbvc-ve-control-center-width);
+  display: flex;
+  flex-direction: column;
+  /* R5.later-darkmode.b (2026-09-10): drawer chrome surface + text.
+     Tokens declared in overlay.css :root; dark-mode override lives in
+     the same file. Internal chip / row / button colors retain their
+     light-mode values in this slice — deferred to .c. */
+  background: var(--dbvc-ve-color-drawer-background);
+  border-right: 1px solid var(--dbvc-ve-color-border-muted);
+  box-shadow: var(--dbvc-ve-control-center-shadow);
+  color: var(--dbvc-ve-color-drawer-text);
+  z-index: var(--dbvc-ve-z-drawer);
+
+  transform: translateX(0);
+  transition: transform 220ms ease;
+}
+
+.dbvc-ve-control-center[hidden] {
+  display: none;
+}
+
+.dbvc-ve-control-center.is-closed {
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.dbvc-ve-control-center.is-opening {
+  transform: translateX(-45%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-control-center {
+    transition: none;
+  }
+}
+
+.dbvc-ve-control-center *,
+.dbvc-ve-control-center *::before,
+.dbvc-ve-control-center *::after {
+  box-sizing: border-box;
+}
+
+/* Utility — overlay.css ships no visually-hidden helper, so a scoped
+   copy lives on the drawer. */
+.dbvc-ve-control-center__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.dbvc-ve-control-center__header {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: var(--dbvc-ve-control-center-header-padding-y)
+    var(--dbvc-ve-control-center-section-padding-x);
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  /* R5.later-darkmode.d: chrome-header token flips in dark mode; the old
+     white→light gradient stayed white on a dark drawer. */
+  background: var(--dbvc-ve-color-chrome-header-background);
+}
+
+.dbvc-ve-control-center__header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-background-light);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+
+.dbvc-ve-control-center__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__title {
+  margin: 0;
+  /* Live-site QA (E-152): pin the <h2> to the drawer's font stack so the host
+     theme's heading rules cannot leak in. */
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  letter-spacing: -0.005em;
+  text-transform: none;
+}
+
+.dbvc-ve-control-center__summary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--dbvc-ve-font--meta);
+  color: var(--dbvc-ve-color-text-muted);
+}
+
+.dbvc-ve-control-center__summary-chip strong {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-control-center__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.dbvc-ve-control-center__close:hover,
+.dbvc-ve-control-center__close:focus-visible {
+  border-color: var(--dbvc-ve-color-border);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  outline: none;
+}
+
+/* Tabs -------------------------------------------------------------------- */
+
+.dbvc-ve-control-center__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px var(--dbvc-ve-control-center-section-padding-x);
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  background: var(--dbvc-ve-color-drawer-background);
+}
+
+.dbvc-ve-control-center__tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  border: 1px solid transparent;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dbvc-ve-control-center__tab:hover {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  background: var(--dbvc-ve-color-background-light);
+}
+
+.dbvc-ve-control-center__tab[aria-selected="true"] {
+  color: var(--dbvc-ve-color-emphasis-text);
+  background: var(--dbvc-ve-color-emphasis-background);
+  border-color: var(--dbvc-ve-color-emphasis-background);
+}
+
+.dbvc-ve-control-center__tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: color-mix(in srgb, var(--dbvc-ve-color-text-dark) 12%, transparent);
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: 10px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+
+.dbvc-ve-control-center__tab[aria-selected="true"]
+  .dbvc-ve-control-center__tab-count {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+/* Filter strip ------------------------------------------------------------ */
+
+.dbvc-ve-control-center__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px var(--dbvc-ve-control-center-section-padding-x);
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-control-center__search {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  border: 1px solid var(--dbvc-ve-color-border);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-text-dark);
+  font: var(--dbvc-ve-font-weight--normal) var(--dbvc-ve-font--body) / 1.4
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dbvc-ve-control-center__search:focus {
+  outline: var(--dbvc-ve-control-center-focus-ring);
+  outline-offset: 1px;
+  border-color: var(--dbvc-ve-color-primary);
+}
+
+.dbvc-ve-control-center__chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.dbvc-ve-control-center__chip-label {
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  color: var(--dbvc-ve-color-text-subtle);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.dbvc-ve-control-center__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--dbvc-ve-control-center-chip-padding);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-control-surface);
+  border: 1px solid var(--dbvc-ve-color-border);
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+
+.dbvc-ve-control-center__chip[aria-pressed="true"] {
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
+  border-color: var(--dbvc-ve-color-emphasis-background);
+}
+
+.dbvc-ve-control-center__clear-filters {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--dbvc-ve-color-primary);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+
+.dbvc-ve-control-center__clear-filters:hover {
+  border-color: var(--dbvc-ve-color-primary);
+}
+
+/* Table body -------------------------------------------------------------- */
+
+.dbvc-ve-control-center__table-wrap {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.dbvc-ve-control-center__table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--dbvc-ve-font--body);
+}
+
+.dbvc-ve-control-center__thead {
+  position: sticky;
+  top: 0;
+  background: var(--dbvc-ve-color-surface-muted);
+  z-index: 1;
+  box-shadow: 0 1px 0 var(--dbvc-ve-color-border-muted);
+}
+
+.dbvc-ve-control-center__th {
+  padding: 8px var(--dbvc-ve-control-center-section-padding-x);
+  text-align: left;
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  color: var(--dbvc-ve-color-text-subtle);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.dbvc-ve-control-center__th--action {
+  text-align: right;
+  padding-right: var(--dbvc-ve-control-center-section-padding-x);
+}
+
+/* Rows -------------------------------------------------------------------- */
+
+.dbvc-ve-control-center__row {
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+}
+
+.dbvc-ve-control-center__row.is-focused-source td {
+  background: color-mix(in srgb, var(--dbvc-ve-color-primary) 12%, transparent);
+}
+
+.dbvc-ve-control-center__row.is-unsupported,
+.dbvc-ve-control-center__row.is-unavailable {
+  opacity: 0.7;
+}
+
+.dbvc-ve-control-center__row-cell {
+  padding: var(--dbvc-ve-control-center-row-padding-y)
+    var(--dbvc-ve-control-center-section-padding-x);
+  vertical-align: top;
+}
+
+.dbvc-ve-control-center__row-cell--label {
+  width: 100%;
+}
+
+.dbvc-ve-control-center__row-cell--action {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dbvc-ve-control-center__status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: 1px;
+  background: var(--dbvc-ve-color-border);
+}
+
+.dbvc-ve-control-center__status-dot--available {
+  background: var(--dbvc-ve-color-success);
+}
+
+.dbvc-ve-control-center__status-dot--inspect_only {
+  background: var(--dbvc-ve-color-info);
+}
+
+.dbvc-ve-control-center__status-dot--unsupported {
+  background: var(--dbvc-ve-color-warning-strong);
+}
+
+.dbvc-ve-control-center__status-dot--unavailable {
+  background: var(--dbvc-ve-color--empty);
+}
+
+.dbvc-ve-control-center__label {
+  font-size: var(--dbvc-ve-font--body);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  /* R4-D-3 (defense-in-depth): pathological single-word ACF labels
+     (200+ chars without word boundaries) would otherwise force
+     horizontal overflow because .__label-block gives us space via
+     `min-width: 0` but nothing constrains the label's own layout
+     width. Every real ACF label seen in the R4-D-2 sample (n=157,
+     longest 42 chars) wraps cleanly at spaces via inherited
+     `white-space: normal`; these two rules only kick in for the
+     never-observed single-word exotic case. `overflow-wrap: anywhere`
+     preserves the label's full visible text (vs `text-overflow:
+     ellipsis` which would hide characters); `max-width: 100%` pins
+     the label to its flex-child slot so the container's overall
+     right-edge alignment never shifts. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.dbvc-ve-control-center__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 3px;
+  font-size: var(--dbvc-ve-font--meta);
+  color: var(--dbvc-ve-color-text-muted);
+}
+
+.dbvc-ve-control-center__meta-part::before {
+  content: "\00b7";
+  margin-right: 8px;
+  color: var(--dbvc-ve-color-border);
+}
+
+.dbvc-ve-control-center__meta-part:first-child::before {
+  content: none;
+  margin-right: 0;
+}
+
+.dbvc-ve-control-center__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-shared-bg);
+  border: 1px solid var(--dbvc-ve-color-shared-border);
+  color: var(--dbvc-ve-color-shared);
+  font-size: 10px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dbvc-ve-control-center__owner {
+  margin-top: 4px;
+  font-size: var(--dbvc-ve-font--meta);
+  color: var(--dbvc-ve-color-text-subtle);
+}
+
+.dbvc-ve-control-center__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-primary);
+  color: #ffffff;
+  border: 0;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+
+.dbvc-ve-control-center__action:hover,
+.dbvc-ve-control-center__action:focus-visible {
+  background: color-mix(in srgb, var(--dbvc-ve-color-primary) 86%, #000000);
+  outline: none;
+}
+
+.dbvc-ve-control-center__action--view {
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  border: 1px solid var(--dbvc-ve-color-border);
+}
+
+.dbvc-ve-control-center__action--view:hover,
+.dbvc-ve-control-center__action--view:focus-visible {
+  background: var(--dbvc-ve-color-background-light);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+
+.dbvc-ve-control-center__action--opening {
+  background: color-mix(in srgb, var(--dbvc-ve-color-primary) 60%, #ffffff);
+  color: color-mix(in srgb, var(--dbvc-ve-color-secondary) 70%, #ffffff);
+  cursor: default;
+}
+
+.dbvc-ve-control-center__action-none {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dbvc-ve-control-center__spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  animation: dbvc-ve-cc-spin 700ms linear infinite;
+}
+
+@keyframes dbvc-ve-cc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-control-center__spinner,
+  .dbvc-ve-control-center__loading-spinner {
+    animation: none;
+  }
+}
+
+/* Row-level inline notices (open-error) ----------------------------------- */
+
+.dbvc-ve-control-center__row-notice {
+  background: color-mix(in srgb, var(--dbvc-ve-color-error) 6%, transparent);
+}
+
+.dbvc-ve-control-center__row-notice-cell {
+  padding: 8px var(--dbvc-ve-control-center-section-padding-x) 12px;
+}
+
+.dbvc-ve-control-center__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  font-size: var(--dbvc-ve-font--caption);
+  line-height: 1.5;
+  background: var(--dbvc-ve-color-info-bg);
+  border: 1px solid var(--dbvc-ve-color-info-border);
+  color: var(--dbvc-ve-color-info);
+}
+
+.dbvc-ve-control-center__notice.is-warning {
+  background: var(--dbvc-ve-color-warning-bg);
+  border-color: var(--dbvc-ve-color-warning-border);
+  color: var(--dbvc-ve-color-warning-strong);
+}
+
+.dbvc-ve-control-center__notice.is-error {
+  background: var(--dbvc-ve-color-error-bg);
+  border-color: var(--dbvc-ve-color-error-border);
+  color: var(--dbvc-ve-color-error);
+}
+
+.dbvc-ve-control-center__notice-dismiss {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+/* R4-C-1a: provider-error banner sits above the table wrap so a partial
+   list stays scannable underneath. Warning tone (not error) — the list is
+   still usable. */
+.dbvc-ve-control-center__notice--provider-error {
+  margin: 8px var(--dbvc-ve-control-center-section-padding-x);
+  padding: 8px 10px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-warning-bg);
+  border: 1px solid var(--dbvc-ve-color-warning-border);
+  color: var(--dbvc-ve-color-warning-strong);
+  font-size: var(--dbvc-ve-font--caption);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* R4-C-1a: description as a muted second line under the label. Only
+   rendered when the record carries one — layout does not reserve space.
+   `.__label-block` stacks the label + description under the status dot. */
+.dbvc-ve-control-center__label-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__description {
+  margin: 0;
+  font-size: var(--dbvc-ve-font--meta);
+  color: var(--dbvc-ve-color-text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* R5.later-c (2026-09-10): value-summary chip MOVED from action cell
+   to the label cell (sits directly after `.__meta` inside `.__label-cell`).
+   Populated lazily by IntersectionObserver → batch POST for leaf rows;
+   tree-parent rows get a synchronous compact aggregate chip
+   (`renderTreeParentAggregateChip`). One-line ellipsis cap so
+   long-string previews don't push row height; R4-D-3 overflow-wrap
+   defense kicks in for extreme single-word content. Empty slot
+   collapses out of the flow. */
+.dbvc-ve-control-center__value-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  max-width: 100%;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+/* Empty slot collapses out of the flow so unhydrated / null rows do
+   not claim visual space between .__meta and .__owner. */
+.dbvc-ve-control-center__value-summary:empty {
+  display: none;
+}
+
+/* R5.later-c: tree-parent aggregate chip (`N colors` / `N rows`). */
+.dbvc-ve-control-center__value-aggregate {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface-muted);
+  color: var(--dbvc-ve-color-text-muted);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-control-center__value-relationship {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+
+.dbvc-ve-control-center__value-relationship strong {
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+
+/* R5.1-a: text-family chip — preview text (server-truncated at 32 chars)
+   + optional truncation suffix showing the original char count. The
+   parent .__value-summary already caps at max-width:200px and ellipses,
+   so oversized previews compress gracefully at the row edge. */
+.dbvc-ve-control-center__value-text {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__value-text-count {
+  color: var(--dbvc-ve-color-text-subtle);
+  font-weight: var(--dbvc-ve-font-weight--normal);
+  margin-left: 4px;
+  flex: 0 0 auto;
+}
+
+/* R5.2-a: choice + link chips mirror the text chip's compact one-line
+   layout. Choice for single/multi-select; link with a trailing external
+   glyph. The parent .__value-summary caps at 200px + ellipses. */
+.dbvc-ve-control-center__value-choice {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__value-choice strong {
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  margin-right: 4px;
+}
+
+.dbvc-ve-control-center__value-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__value-link-glyph {
+  color: var(--dbvc-ve-color-text-subtle);
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+
+/* R5.2-b: wysiwyg chip — stripped-text preview + subtle word-count
+   suffix. Same one-line ellipsis pattern. */
+.dbvc-ve-control-center__value-wysiwyg {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__value-wysiwyg-words {
+  color: var(--dbvc-ve-color-text-subtle);
+  font-weight: var(--dbvc-ve-font-weight--normal);
+  margin-left: 4px;
+  flex: 0 0 auto;
+}
+
+/* R5.3: image chip — 24×24 rounded thumbnail (loading=lazy) + filename.
+   Parent .__value-summary handles overflow / ellipses. */
+.dbvc-ve-control-center__value-image {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__value-image img {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+  display: block;
+  background: color-mix(in srgb, var(--dbvc-ve-color-secondary) 12%, transparent);
+  flex: 0 0 auto;
+}
+
+.dbvc-ve-control-center__value-image-filename {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* R5.2+color_picker: color chip — 12×12 rounded swatch + monospace hex
+   label. Swatch bg is set via JS style.setProperty on server-validated
+   hex values only. */
+.dbvc-ve-control-center__value-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.dbvc-ve-control-center__value-color-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  flex: 0 0 auto;
+  background-color: transparent;
+}
+
+.dbvc-ve-control-center__value-color-hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* true_false: boolean chip — on/off pill. `is-on` variant lights up with
+   a success tone so the state is scannable at a glance. */
+.dbvc-ve-control-center__value-boolean {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  min-height: 20px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: color-mix(in srgb, var(--dbvc-ve-color-text-subtle) 22%, transparent);
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dbvc-ve-control-center__value-boolean.is-on {
+  background: color-mix(in srgb, var(--dbvc-ve-color-success) 22%, transparent);
+  color: var(--dbvc-ve-color-success);
+}
+
+/* R5.5: compact ISO date chip. Renders the label (ISO for MVP) in a
+   monospaced pill so YYYY-MM-DD reads cleanly at a glance. */
+.dbvc-ve-control-center__value-date {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  min-height: 20px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: color-mix(in srgb, var(--dbvc-ve-color-text-subtle) 18%, transparent);
+  color: var(--dbvc-ve-color-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--medium);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 12ch;
+}
+
+/* R4-C-2: header segmented view-mode toggle. Two role="tab" buttons
+   (By category / By provider) with `aria-selected` reflecting state. */
+.dbvc-ve-control-center__view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-surface-muted);
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+}
+
+.dbvc-ve-control-center__view-toggle-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.dbvc-ve-control-center__view-toggle-option[aria-selected="true"] {
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  box-shadow: 0 1px 0 rgba(0, 10, 54, 0.06);
+}
+
+.dbvc-ve-control-center__view-toggle-option:focus-visible {
+  outline: var(--dbvc-ve-control-center-focus-ring);
+  outline-offset: 1px;
+}
+
+/* R4-C-2: search input in the filter strip gets a leading glyph and a
+   trailing Clear button that toggles visibility per input value. */
+.dbvc-ve-control-center__search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.dbvc-ve-control-center__search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--dbvc-ve-color-text-subtle);
+  pointer-events: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.dbvc-ve-control-center__search-wrap .dbvc-ve-control-center__search {
+  padding-left: 28px;
+  padding-right: 30px;
+}
+
+.dbvc-ve-control-center__search-clear {
+  position: absolute;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dbvc-ve-control-center__search-clear:hover,
+.dbvc-ve-control-center__search-clear:focus-visible {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  background: var(--dbvc-ve-color-background-light);
+  outline: none;
+}
+
+/* R4-C-2: collapsible group headers. One `<tbody class="__group">` per
+   `{providerId}::{group}` key. Collapsed groups hide their child rows
+   via a display:none rule on the tbody's is-collapsed modifier — the
+   semantic tree stays intact for assistive tech (rows are still
+   present, just not painted). */
+.dbvc-ve-control-center__group + .dbvc-ve-control-center__group {
+  border-top: 1px solid var(--dbvc-ve-color-border-muted);
+}
+
+.dbvc-ve-control-center__group-header {
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-control-center__group-header-cell {
+  padding: 0;
+}
+
+.dbvc-ve-control-center__group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px var(--dbvc-ve-control-center-section-padding-x);
+  background: transparent;
+  border: 0;
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dbvc-ve-control-center__group-toggle:hover,
+.dbvc-ve-control-center__group-toggle:focus-visible {
+  background: var(--dbvc-ve-color-background-light);
+  outline: none;
+}
+
+.dbvc-ve-control-center__group-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--dbvc-ve-color-text-muted);
+  transform: rotate(0deg);
+  transition: transform 160ms ease;
+}
+
+.dbvc-ve-control-center__group-toggle[aria-expanded="true"]
+  .dbvc-ve-control-center__group-toggle-icon {
+  transform: rotate(90deg);
+}
+
+.dbvc-ve-control-center__group-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbvc-ve-control-center__group-count {
+  color: var(--dbvc-ve-color-text-subtle);
+  font-weight: var(--dbvc-ve-font-weight--normal);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+.dbvc-ve-control-center__group.is-collapsed
+  .dbvc-ve-control-center__row {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-control-center__group-toggle-icon,
+  .dbvc-ve-control-center__view-toggle-option {
+    transition: none;
+  }
+}
+
+/* R4-D-1: transient confirmation strip shown briefly after the editor
+   panel finishes a save for the row the drawer opened. Sticky top of
+   the table wrap so it stays visible as rows scroll. The strip is
+   aria-hidden — the single polite live region already announced the
+   save. */
+.dbvc-ve-control-center__save-status-strip {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 8px var(--dbvc-ve-control-center-section-padding-x);
+  background: var(--dbvc-ve-color-success-bg);
+  border-bottom: 1px solid rgba(15, 118, 110, 0.28);
+  color: var(--dbvc-ve-color-success);
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: dbvc-ve-cc-save-status 2500ms ease forwards;
+}
+
+@keyframes dbvc-ve-cc-save-status {
+  0% { opacity: 0; transform: translateY(-4px); }
+  8% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-control-center__save-status-strip {
+    animation: none;
+  }
+}
+
+/* Full-panel states ------------------------------------------------------- */
+
+.dbvc-ve-control-center__panel-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.dbvc-ve-control-center__panel-state-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+
+.dbvc-ve-control-center__panel-state-body {
+  margin: 0;
+  max-width: 40ch;
+  font-size: var(--dbvc-ve-font--body);
+  color: var(--dbvc-ve-color-text-muted);
+}
+
+.dbvc-ve-control-center__panel-state-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dbvc-ve-control-center__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-primary);
+  color: #ffffff;
+  border: 0;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+
+.dbvc-ve-control-center__button--secondary {
+  background: var(--dbvc-ve-color-control-surface);
+  border: 1px solid var(--dbvc-ve-color-border);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+}
+
+.dbvc-ve-control-center__loading-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--dbvc-ve-color-border-muted);
+  border-top-color: var(--dbvc-ve-color-primary);
+  animation: dbvc-ve-cc-spin 800ms linear infinite;
+}
+
+/* Dimmed-overlay loading (refresh) ---------------------------------------- */
+
+.dbvc-ve-control-center__refresh-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--dbvc-ve-color-drawer-background) 60%, transparent);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  pointer-events: none;
+}
+
+/* Footer ------------------------------------------------------------------ */
+
+.dbvc-ve-control-center__footer {
+  padding: 8px var(--dbvc-ve-control-center-section-padding-x);
+  border-top: 1px solid var(--dbvc-ve-color-border-muted);
+  background: var(--dbvc-ve-color-surface-muted);
+  font-size: var(--dbvc-ve-font--meta);
+  color: var(--dbvc-ve-color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dbvc-ve-control-center__footer strong {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+/* R5.7-b — inline tree render (repeater parents + per-row leaves).
+   Parent rows carry `.is-parent` + a leading disclosure triangle; child
+   rows carry `.is-child` and are indented so the tree structure reads
+   visually. Every family the drawer supports today is still a flat row;
+   the tree overlay only activates when providers emit `parentPublicId`
+   + `meta.role='repeater_parent'`. */
+.dbvc-ve-control-center__row.is-parent .dbvc-ve-control-center__row-cell--label {
+  padding-left: 8px;
+}
+.dbvc-ve-control-center__row.is-child .dbvc-ve-control-center__row-cell--label {
+  padding-left: 44px;
+  /* Faint vertical hairline connecting the parent's disclosure to the
+     child rows below. Positioned via a background gradient so no extra
+     DOM is needed. */
+  background: linear-gradient(
+      90deg,
+      var(--dbvc-ve-color-border-muted) 0 1.5px,
+      transparent 1.5px
+    )
+    24px 0 / 1.5px 100% no-repeat;
+}
+.dbvc-ve-control-center__row-disclosure {
+  appearance: none;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-right: 8px;
+  padding: 0;
+  vertical-align: middle;
+  font-size: 10px;
+  line-height: 1;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.dbvc-ve-control-center__row-disclosure:hover {
+  background: color-mix(in srgb, var(--dbvc-ve-color-primary) 8%, transparent);
+  border-color: var(--dbvc-ve-color-primary);
+  color: var(--dbvc-ve-color-primary);
+}
+.dbvc-ve-control-center__row-disclosure:focus-visible {
+  outline: 2px solid var(--dbvc-ve-color-primary);
+  outline-offset: 2px;
+}
+.dbvc-ve-control-center__row-disclosure-icon {
+  display: inline-block;
+  transform: rotate(0deg);
+  transform-origin: 50% 50%;
+  transition: transform 140ms ease;
+}
+.dbvc-ve-control-center__row-disclosure.is-expanded
+  .dbvc-ve-control-center__row-disclosure-icon {
+  transform: rotate(90deg);
+}
+.dbvc-ve-control-center__row-childcount {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--dbvc-ve-color-text-muted) 12%,
+    transparent
+  );
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--medium);
+  white-space: nowrap;
+}
+
+/* R5.later-b (2026-09-05): Expand action button on palette parent rows.
+   Icon-only button (arrows expanding outward) sitting alongside the
+   Open button + child-count chip. Compact so it doesn't crowd the
+   action cell. */
+.dbvc-ve-control-center__row-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid var(--dbvc-ve-color-border, transparent);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  border-radius: var(--dbvc-ve-border-radius--s, 4px);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.dbvc-ve-control-center__row-expand:hover {
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  border-color: var(--dbvc-ve-color-primary, currentColor);
+  background: rgba(0, 0, 0, 0.02);
+}
+.dbvc-ve-control-center__row-expand:focus-visible {
+  outline: 2px solid var(--dbvc-ve-color-focus-ring, currentColor);
+  outline-offset: 2px;
+}
+.dbvc-ve-control-center__row-expand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-control-center__row-disclosure,
+  .dbvc-ve-control-center__row-disclosure-icon {
+    transition: none;
+  }
+}

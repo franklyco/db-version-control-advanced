@@ -13,6 +13,107 @@ Rules:
 - optional non-sensitive render metadata such as `data-dbvc-ve-context="text"` or `data-dbvc-ve-context="link_href"` is allowed when needed so the overlay can compare and update the correct rendered projection
 - non-sensitive loop ownership details may live in the server-side descriptor payload, but not in public DOM save targets
 
+## Media Manager R1-C read contract
+
+Media Manager scan state remains server-owned in the separate scan snapshot store. The protected REST surface is available only when the default-off Media Manager feature, the base Visual Editor capability, and active Visual Editor mode all pass.
+
+The lifecycle projection contains only the view-model version, opaque scan/generation references, revision, state, progress, safe summary/error/timestamps, and allowed non-mutating lifecycle actions. It excludes stored groups, sources, traversal cursors, configuration fingerprints, storage metrics, owner targets, and field targets.
+
+The list request accepts bounded `search` (100 characters), `entity` (`all`, `post`, `term`), `field` (`all`, `featured_image`, `acf_image`, `acf_gallery`), an allowlisted sort, an opaque group-reference cursor, and a limit from 1 to 50. Explicit scan reads require the matching generation and revision. The latest-scan route is the deliberate resume exception and returns the latest user/site-bound scan without client-supplied generation/revision.
+
+Each list row contains only an opaque group reference, safe current entity label/family/type label, permitted frontend URL or `null`, missing count, family counts, scan timestamp, and `expand` availability. There is no exact filtered total; cursor paging finds at most one additional eligible row to report `hasMore`, keeping per-request capability checks bounded.
+
+Expansion accepts an opaque group reference plus matching generation/revision, resolves the target only from the current user/site-bound snapshot, and rescans that one server-owned entity. Field records contain an opaque finding reference, safe label/context, family, one of `missing`, `changed`, `resolved_or_changed`, or `unavailable`, a descriptor status, and non-mutating action flags. They never expose an owner ID/subtype, ACF object ID, field key/name/selector/path, empty/configuration fingerprint, raw stored value, full descriptor, descriptor token, or mutation action.
+
+## Media Manager R1-D shell contract
+
+The localized `DBVCVisualEditorBootstrap.mediaManager` object contains only:
+
+```json
+{
+  "enabled": true,
+  "restBase": "/wp-json/dbvc/v1/visual-editor/media-manager",
+  "indexList": true
+}
+```
+
+`indexList` (R2-H Slice 2c, filter `dbvc_visual_editor_media_index_list_enabled`, default = `enabled`) opts the panel into opening from the durable Media Index instead of an on-demand scan; when absent/false the scan-only path is used. The config is present on active Visual Editor pages so the shared toolbar can decide whether to render the entry. The separate Media Manager CSS/JavaScript assets enqueue only when `enabled` is true. Their first production slice creates a non-modal `role="dialog"` shell with `aria-labelledby`, a toolbar trigger using `aria-controls`/`aria-expanded`/`aria-haspopup="dialog"`, close and Escape behavior, and trigger-focus restoration.
+
+The overlay integration emits only `dbvc:visual-editor:media-manager:toggle` and `dbvc:visual-editor:media-manager:close` document events. The Media Manager module emits `dbvc:visual-editor:media-manager:opened`, `dbvc:visual-editor:media-manager:closed`, and `dbvc:visual-editor:media-manager:state-changed`. Event details contain only a copied safe client state and are not data or mutation authority.
+
+The second and fourth production slices provide `DBVCVisualEditorApi.mediaManager.latest/start/list/group/next/retry/cancel`. The request helper supplies the existing REST nonce; explicit list/group/action calls carry the current opaque `scanRef`, `generation`, and `expectedRevision`. `group` also accepts only the allowlisted opaque `vemg_*` reference. The first panel open calls only `latest`; a scan starts, advances, or revalidates one group only after an explicit user action.
+
+R2-H Slice 2c adds `DBVCVisualEditorApi.mediaManager.index(query)` (`GET .../media-manager/index` — same `search`/`entityFamily`/`fieldFamily`/`sort` surface as `list`, plus `offset` paging) and `indexExpand(entityRef)` (`POST .../media-manager/index/expand`, accepting only an allowlisted opaque `vemx_*` entity reference). When `indexList` is on, the first panel open calls `index` (not `latest`) and renders `vemx_`-keyed rows; expanding a row calls `indexExpand`, whose response carries a **detached per-entity snapshot** (`scan` + a working `vemg_` group) that the client adopts as the per-expansion identity so `descriptor`/`assign`/`replace` are unchanged. If the index request fails or returns no rows, the client automatically falls back to `latest` (scan mode); `start` always returns to scan mode. The client state exposes `source` (`"scan"`/`"index"`) and `expansion.itemKey` (the list-row ref) alongside the working `expansion.groupRef`.
+
+`window.DBVCVisualEditorMediaManager` exposes `open`, `close`, `isOpen`, `getState`, `index`, `loadLatest`, `start`, `list`, `loadMore`, `expand`, `collapse`, `next`, `retry`, and `cancel`. `getState()` returns a copy of this safe client shape:
+
+```json
+{
+  "hasLoaded": true,
+  "request": { "status": "success", "action": "" },
+  "presentation": "complete",
+  "scan": {},
+  "query": {},
+  "items": [],
+  "pagination": { "hasMore": false, "nextCursor": "" },
+  "results": { "status": "success", "error": null, "scrollTop": 0 },
+  "expansion": { "groupRef": "", "status": "idle", "row": null, "error": null },
+  "error": null
+}
+```
+
+Presentation maps `scanning`, `failed`, `canceled`, `complete`, and `invalidated` to `scanning`, `error`, `canceled`, `complete`, and `invalidated`. Latest/list `404 media_scan_expired_or_invalid` maps to `no_scan`; generation/revision/busy/superseded conflicts map to the request-level `stale` presentation without replacing the newest accepted scan. A monotonic request sequence and same-generation revision comparison suppress older responses.
+
+The third production slice renders safe list `items` as collapsed semantic rows. Search, entity family, field family, and sort always trigger a bounded first-page server request; the browser does not locally filter or sort authoritative data. `loadMore` sends the opaque next cursor, appends only previously unseen opaque group references, and preserves internal table scroll. A first-page replacement clears the cursor result set, expansion, and scroll. The table exposes safe labels, family/count summaries, timestamps, and an allowlisted HTTP(S) frontend link only. It never writes an owner/field/path/fingerprint into the DOM. The R1-C REST response remains authoritative.
+
+The fourth production slice allows one row expansion at a time. A real button owns `aria-expanded` and `aria-controls`; its labeled region presents independent loading, request-error, provider-unavailable, current, changed, and resolved-or-changed states. The client calls only `group(scan, groupRef)`, validates that the returned scan identity and group match the current list, normalizes allowlisted field/status/descriptor-status properties, strips unknown keys, and suppresses a slower expansion response after collapse or a newer row request. Expansion never changes global list request state and a group failure never removes the loaded rows. `hydrateDescriptor` and `assignMedia` remain forced false; R1 does not call `wp.media`, issue a descriptor, or expose a mutation action.
+
+## Media Manager R2-A descriptor bridge contract
+
+`POST /wp-json/dbvc/v1/visual-editor/media-manager/scans/{scan_ref}/groups/{group_ref}/findings/{finding_ref}/descriptor` exchanges one opaque finding for one fresh standard descriptor. It is available only when the default-off Media Manager feature, the base Visual Editor capability, and active Visual Editor mode all pass, and it requires the current `generation` and `expectedRevision`.
+
+The server resolves the owner and field only from the current user/site-bound snapshot group and finding. No client-supplied owner ID, field key/name, ACF object ID, selector, or path becomes authority. The bridge rechecks owner eligibility/status/capability, rescans the single owner to reconfirm field applicability and the current empty value by fingerprint, and only then mints one fresh `EditableDescriptor` for the `post_featured_image`, `acf_image`, or `acf_gallery` family through the existing registry, persisted in a fresh user-bound session via `EditableRegistry::persistDetachedDescriptor()`.
+
+The response body contains `scan` identity (opaque `scanRef`/`generation`/`revision`/`state`), a `finding` block with the opaque `findingRef`/`groupRef`, `family`, a safe `label`, one of `writable`/`changed`/`resolved`/`unavailable`, and a `descriptorStatus`, and — only when writable — a `descriptor` block with `input` (`image`/`gallery`), `family`, and `expectedState: "empty"`. Because the R2-C save re-resolves the target server-side, the descriptor is not persisted and no opaque token or session id is returned; the client needs only the input kind and family to open the media frame. It never exposes an owner ID, ACF object ID, field key/name/selector/path, empty fingerprint, or raw value. `availableActions.assignMedia`, `openMediaLibrary`, and `save` remain false: R2-A opens no Media Library frame, hydrates no value, and mutates nothing. Tampered/malformed references, stale generation/revision, expired snapshots, populated-after-scan (`resolved`), changed empty evidence (`changed`), and lost eligibility/capability (`unavailable`) all fail closed.
+
+## Media Manager R2-B staged-selection contract
+
+R2-B adds a native Media Library selection affordance inside the `dbvc-ve-media-manager__detail-panel`. It is client-only interaction over the R2-A bridge and never writes content.
+
+For each field still reported `missing`, and only when the localized `supportsWpMedia` flag and `window.wp.media` are both present, the panel renders an `assign-media` control (`Choose image` / `Choose gallery images`). Activating it POSTs the R2-A finding-descriptor route. On a `writable` descriptor the app opens `window.wp.media` with the standard configuration — `library: { type: 'image' }`, `multiple: false` for featured/ACF image and `multiple: true` for ACF gallery — and the core upload tab appears only when WordPress itself grants `upload_files`. The localized `canUpload` bootstrap flag mirrors `current_user_can('upload_files')` so the panel can show an upload-unavailable hint (R2-D) while still offering existing-media selection. A non-`writable` result (`changed`/`resolved`/`unavailable`) surfaces a status notice and never opens the frame.
+
+A selection is staged in client state as `state.expansion.selections[findingRef] = { family, input, items, saved: false }` and re-rendered in place with an `Unsaved selection` badge, thumbnail preview, a `Replace`/`Clear selection` pair, and a polite live announcement. The client keeps no descriptor token or session id (the R2-C save re-resolves server-side); the public `getState()` selection summary exposes only `{ family, input, count, saved:false }`, and the owner id, field key/name/selector, ACF object id, and empty fingerprint never enter the DOM. Staged selections are discarded when the row collapses, a different row expands, or the scan is refreshed. No save, mutation, journal write, or cache invalidation occurs in R2-B; those remain R2-C.
+
+## Media Manager R2-C assignment save contract
+
+`POST /wp-json/dbvc/v1/visual-editor/media-manager/scans/{scan_ref}/groups/{group_ref}/findings/{finding_ref}/assignment` writes the staged selection to the field. It is available only under the same default-off Media Manager feature, base capability, and active-mode gates, and requires the current `generation` and `expectedRevision` plus the selection: `attachmentId` (image) or `attachmentIds` (gallery).
+
+The server re-runs the full R2-A revalidation immediately before writing. If the finding is no longer writable — the owner lost eligibility, the field was populated after the scan (`resolved`), or its empty evidence changed (`changed`) — the request fails closed with `409 media_assignment_stale` and nothing is written. The write target is the freshly re-minted descriptor resolved only from the snapshot; the client never supplies the owner/field. The value is validated for cardinality and, through the existing resolver, for attachment MIME/type; a non-image or empty selection is rejected without a write.
+
+On success the assignment runs through the shared `MutationService`: the resolver save (featured image, ACF image, or ACF gallery), journal/audit, and cache invalidation. The service then rereads the group with `expandGroup` and returns `assignment` (opaque `findingRef`/`groupRef`, `family`, `status: "saved"`, `attachmentCount`, opaque `changeSetId`) and the fresh `row` (updated `counts` and per-field statuses, with the saved field now `resolved_or_changed`). The response carries no raw owner id, field key/name/selector, ACF object id, or attachment path beyond the counts and opaque references. The client reconciles the expanded field, the row's missing count, and the scan summary from this reread and marks a fully resolved row in place — with no list/scan reload.
+
+## Media Manager R2-F entity media inventory contract (Slice 1)
+
+Expanding an entity resolves the full supported-media inventory live: the existing empty findings **plus** already-populated fields. The populated fields are reported only in the detail panel — the top-level results list and its counts stay empty-focused (a populated field never adds to a row's `missingCount`).
+
+A populated field is projected with `status: "assigned"`, `descriptorStatus: "assigned"`, and a sanitized `preview` object: `{ url, alt, count }` — an `http(s)` thumbnail URL (empty if unresolvable), alt text, and, for galleries, the attachment count (a single thumbnail is shown for now). The preview is the only value exposed; the field key/name/selector, owner id, ACF object id, path, and raw stored value never appear. The expansion `counts` gain a `populated` total.
+
+A field that was empty at scan and is now populated (for example, just saved) is reported **once**: its existing `resolved_or_changed` finding carries the merged `preview`; the inventory pass skips it to avoid a duplicate. Slice 1 is read-only — populated fields carry `availableActions.replace = false` and no assign control; thumbnail rendering (Slice 2) and replace (Slice 3) follow.
+
+## Media Manager R2-F thumbnail presentation (Slice 2)
+
+Each detail-panel field renders as `[thumbnail | content]`: a left-aligned square thumbnail (rounded, full field-item height) followed by the heading/meta/controls. A populated field shows its `preview.url` thumbnail with `loading="lazy"`/`decoding="async"`; an empty field shows the same wrap with an accent-color background placeholder (a single swap point for a future default image); a gallery shows one thumbnail plus a `+{count}` badge. Thumbnails render only inside the already-lazy detail panel, so nothing is fetched for collapsed rows. Slice 2 is presentation only — no new REST or mutation surface.
+
+## Media Manager R2-F replace contract (Slice 3)
+
+Each replaceable populated field additionally carries an opaque `valueRef` — a `vemv_[a-f0-9]{24}` fingerprint of the field's current stored value under the snapshot generation — and `availableActions.replace = true`. The `valueRef` is the **expected-current-value** token; it encodes no attachment id or path and is the only per-value identifier the client receives. Non-replaceable families expose `valueRef: ""` and `replace: false`.
+
+`POST /wp-json/dbvc/v1/visual-editor/media-manager/scans/{scan_ref}/groups/{group_ref}/findings/{finding_ref}/replacement` overwrites a populated field. It is available only under the same default-off Media Manager feature, base capability, and active-mode gates, and requires the current `generation` and `expectedRevision`, the `expectedValueRef`, and the selection (`attachmentId` for an image or `attachmentIds` for a gallery). Unlike the assign flow there is no descriptor pre-call: the client opens `wp.media` directly and the endpoint performs all revalidation at save time.
+
+`MediaFindingDescriptorBridge::resolveReplaceable` re-resolves the owner only from the snapshot, rescans in inventory mode, confirms the field is still populated, and `hash_equals`-compares the freshly computed value fingerprint against `expectedValueRef`. Every non-writable outcome is a hard error and nothing is written: `409 media_replace_stale` (current value differs from what the client read), `409 media_replace_not_populated` (field emptied/removed since the read — the client should use the assign path instead), `400 media_replace_value_ref_invalid` (malformed ref), `409 media_replace_unavailable` (owner lost eligibility/could not revalidate), or `403 media_finding_forbidden` (object capability lost). The write target is the freshly re-minted descriptor (`expectedState: "populated"`); the client never supplies the owner/field.
+
+On success the replace runs through the same shared `MutationService`/`applyMutation` pipeline as R2-C (resolver overwrite, journal/audit, cache invalidation), then rereads with `expandGroup` and returns `assignment` (opaque `findingRef`/`groupRef`, `family`, `status: "replaced"`, `attachmentCount`, opaque `changeSetId`) and the fresh `row` — the field stays `assigned` with a new `preview` and a new `valueRef`. The resolver overwrites the field reference only; **no attachment is ever deleted**. The response carries no raw owner id, field key/name/selector, ACF object id, or attachment path beyond the counts and opaque references. The client reconciles the field/preview in place with no list/scan reload.
+
 ## Editable descriptor contract
 
 ```json

@@ -4,11 +4,17 @@ DBVC Visual Editor is a DBVC addon that enables authorized editors to activate a
 
 The addon is designed around a server-side descriptor registry and Bricks render-time instrumentation. The frontend should only interact with lightweight markers and authenticated endpoints, never raw guessed meta targets.
 
+## Scope: desktop only
+
+The Visual Editor and the DBVC plugin as a whole are **desktop-only software** (permanent non-goal for mobile/tablet/touch; real assistive-technology QA is not a required gate). See `docs/dropins/dbvc-visual-editor-brand-controls-guide/00-GOVERNING-DIRECTIVES.md` §0 and `docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/DECISION-LOG.md` D-058 for the authoritative statement.
+
 ## Status
 
 Initial repo-adapted MVP slice implemented.
 
 Current status:
+- Frontend Media Manager R1-A/R1-B/R1-C and all four R1-D production slices are implemented behind a default-off setting: published/public owner policy, exact active ACF visibility, supported media classification, bounded post/term traversal, deterministic opaque findings, compressed user/blog-bound transient snapshots, protected active-mode scan lifecycle/list/group routes, bounded search/filter/sort/cursor retrieval, and single-row current-state revalidation are available; when enabled in active Visual Editor mode, a separately scoped toolbar/shell and API/state controller rehydrate latest state, preserve generation/revision identity, suppress stale responses, expose only server-authorized lifecycle actions, render the safe list projection in a searchable/filterable/sortable internally scrollable laptop/desktop table with cursor append, and lazily expand one row at a time into safe `missing`/`changed`/`resolved_or_changed`/`unavailable` field projections. No descriptor, Media Library assignment, or content mutation exists in R1
+- R1-E hardening now includes row-focus continuity, native keyboard disclosure, reduced-motion behavior, stable named dialog/results/expanded regions, explicit loading/busy and polite field-check announcements, Chromium/Firefox/WebKit engine coverage, targeted Media Manager lint, no-auto-scan coverage, and synthetic 100/500/2,000-group compressed snapshot/read/payload measurements. Authenticated runtime, complete candidate traversal/raw-read scale, real assistive-technology, real Safari, and a completing aggregate repository lint run remain open
 - addon bootstrap is wired into DBVC core loading
 - Add-ons screen can enable/disable the runtime
 - authorized users can toggle frontend Visual Editor mode from the admin bar
@@ -158,7 +164,8 @@ This addon now lives inside the DBVC repo at:
 ## Key docs
 
 - `ARCHITECTURE.md`
-- `docs/handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md`
+- `docs/handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md` - current detailed implementation handoff and next-slice boundary
+- `docs/handoffs/DBVC_R4C_RESUME_PROMPT.md` - fresh copy/paste resume for the next slice (R4-C production drawer)
 - `docs/knowledge/HOOK_USAGE_STRATEGY.md`
 - `docs/knowledge/DATA_CONTRACTS.md`
 - `docs/knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md`

@@ -620,6 +620,69 @@ Current implementation state:
 - Writable gallery descriptors now use `media_gallery_reference`; readonly gallery descriptors use `media_gallery_preview`.
 - Still deferred: conditional image/gallery elements whose source already has a value, ancestor recovery when Bricks exposes no parent-chain metadata at all, and synthetic row/layout creation for missing containers.
 
+### Phase B3: unique-wrapper missing-media anchor hardening
+
+Trigger fixture:
+- Butler Automation homepage `19`, Bricks template `21970`, renders parent div `a43ea9` as `id="brxe-a43ea9" class="brxe-div hero__img_wrap"` while child image `b1b8e3` is omitted because direct ACF image source `hero_section_image_group_hero_image` is empty.
+- The existing missing-media descriptor is correctly classified, empty-value verified, and mapped to parent `a43ea9`, but final marker injection cannot find that parent because the shared opening-tag lookup accepts only `brxe-{element_id}` class tokens.
+
+Scope:
+1. Extend the shared Bricks opening-tag identity matcher with an explicit unique-wrapper mode that accepts either an exact `id="brxe-{element_id}"` attribute or an exact whitespace-delimited `brxe-{element_id}` class token.
+2. Keep source-order occurrence handling for repeated class-based query-loop elements; a tag carrying both forms must still count as one occurrence.
+3. Reuse the same exact-token rule in the fast single-occurrence lookup and full match-list fallback, but enable unique-ID matching only for the proven missing-media ancestor path so unrelated marker repair does not widen in this phase.
+4. Keep missing-media descriptor registration, empty-value verification, ancestor selection, public DOM attributes, media panel routing, and save/reload behavior unchanged.
+5. Add focused regression coverage for a unique ID-addressed wrapper, repeated class-addressed elements, exact-token rejection, and mixed ID/class markup.
+
+Safety invariants:
+- This phase does not force-render a Bricks element or bypass Bricks conditions.
+- It does not infer a source, owner, field, or mutable target from the DOM; final HTML matching only locates a server-proven Bricks element identity already stored in descriptor metadata.
+- Prefix/suffix lookalikes such as `brxe-example-extra` must not match `example`.
+- Existing markers must not be overwritten, and repeated class occurrences must keep their current zero-based occurrence mapping.
+- General marker repair remains class-token based; Phase B3 must not cause unrelated unique text or rendered-media markers to appear.
+- Gallery collection handling and rendered `image_src` / `background_image` patch behavior remain on their existing dedicated paths.
+
+Acceptance gates:
+- The Butler Automation parent `a43ea9` receives one `data-dbvc-ve-missing-media="1"` marker and opens the existing `media_reference` panel while its ACF image value is empty.
+- Selecting media still uses the existing server-authoritative ACF image mutation contract and requires reload for the absent child element.
+- Existing repeated class-based missing-image fixtures retain the same marker count and occurrence ownership.
+- Focused PHP regression tests, PHP syntax checks, `git diff --check`, and authenticated browser QA pass without new Visual Editor console errors.
+
+Implementation status:
+- Implemented as a P2 hardening slice. Missing-media ancestor injection now opts into exact ID-or-class matching, while every general marker-repair caller keeps the previous class-only default.
+- Focused PHPUnit coverage passes for unique ID wrappers, repeated class occurrences, prefix/suffix rejection, mixed ID/class deduplication, and the class-only default (`4 tests / 12 assertions`).
+- Butler Automation runtime and authenticated browser QA on homepage `19` confirmed one editable `Add Hero Image` marker on `a43ea9`, no rendered `b1b8e3` child, `acf_image` / `media_reference` routing, the empty-media message, Media Library chooser, and reload-capable save action. No field value was changed during QA.
+- Marker-heavy `/our-process/` runtime validation kept repeated class-based media families, including three `brxe-xhcpsg` flexible-image markers. The opt-in unit assertion confirms a unique ID wrapper is not matched by the general class-only default.
+
+### Phase B4: rendered HTML tag metadata
+
+Goal:
+- show the actual rendered HTML tag for the marked Bricks element inside the panel's existing Source details body, for example `hero_title = <h1>` or `background_image = <img>`.
+
+Scope:
+1. Resolve the lowercase tag only inside the server-verified rendered fragment: prefer an explicit semantic block tag from the resolved field markup or a rendered `<img>` for `image_src`, then fall back to the opening tag that contains the descriptor's authorized `data-dbvc-ve` token.
+2. Store the tag as private hydrated descriptor render metadata (`render.html_tag`); do not add another public DOM attribute.
+3. Display `leaf_field_name` or `field_name` plus `<tag>` in `dbvc-ve-panel__meta-body`, with the source summary label as a presentation fallback when no field name exists.
+4. Cover both the normal Bricks render-verification path and class-based final marker repair without scanning unrelated page markup.
+5. Keep synthetic empty-loop anchors and missing-media parent anchors unlabeled because the source element itself did not render.
+
+Safety invariants:
+- The rendered tag is presentation metadata only and must not participate in resolver selection, save target selection, mutation contracts, DOM patch targeting, or stale checks.
+- Do not infer an absent element's tag from Bricks element type, nearby markup, a parent anchor, or a field type.
+- Do not expose Bricks element IDs, entity IDs, field keys, or mutable target details in new public DOM attributes.
+- Existing text, rich-text, image, background-image, gallery, composite, query-collection, and missing-media behavior remains unchanged.
+
+Acceptance gates:
+- A rendered heading marker hydrates `render.html_tag = h1` and Source details displays `hero_title = <h1>` when `hero_title` is the descriptor field name.
+- A rendered image marker reports `<img>`; a CSS background marker honestly reports the element that owns the background style, such as `<div>`.
+- A missing/unrendered source element does not guess `<img>` from its parent anchor.
+- Focused PHP tests, PHP/JavaScript syntax checks, path-scoped `git diff --check`, and browser panel QA pass without changing save behavior.
+
+Implementation status:
+- Implemented as a P3 metadata-only enhancement. Verified marker tags are stored only in hydrated descriptor render metadata and the panel escapes the `field = <tag>` presentation before inserting it.
+- The source-bearing tag wins when Bricks wraps WYSIWYG markup or an image in a marker container: Butler Automation browser QA reports `hero_section_hero_h1 = <h1>` instead of the outer Bricks `<div>`, and the LocalWP runtime probe reports populated `main_logo = <img>` instead of `<figure>`.
+- Focused PHPUnit passes `7 tests / 15 assertions`. Marker-heavy `/our-process/` runtime QA persisted `609` tagged descriptors while keeping `42` missing-media descriptors unlabeled. Butler Automation browser QA also confirmed an empty Card Image panel omits the rendered-tag line. No field value was changed.
+- Remaining presentation QA: open one populated CSS-background descriptor in the browser and confirm it reports the actual style-owning element, usually `<div>`.
+
 ### Planned tranche: no-reload media clear/removal DOM patching
 
 Goal:

@@ -102,17 +102,56 @@ final class SubmissionPackageDetector
 
         $manifest = is_string($manifest_raw) ? json_decode($manifest_raw, true) : null;
 
+        $manifest_basename = (string) ($manifest_candidate['basename'] ?? '');
+        $manifest_is_canonical = $manifest_basename === SamplePackageBuilder::MANIFEST_FILENAME;
+        if (
+            ! $manifest_is_canonical
+            && $manifest_basename === 'manifest.json'
+            && ! self::has_legacy_ai_manifest_signature($manifest)
+        ) {
+            return false;
+        }
+
         return [
             'detected' => true,
             'manifest_entry' => $manifest_entry,
-            'manifest_basename' => (string) ($manifest_candidate['basename'] ?? ''),
-            'manifest_is_canonical' => ((string) ($manifest_candidate['basename'] ?? '')) === SamplePackageBuilder::MANIFEST_FILENAME,
+            'manifest_basename' => $manifest_basename,
+            'manifest_is_canonical' => $manifest_is_canonical,
             'wrapper_dir' => (string) $manifest_candidate['wrapper_dir'],
             'manifest_raw' => is_string($manifest_raw) ? $manifest_raw : '',
             'manifest' => is_array($manifest) ? $manifest : null,
             'package_type' => is_array($manifest) && isset($manifest['package_type']) ? (string) $manifest['package_type'] : '',
             'entries' => $entries,
         ];
+    }
+
+    /**
+     * Distinguish legacy AI aliases from the core Proposal Diff manifest.
+     *
+     * @param mixed $manifest
+     */
+    private static function has_legacy_ai_manifest_signature($manifest): bool
+    {
+        if (! is_array($manifest)) {
+            return false;
+        }
+
+        $package_type = isset($manifest['package_type']) ? (string) $manifest['package_type'] : '';
+        if ($package_type !== '' && strpos($package_type, 'dbvc_ai_') === 0) {
+            return true;
+        }
+
+        if (! array_key_exists('package_schema_version', $manifest)) {
+            return false;
+        }
+
+        foreach (['intended_operation', 'source_sample_package', 'site_fingerprint', 'validation_defaults', 'generator'] as $marker) {
+            if (array_key_exists($marker, $manifest)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -139,20 +139,37 @@ final class ThirdPartySyncFileImportService
         $updated = false;
         $import_result = null;
         $wp_entity = null;
+        $live_snapshot_path = '';
 
         if ($action === 'stage') {
             // File-only operation.
         } elseif ($action === self::MODE_MERGE_SETTINGS) {
             $import_result = \DBVC_Third_Party_Portability::import_wsform_settings_for_entity_editor($payload);
             if (\is_wp_error($import_result)) {
-                return $import_result;
+                return self::raw_provider_import_error($import_result, $preview, $relative_path, $written, $live_snapshot_path);
             }
             $imported = true;
             $updated = true;
         } else {
+            if ($action === self::MODE_UPDATE_MATCHED_FORM) {
+                $snapshot_match_id = isset($preview['matched_update']['wp_entity']['id']) ? (int) $preview['matched_update']['wp_entity']['id'] : 0;
+                $snapshot_path = self::create_wsform_form_snapshot($snapshot_match_id, $preview, (int) $user_id);
+                if (\is_wp_error($snapshot_path)) {
+                    $recovery = self::recover_wsform_failed_update('', $written);
+                    return self::raw_provider_import_error($snapshot_path, $preview, $relative_path, $written, $live_snapshot_path, $recovery);
+                }
+                $live_snapshot_path = (string) $snapshot_path;
+            }
+
             $import_result = \DBVC_Third_Party_Portability::import_wsform_form_for_entity_editor($payload);
             if (\is_wp_error($import_result)) {
-                return $import_result;
+                $recovery = $action === self::MODE_UPDATE_MATCHED_FORM
+                    ? self::recover_wsform_failed_update($live_snapshot_path, $written)
+                    : [];
+                return self::raw_provider_import_error($import_result, $preview, $relative_path, $written, $live_snapshot_path, $recovery);
+            }
+            if ($live_snapshot_path !== '' && \is_array($import_result)) {
+                $import_result['snapshot_path'] = $live_snapshot_path;
             }
             $imported = true;
             $created = ! empty($import_result['created']);
@@ -178,6 +195,7 @@ final class ThirdPartySyncFileImportService
             'created'              => $created,
             'updated'              => $updated,
             'imported'             => $imported,
+            'snapshot_path'        => $live_snapshot_path,
             'matched'              => isset($preview['match']) && \is_array($preview['match']) ? $preview['match'] : ['status' => 'none'],
             'wp_entity'            => $wp_entity,
             'import_result'        => $import_result,
@@ -186,6 +204,35 @@ final class ThirdPartySyncFileImportService
 
         self::log_commit('Entity Editor raw provider intake', $result, (int) $user_id);
         return $result;
+    }
+
+    /**
+     * @param \WP_Error           $error
+     * @param array<string,mixed> $preview
+     * @param string              $relative_path
+     * @param array<string,mixed> $written
+     * @param string              $snapshot_path
+     * @param array<string,mixed> $recovery
+     * @return \WP_Error
+     */
+    private static function raw_provider_import_error(\WP_Error $error, array $preview, $relative_path, array $written = [], $snapshot_path = '', array $recovery = [])
+    {
+        $data = $error->get_error_data();
+        $data = \is_array($data) ? $data : [];
+        $data['status'] = isset($data['status']) ? (int) $data['status'] : 500;
+        $data['preview'] = $preview;
+        $data['relative_path'] = (string) $relative_path;
+        if ($snapshot_path !== '') {
+            $data['snapshot_path'] = (string) $snapshot_path;
+        }
+        if (! empty($written['backup_path'])) {
+            $data['sync_backup_path'] = (string) $written['backup_path'];
+        }
+        if (! empty($recovery)) {
+            $data['recovery'] = $recovery;
+        }
+
+        return new \WP_Error((string) $error->get_error_code(), (string) $error->get_error_message(), $data);
     }
 
     /**
@@ -736,6 +783,289 @@ final class ThirdPartySyncFileImportService
     }
 
     /**
+     * @param int                 $form_id
+     * @param array<string,mixed> $item
+     * @param int                 $user_id
+     * @return string|\WP_Error
+     */
+    private static function create_wsform_form_snapshot($form_id, array $item, $user_id = 0)
+    {
+        $form_id = absint($form_id);
+        if ($form_id <= 0) {
+            return new \WP_Error('dbvc_wsform_snapshot_invalid_form', __('Invalid WS Form ID for snapshot.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (
+            ! \class_exists('DBVC_Third_Party_Portability')
+            || ! method_exists('DBVC_Third_Party_Portability', 'export_wsform_form_snapshot_for_entity_editor')
+        ) {
+            return new \WP_Error('dbvc_wsform_snapshot_unavailable', __('WS Form snapshot export is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $payload = \DBVC_Third_Party_Portability::export_wsform_form_snapshot_for_entity_editor($form_id);
+        if (\is_wp_error($payload)) {
+            return $payload;
+        }
+
+        if (! \is_array($payload)) {
+            return new \WP_Error('dbvc_wsform_snapshot_failed', __('Unable to capture the current WS Form before update.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (! isset($payload['dbvc_portability']) || ! \is_array($payload['dbvc_portability'])) {
+            $payload['dbvc_portability'] = [];
+        }
+
+        $payload['dbvc_portability']['snapshot'] = [
+            'source'          => 'entity_editor_wsform_update',
+            'captured_at'     => gmdate('c'),
+            'captured_by'     => (int) $user_id,
+            'matched_form_id' => $form_id,
+            'relative_path'   => isset($item['relative_path'])
+                ? (string) $item['relative_path']
+                : (string) ($item['source_relative_path'] ?? ''),
+        ];
+
+        $sync_real = realpath(\dbvc_get_sync_path());
+        if (! $sync_real || ! is_dir($sync_real)) {
+            return new \WP_Error('dbvc_wsform_snapshot_sync_missing', __('The DBVC sync folder is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $backup_dir = trailingslashit($sync_real) . '.dbvc_entity_editor_backups';
+        if (! is_dir($backup_dir) && ! \wp_mkdir_p($backup_dir)) {
+            return new \WP_Error('dbvc_wsform_snapshot_backup_dir_failed', __('Unable to create the Entity Editor backup directory.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (\class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
+            \DBVC_Sync_Posts::ensure_directory_security($backup_dir);
+        }
+
+        $label = isset($item['title']) ? sanitize_title((string) $item['title']) : '';
+        if ($label === '' && isset($payload['label'])) {
+            $label = sanitize_title((string) $payload['label']);
+        }
+        if ($label === '') {
+            $label = 'ws-form';
+        }
+
+        $snapshot_name = sanitize_file_name(sprintf(
+            'wsform-form-%d-%s.%s.%s.snapshot.json',
+            $form_id,
+            $label,
+            gmdate('Ymd-His'),
+            wp_generate_password(6, false, false)
+        ));
+        $snapshot_path = trailingslashit($backup_dir) . $snapshot_name;
+
+        if (\function_exists('dbvc_is_safe_file_path') && ! \dbvc_is_safe_file_path($snapshot_path)) {
+            return new \WP_Error('dbvc_wsform_snapshot_invalid_path', __('The resolved WS Form snapshot path is not safe for writing.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (! self::write_json_file($snapshot_path, $payload)) {
+            return new \WP_Error('dbvc_wsform_snapshot_write_failed', __('Unable to write the WS Form pre-update snapshot.', 'dbvc'), ['status' => 500]);
+        }
+
+        return '.dbvc_entity_editor_backups/' . $snapshot_name;
+    }
+
+    /**
+     * @param string              $snapshot_path
+     * @param array<string,mixed> $written
+     * @return array<string,mixed>
+     */
+    private static function recover_wsform_failed_update($snapshot_path = '', array $written = [])
+    {
+        $recovery = [
+            'attempted'     => false,
+            'sync_file'     => self::rollback_raw_provider_sync_write($written),
+            'live_snapshot' => self::restore_wsform_form_snapshot((string) $snapshot_path),
+        ];
+
+        $recovery['attempted'] = ! empty($recovery['sync_file']['attempted'])
+            || ! empty($recovery['live_snapshot']['attempted']);
+
+        return $recovery;
+    }
+
+    /**
+     * @param array<string,mixed> $written
+     * @return array<string,mixed>
+     */
+    private static function rollback_raw_provider_sync_write(array $written)
+    {
+        $relative_path = isset($written['relative_path']) ? (string) $written['relative_path'] : '';
+        $backup_path = isset($written['backup_path']) ? (string) $written['backup_path'] : '';
+
+        $result = [
+            'attempted'     => false,
+            'restored'      => false,
+            'removed'       => false,
+            'relative_path' => $relative_path,
+            'backup_path'   => $backup_path,
+            'errors'        => [],
+        ];
+
+        if ($relative_path === '') {
+            return $result;
+        }
+
+        $result['attempted'] = true;
+        $absolute_path = self::resolve_raw_target_absolute_path($relative_path);
+        if (\is_wp_error($absolute_path)) {
+            $result['errors'][] = self::format_wp_error($absolute_path);
+            return $result;
+        }
+
+        if ($backup_path !== '') {
+            $backup_absolute_path = self::resolve_entity_editor_backup_path($backup_path);
+            if (\is_wp_error($backup_absolute_path)) {
+                $result['errors'][] = self::format_wp_error($backup_absolute_path);
+                return $result;
+            }
+
+            if (@copy((string) $backup_absolute_path, (string) $absolute_path)) {
+                $result['restored'] = true;
+                delete_transient('dbvc_entity_editor_index_v1');
+                return $result;
+            }
+
+            $result['errors'][] = [
+                'code'    => 'dbvc_entity_editor_raw_provider_rollback_failed',
+                'message' => __('Unable to restore the previous provider sync JSON from backup.', 'dbvc'),
+            ];
+            return $result;
+        }
+
+        if (! is_file((string) $absolute_path)) {
+            $result['removed'] = true;
+            return $result;
+        }
+
+        if (@unlink((string) $absolute_path)) {
+            $result['removed'] = true;
+            delete_transient('dbvc_entity_editor_index_v1');
+            return $result;
+        }
+
+        $result['errors'][] = [
+            'code'    => 'dbvc_entity_editor_raw_provider_rollback_remove_failed',
+            'message' => __('Unable to remove the newly written provider sync JSON after import failure.', 'dbvc'),
+        ];
+
+        return $result;
+    }
+
+    /**
+     * @param string $snapshot_path
+     * @return array<string,mixed>
+     */
+    private static function restore_wsform_form_snapshot($snapshot_path)
+    {
+        $snapshot_path = str_replace('\\', '/', ltrim((string) $snapshot_path, '/'));
+        $result = [
+            'attempted'     => false,
+            'restored'      => false,
+            'snapshot_path' => $snapshot_path,
+            'errors'        => [],
+        ];
+
+        if ($snapshot_path === '') {
+            return $result;
+        }
+
+        $result['attempted'] = true;
+        $absolute_path = self::resolve_entity_editor_backup_path($snapshot_path);
+        if (\is_wp_error($absolute_path)) {
+            $result['errors'][] = self::format_wp_error($absolute_path);
+            return $result;
+        }
+
+        $payload = self::read_json_file((string) $absolute_path);
+        if (! \is_array($payload)) {
+            $result['errors'][] = [
+                'code'    => 'dbvc_wsform_snapshot_invalid_json',
+                'message' => __('The WS Form snapshot JSON could not be read for automatic restore.', 'dbvc'),
+            ];
+            return $result;
+        }
+
+        if (
+            ! \class_exists('DBVC_Third_Party_Portability')
+            || ! \DBVC_Third_Party_Portability::is_wsform_form_payload($payload)
+        ) {
+            $result['errors'][] = [
+                'code'    => 'dbvc_wsform_snapshot_unsupported_payload',
+                'message' => __('The WS Form snapshot is not a supported form provider payload.', 'dbvc'),
+            ];
+            return $result;
+        }
+
+        $filtered = apply_filters('dbvc_entity_editor_wsform_snapshot_restore_result', null, $snapshot_path, $payload);
+        if (\is_wp_error($filtered)) {
+            $result['errors'][] = self::format_wp_error($filtered);
+            return $result;
+        }
+        if (\is_array($filtered)) {
+            $result = array_merge($result, $filtered);
+            $result['attempted'] = true;
+            $result['restored'] = ! empty($result['restored']);
+            return $result;
+        }
+
+        $restore = \DBVC_Third_Party_Portability::import_wsform_form_for_entity_editor($payload);
+        if (\is_wp_error($restore)) {
+            $result['errors'][] = self::format_wp_error($restore);
+            return $result;
+        }
+
+        $result['restored'] = true;
+        if (\is_array($restore)) {
+            $result['import_result'] = $restore;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param string $relative_path
+     * @return string|\WP_Error
+     */
+    private static function resolve_entity_editor_backup_path($relative_path)
+    {
+        $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
+        if (
+            $relative_path === ''
+            || strpos($relative_path, '..') !== false
+            || strpos($relative_path, '.dbvc_entity_editor_backups/') !== 0
+            || substr($relative_path, -5) !== '.json'
+        ) {
+            return new \WP_Error('dbvc_entity_editor_backup_invalid_path', __('The Entity Editor backup path is not safe for restore.', 'dbvc'), ['status' => 400]);
+        }
+
+        $sync_real = realpath(\dbvc_get_sync_path());
+        if (! $sync_real || ! is_dir($sync_real)) {
+            return new \WP_Error('dbvc_entity_editor_backup_sync_missing', __('The DBVC sync folder is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $absolute_path = trailingslashit($sync_real) . $relative_path;
+        $directory_real = realpath(dirname($absolute_path));
+        $sync_norm = rtrim(str_replace('\\', '/', $sync_real), '/');
+        $directory_norm = $directory_real ? rtrim(str_replace('\\', '/', $directory_real), '/') : '';
+        if ($directory_norm === '' || ($directory_norm !== $sync_norm && strpos($directory_norm, $sync_norm . '/') !== 0)) {
+            return new \WP_Error('dbvc_entity_editor_backup_path_escape', __('The Entity Editor backup path escapes the sync folder.', 'dbvc'), ['status' => 400]);
+        }
+
+        if (! is_readable($absolute_path)) {
+            return new \WP_Error('dbvc_entity_editor_backup_unreadable', __('The Entity Editor backup file is not readable.', 'dbvc'), ['status' => 404]);
+        }
+
+        if (\function_exists('dbvc_is_safe_file_path') && ! \dbvc_is_safe_file_path($absolute_path)) {
+            return new \WP_Error('dbvc_entity_editor_backup_invalid_path', __('The Entity Editor backup file path is not safe for restore.', 'dbvc'), ['status' => 400]);
+        }
+
+        return $absolute_path;
+    }
+
+    /**
      * @param string $relative_path
      * @return array<string,mixed>
      */
@@ -968,7 +1298,10 @@ final class ThirdPartySyncFileImportService
 
         $result = \DBVC_Third_Party_Portability::import_wsform_form_for_entity_editor($payload);
         if (\is_wp_error($result)) {
-            return self::merge_item_error($item, $result);
+            $error_item = self::merge_item_error($item, $result);
+            $error_item['recovery'] = self::recover_wsform_failed_update((string) $snapshot_path);
+            self::log_commit('Entity Editor WS Form matched update failed', $error_item, (int) $user_id);
+            return $error_item;
         }
 
         $result_item = array_merge($item, [
@@ -1031,9 +1364,18 @@ final class ThirdPartySyncFileImportService
             return self::merge_item_blocked($item, 'wsform_update_match_drift', __('The matched WS Form no longer matches this payload UID.', 'dbvc'));
         }
 
+        $snapshot_path = self::create_wsform_form_snapshot($matched_id, $item, (int) $user_id);
+        if (\is_wp_error($snapshot_path)) {
+            return self::merge_item_error($item, $snapshot_path);
+        }
+        $item['snapshot_path'] = (string) $snapshot_path;
+
         $result = \DBVC_Third_Party_Portability::import_wsform_form_for_entity_editor($payload);
         if (\is_wp_error($result)) {
             return self::merge_item_error($item, $result);
+        }
+        if (\is_array($result)) {
+            $result['snapshot_path'] = (string) $snapshot_path;
         }
 
         $result_item = array_merge($item, [
@@ -1042,6 +1384,7 @@ final class ThirdPartySyncFileImportService
             'updated'       => ! empty($result['updated']),
             'imported'      => true,
             'status'        => 'updated',
+            'snapshot_path' => (string) $snapshot_path,
             'import_result' => $result,
             'wp_entity'     => isset($result['wp_entity']) && \is_array($result['wp_entity']) ? $result['wp_entity'] : null,
             'blocking'      => [],
@@ -1554,6 +1897,21 @@ final class ThirdPartySyncFileImportService
     }
 
     /**
+     * @param \WP_Error $error
+     * @return array<string,mixed>
+     */
+    private static function format_wp_error(\WP_Error $error)
+    {
+        $data = $error->get_error_data();
+
+        return [
+            'code'    => (string) $error->get_error_code(),
+            'message' => (string) $error->get_error_message(),
+            'status'  => \is_array($data) && isset($data['status']) ? (int) $data['status'] : 500,
+        ];
+    }
+
+    /**
      * @param string              $message
      * @param array<string,mixed> $item
      * @param int                 $user_id
@@ -1565,7 +1923,7 @@ final class ThirdPartySyncFileImportService
             return;
         }
 
-        \DBVC_Sync_Logger::log($message, [
+        $context = [
             'relative_path' => isset($item['relative_path']) ? (string) $item['relative_path'] : '',
             'user_id'       => (int) $user_id,
             'provider'      => isset($item['provider']) ? (string) $item['provider'] : '',
@@ -1574,6 +1932,24 @@ final class ThirdPartySyncFileImportService
             'action'        => isset($item['action']) ? (string) $item['action'] : '',
             'form_id'       => isset($item['wp_entity']['id']) ? (int) $item['wp_entity']['id'] : 0,
             'status'        => isset($item['status']) ? (string) $item['status'] : '',
-        ]);
+        ];
+
+        if ($context['form_id'] <= 0 && isset($item['matched_update']['wp_entity']['id'])) {
+            $context['form_id'] = (int) $item['matched_update']['wp_entity']['id'];
+        }
+
+        if (! empty($item['snapshot_path'])) {
+            $context['snapshot_path'] = (string) $item['snapshot_path'];
+        }
+
+        if (! empty($item['backup_path'])) {
+            $context['backup_path'] = (string) $item['backup_path'];
+        }
+
+        if (! empty($item['recovery']) && \is_array($item['recovery'])) {
+            $context['recovery'] = $item['recovery'];
+        }
+
+        \DBVC_Sync_Logger::log($message, $context);
     }
 }

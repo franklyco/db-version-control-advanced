@@ -114,6 +114,7 @@ final class Resolver
      */
     public static function resolve_descriptor(array $descriptor, array $options = []): array
     {
+        $dry_run = ! empty($options['dry_run']);
         $result = [
             'status'        => 'unresolved',
             'resolved_via'  => null,
@@ -162,7 +163,7 @@ final class Resolver
                     $result['candidates']   = $hash_candidates;
                     $result['bundle_hit']   = self::bundle_file_exists($descriptor, $options);
 
-                    if ($asset_uid && ! \get_post_meta($hash_candidates[0], 'vf_asset_uid', true)) {
+                    if (! $dry_run && $asset_uid && ! \get_post_meta($hash_candidates[0], 'vf_asset_uid', true)) {
                         \update_post_meta($hash_candidates[0], 'vf_asset_uid', $asset_uid);
                     }
 
@@ -188,10 +189,10 @@ final class Resolver
                     $result['candidates']   = $path_candidates;
                     $result['bundle_hit']   = self::bundle_file_exists($descriptor, $options);
 
-                    if ($asset_uid) {
+                    if (! $dry_run && $asset_uid) {
                         \update_post_meta($target_id, 'vf_asset_uid', $asset_uid);
                     }
-                    if ($file_hash) {
+                    if (! $dry_run && $file_hash) {
                         \update_post_meta($target_id, 'vf_file_hash', $file_hash);
                     }
 

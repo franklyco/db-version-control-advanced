@@ -39,6 +39,35 @@
 	margin-bottom: 24px;
 }
 
+.dbvc-inline-notice {
+	background: var(--dbvc-color-white);
+	border: 1px solid var(--dbvc-color-border-muted);
+	border-left-width: 4px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	margin: 8px 0;
+	padding: 8px 12px;
+}
+
+.dbvc-inline-notice p {
+	margin: 0.5em 0;
+}
+
+.dbvc-inline-notice--error {
+	border-left-color: var(--dbvc-color-danger);
+}
+
+.dbvc-inline-notice--warning {
+	border-left-color: var(--dbvc-color-warning-amber);
+}
+
+.dbvc-inline-notice--success {
+	border-left-color: var(--dbvc-color-success);
+}
+
+.dbvc-inline-notice--info {
+	border-left-color: var(--dbvc-color-accent-blue);
+}
+
 .dbvc-admin-app__header {
 	display: flex;
 	align-items: center;
@@ -629,7 +658,7 @@
 	margin-top: 12px;
 }
 
-.dbvc-tools-drawer .notice {
+.dbvc-tools-drawer .dbvc-inline-notice {
 	margin: 8px 0;
 }
 
@@ -1077,6 +1106,46 @@
 }
 .dbvc-field-label {
 	font-weight: 600;
+}
+
+.dbvc-change-type {
+	display: inline-block;
+	border: 1px solid var(--dbvc-color-border-muted);
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.4;
+	margin-left: 8px;
+	padding: 1px 5px;
+	vertical-align: 1px;
+}
+
+.dbvc-change-type--added {
+	background: var(--dbvc-color-success-pale);
+	border-color: var(--dbvc-color-success);
+	color: var(--dbvc-color-success-dark);
+}
+
+.dbvc-change-type--deleted {
+	background: #fcf0f1;
+	border-color: var(--dbvc-color-danger);
+	color: var(--dbvc-color-danger-strong);
+}
+
+.dbvc-change-type--modified {
+	background: #fff8e5;
+	border-color: var(--dbvc-color-accent-gold);
+	color: #6e4b00;
+}
+
+.dbvc-change-type--unchanged {
+	background: var(--dbvc-color-surface-muted);
+	color: var(--dbvc-color-text-muted);
+}
+
+.dbvc-diff-raw-link {
+	font-size: 12px;
+	margin-top: 6px;
 }
 
 .dbvc-field-label__key {
@@ -1796,6 +1865,7 @@ textarea.dbvc-entity-editor__textarea {
 	align-items: center;
 	gap: 8px;
 	margin: 12px 0;
+	flex-wrap: wrap;
 }
 
 .dbvc-diff-filter button {
@@ -1811,6 +1881,98 @@ textarea.dbvc-entity-editor__textarea {
 	background: var(--dbvc-color-accent-blue);
 	border-color: var(--dbvc-color-accent-blue);
 	color: var(--dbvc-color-white);
+}
+
+.dbvc-raw-diff {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+}
+
+.dbvc-raw-diff__summary h3,
+.dbvc-raw-diff__summary p,
+.dbvc-raw-diff__index h4 {
+	margin: 0;
+}
+
+.dbvc-raw-diff__summary {
+	display: grid;
+	gap: 4px;
+}
+
+.dbvc-raw-diff__previews {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+}
+
+.dbvc-raw-diff__panel {
+	min-width: 0;
+	border-top: 1px solid var(--dbvc-color-border-muted);
+	padding-top: 12px;
+}
+
+.dbvc-raw-diff__panel-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 6px;
+}
+
+.dbvc-raw-diff__panel-header h4,
+.dbvc-raw-diff__meta,
+.dbvc-raw-diff__hash {
+	margin: 0;
+}
+
+.dbvc-raw-diff__meta,
+.dbvc-raw-diff__hash {
+	color: var(--dbvc-color-text-muted);
+	font-size: 12px;
+}
+
+.dbvc-raw-diff__panel pre {
+	box-sizing: border-box;
+	width: 100%;
+	max-height: 480px;
+	margin: 8px 0;
+	white-space: pre;
+}
+
+.dbvc-raw-diff__hash code {
+	overflow-wrap: anywhere;
+}
+
+.dbvc-raw-diff__index {
+	min-width: 0;
+	overflow-x: auto;
+	border-top: 1px solid var(--dbvc-color-border-muted);
+	padding-top: 12px;
+}
+
+.dbvc-raw-diff__table {
+	margin-top: 8px;
+	table-layout: fixed;
+}
+
+.dbvc-raw-diff__table th:first-child {
+	width: 34%;
+}
+
+.dbvc-raw-diff__table th:last-child {
+	width: 28%;
+}
+
+.dbvc-raw-diff__table td {
+	vertical-align: top;
+	overflow-wrap: anywhere;
+}
+
+.dbvc-raw-diff__table td code {
+	display: block;
+	margin-top: 3px;
+	white-space: normal;
 }
 
 .dbvc-admin-app__actions {
@@ -2219,6 +2381,15 @@ textarea.dbvc-entity-editor__textarea {
 	.dbvc-entity-detail-modal__panel {
 		width: 100%;
 		padding: 16px 16px 24px;
+	}
+
+	.dbvc-raw-diff__previews {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.dbvc-raw-diff__panel-header {
+		align-items: flex-start;
+		flex-direction: column;
 	}
 }
 .dbvc-entity-table-wrapper {
