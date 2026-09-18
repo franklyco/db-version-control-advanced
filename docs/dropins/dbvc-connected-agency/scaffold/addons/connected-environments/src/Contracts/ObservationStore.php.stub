@@ -1,0 +1,23 @@
+<?php
+namespace Dbvc\Connected\Contracts;
+
+/** Implement with durable SQL semantics; a serialized options array is insufficient. */
+interface ObservationStore
+{
+    /** Atomic upsert/increment. Returns the new dirty generation. */
+    public function markDirty($domain, $objectKey, array $context);
+
+    /** Atomic bounded claim, returning lease token/expiry and captured generation. */
+    public function claimDue($limit, $leaseSeconds);
+
+    /**
+     * Persist snapshot + immutable outbox event + sequence allocation consistently.
+     * Acknowledge only the claimed generation under the matching valid lease.
+     * Newer dirty generations remain pending. No-op snapshots may omit an event.
+     * Return durable receipt or explicit conflict; failure preserves recoverable work.
+     */
+    public function commitObservation(array $claim, array $snapshot, array $context);
+
+    /** Token-checked failure/retry update; do not erase newer work. */
+    public function retry(array $claim, $reason, $availableAt);
+}

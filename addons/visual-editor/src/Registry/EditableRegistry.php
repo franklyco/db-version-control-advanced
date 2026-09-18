@@ -411,27 +411,79 @@ final class EditableRegistry
     }
 
     /**
+     * Attach one descriptor to a persisted session. Thin wrapper over
+     * {@see addDescriptorsToSession()} — same result as before
+     * R5.later-perf-c, one session round-trip.
+     *
      * @param string             $session_id
      * @param EditableDescriptor $descriptor
      * @return bool
      */
     public function addDescriptorToSession($session_id, EditableDescriptor $descriptor)
     {
+        $result = $this->addDescriptorsToSession($session_id, [$descriptor]);
+
+        return $descriptor->token !== '' && ! empty($result[$descriptor->token]);
+    }
+
+    /**
+     * R5.later-perf-c (E-162 F3) — attach many descriptors to a persisted
+     * session in ONE round-trip: one `loadSession()` (which decodes the
+     * session's descriptor blob), one public-map rebuild, one encode and one
+     * `set_transient()`. `ControlCenterOpenController` uses this for a
+     * palette parent plus its pre-minted leaves (R5.later-y-3): 20 serial
+     * attaches cost ≈ 0.5 s each on the reference site (E-162), the batch
+     * costs one.
+     *
+     * Per-descriptor semantics are unchanged from the single form: an entry
+     * with an empty token or one the addon excludes is refused (`false`)
+     * without affecting the others; when the session is missing or belongs
+     * to another user every entry is `false` and nothing is written. Later
+     * entries with the same token win, as they would with serial calls.
+     *
+     * @param string                        $session_id
+     * @param array<int, EditableDescriptor> $descriptors
+     * @return array<string, bool> token → attached, in input order (entries
+     *                             without a token are dropped).
+     */
+    public function addDescriptorsToSession($session_id, array $descriptors)
+    {
         $session_id = $this->normalizeSessionId($session_id);
-        if ($session_id === '' || $descriptor->token === '' || $this->isDescriptorExcluded($descriptor)) {
-            return false;
+        $result = [];
+        $accepted = [];
+
+        foreach ($descriptors as $descriptor) {
+            if (! ($descriptor instanceof EditableDescriptor) || $descriptor->token === '') {
+                continue;
+            }
+
+            $token = $descriptor->token;
+            if ($session_id === '' || $this->isDescriptorExcluded($descriptor)) {
+                $result[$token] = false;
+                continue;
+            }
+
+            $accepted[$token] = $descriptor;
+            $result[$token] = false;
         }
 
+        if (empty($accepted)) {
+            return $result;
+        }
+
+        $started_at = $this->startProfileTimer();
         $payload = $this->loadSession($session_id, true);
         if (empty($payload)) {
-            return false;
+            return $result;
         }
 
-        $descriptors = isset($payload['descriptors']) && is_array($payload['descriptors']) ? $payload['descriptors'] : [];
-        $descriptors[$descriptor->token] = $descriptor->toArray();
-        $resolved = [];
+        $stored = isset($payload['descriptors']) && is_array($payload['descriptors']) ? $payload['descriptors'] : [];
+        foreach ($accepted as $token => $descriptor) {
+            $stored[$token] = $descriptor->toArray();
+        }
 
-        foreach ($descriptors as $token => $item) {
+        $resolved = [];
+        foreach ($stored as $token => $item) {
             if (! is_array($item)) {
                 continue;
             }
@@ -445,11 +497,16 @@ final class EditableRegistry
         }
 
         $payload['public_map'] = $this->exportPublicMap($resolved);
-        $this->storeSessionDescriptors($payload, $descriptors);
+        $this->storeSessionDescriptors($payload, $stored);
 
         set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
+        $this->recordProfileDuration('registry.session.attach_batch', $started_at);
 
-        return true;
+        foreach ($accepted as $token => $descriptor) {
+            $result[$token] = true;
+        }
+
+        return $result;
     }
 
     /**

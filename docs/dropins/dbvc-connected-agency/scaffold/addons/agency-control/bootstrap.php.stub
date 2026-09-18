@@ -1,0 +1,14 @@
+<?php
+/** Starter only. Wire this file through the existing DBVC bootstrap after review. */
+if (! defined('WPINC')) {
+    return;
+}
+if (defined('DBVC_AGENCY_EMERGENCY_DISABLE') && constant('DBVC_AGENCY_EMERGENCY_DISABLE')) {
+    return;
+}
+if (get_option('dbvc_addon_agency_control_enabled', '0') !== '1') {
+    return;
+}
+// No heavy dependencies, options creation, migration or network before the gate.
+require_once __DIR__ . '/src/Runtime.php';
+return \Dbvc\AgencyControl\Runtime::boot();

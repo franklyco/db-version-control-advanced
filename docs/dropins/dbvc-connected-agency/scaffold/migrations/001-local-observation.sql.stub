@@ -1,0 +1,69 @@
+-- REVIEW DRAFT ONLY. Never execute verbatim. Replace __PREFIX__ via the DBVC
+-- migration owner, review charset/collation/engine and use supported helpers.
+-- No enrollment secret, REST registration or WordPress activation is included.
+-- VARBINARY IDs make these composite keys bounded and case-sensitive.
+
+CREATE TABLE __PREFIX__dbvc_ce_state (
+  singleton_id TINYINT UNSIGNED NOT NULL,
+  installation_epoch VARBINARY(128) NOT NULL,
+  next_sequence BIGINT UNSIGNED NOT NULL DEFAULT 1,
+  schema_version INT UNSIGNED NOT NULL,
+  PRIMARY KEY (singleton_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE __PREFIX__dbvc_ce_jobs (
+  job_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  domain VARBINARY(128) NOT NULL,
+  object_key VARBINARY(128) NOT NULL,
+  generation BIGINT UNSIGNED NOT NULL DEFAULT 1,
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  available_at DATETIME NOT NULL,
+  lease_token VARBINARY(64) NULL,
+  lease_until DATETIME NULL,
+  last_error_code VARBINARY(128) NULL,
+  PRIMARY KEY (job_id),
+  UNIQUE KEY dirty_object (domain, object_key),
+  KEY due_jobs (available_at, lease_until, job_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE __PREFIX__dbvc_ce_objects (
+  object_row_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  domain VARBINARY(128) NOT NULL,
+  instance_uid VARBINARY(128) NOT NULL,
+  profile VARBINARY(128) NOT NULL,
+  object_exists TINYINT UNSIGNED NOT NULL,
+  snapshot_complete TINYINT UNSIGNED NOT NULL,
+  semantic_hash VARBINARY(64) NOT NULL,
+  storage_fingerprint VARBINARY(64) NULL,
+  observed_sequence BIGINT UNSIGNED NOT NULL,
+  observed_epoch VARBINARY(128) NOT NULL,
+  snapshot_body LONGTEXT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (object_row_id),
+  UNIQUE KEY object_profile (domain, instance_uid, profile)
+) ENGINE=InnoDB;
+
+CREATE TABLE __PREFIX__dbvc_ce_outbox (
+  outbox_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  installation_epoch VARBINARY(128) NOT NULL,
+  event_id VARBINARY(128) NOT NULL,
+  source_sequence BIGINT UNSIGNED NOT NULL,
+  body_digest VARBINARY(64) NOT NULL,
+  immutable_body LONGTEXT NOT NULL,
+  delivery_state VARBINARY(32) NOT NULL,
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  available_at DATETIME NOT NULL,
+  lease_token VARBINARY(64) NULL,
+  lease_until DATETIME NULL,
+  receipt_body LONGTEXT NULL,
+  created_at DATETIME NOT NULL,
+  PRIMARY KEY (outbox_id),
+  UNIQUE KEY event_identity (installation_epoch, event_id),
+  UNIQUE KEY event_sequence (installation_epoch, source_sequence),
+  KEY pending_delivery (delivery_state, available_at, outbox_id)
+) ENGINE=InnoDB;
+
+-- Additional M1 identity-sidecar data depends on current DBVC/Bricks mapping
+-- ownership; reuse it when valid instead of installing a duplicate mapping table.
+-- Application code must cap wire sequences at 9007199254740991 and rotate epoch
+-- through explicit enrollment before exhaustion. This DDL does not enforce it.

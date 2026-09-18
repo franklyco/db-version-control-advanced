@@ -1,0 +1,20 @@
+{
+  "schema_version": "agency-control.observation.v0.2",
+  "event_id": "event-variable-003",
+  "environment_id": "a-prod",
+  "installation_epoch": "epoch-a-prod-1",
+  "sequence": 3,
+  "observed_at": "2026-09-16T12:00:00Z",
+  "object": {
+    "domain": "bricks.variable",
+    "instance_uid": "variable-space-a"
+  },
+  "projection": {
+    "profile": "bricks-variable-fixture-v1",
+    "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "exists": true,
+    "complete": true
+  },
+  "origin": "human",
+  "causation_id": null
+}

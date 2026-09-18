@@ -1,0 +1,17 @@
+<?php
+namespace Dbvc\AgencyControl;
+
+/** Composition placeholder. Not a functional runtime or an active capability. */
+final class Runtime
+{
+    public static function boot()
+    {
+        // Implement only after schema readiness, role/prerequisites and services exist.
+        // Never register a route or worker whose backing implementation is missing.
+        return array(
+            'state' => 'scaffold_only',
+            'registered' => false,
+            'reason' => 'runtime_composition_not_implemented',
+        );
+    }
+}

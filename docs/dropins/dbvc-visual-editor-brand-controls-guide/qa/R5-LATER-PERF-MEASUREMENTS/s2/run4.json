@@ -1,0 +1,94 @@
+{
+  "scenario": "s2",
+  "run": "run4",
+  "capturedAt": "17:37:42",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14792,
+    "domContentLoaded": 15680,
+    "load": 23986
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "spanCount": 16,
+  "aggregate": {
+    "dbvc.ve.overlay_boot": {
+      "count": 1,
+      "totalMs": 1603.8,
+      "maxMs": 1603.8
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 5,
+      "totalMs": 0.9,
+      "maxMs": 0.2
+    },
+    "dbvc.ve.session.public_map_request": {
+      "count": 1,
+      "totalMs": 1517.1,
+      "maxMs": 1517.1
+    },
+    "dbvc.ve.api.getSession": {
+      "count": 1,
+      "totalMs": 1517,
+      "maxMs": 1517
+    },
+    "dbvc.ve.session.public_map_sync": {
+      "count": 1,
+      "totalMs": 0,
+      "maxMs": 0
+    },
+    "dbvc.ve.markers.recover_query_collections": {
+      "count": 4,
+      "totalMs": 0.9,
+      "maxMs": 0.3
+    },
+    "dbvc.ve.prefetch.setup": {
+      "count": 1,
+      "totalMs": 0.3,
+      "maxMs": 0.3
+    },
+    "dbvc.ve.markers.mount": {
+      "count": 1,
+      "totalMs": 5.1,
+      "maxMs": 5.1
+    },
+    "dbvc.ve.badges.query_collection_mount": {
+      "count": 1,
+      "totalMs": 52.2,
+      "maxMs": 52.2
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.overlay_boot",
+      "startTime": 15611,
+      "duration": 1603.8
+    },
+    {
+      "name": "dbvc.ve.session.public_map_request",
+      "startTime": 15639,
+      "duration": 1517.1
+    },
+    {
+      "name": "dbvc.ve.api.getSession",
+      "startTime": 15639,
+      "duration": 1517
+    },
+    {
+      "name": "dbvc.ve.badges.query_collection_mount",
+      "startTime": 17162,
+      "duration": 52.2
+    },
+    {
+      "name": "dbvc.ve.markers.mount",
+      "startTime": 17157,
+      "duration": 5.1
+    }
+  ],
+  "notes": ""
+}

@@ -1,0 +1,93 @@
+{
+  "scenario": "s4",
+  "run": "discarded-hover-prefetch",
+  "capturedAt": "18:01:06",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14339,
+    "domContentLoaded": 15210,
+    "load": 23005
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "visRows": 382,
+    "scrollPx": 46619,
+    "scrollMs": 2917,
+    "pxPerFrame": 250,
+    "posts": 44,
+    "postsDone": 44,
+    "rowsQueued": 379,
+    "batchHist": {
+      "5": 1,
+      "6": 1,
+      "7": 5,
+      "8": 9,
+      "9": 19,
+      "10": 9
+    },
+    "statuses": {
+      "200": 44
+    },
+    "serverWaitMs": [
+      3873,
+      45744,
+      87502
+    ],
+    "queueMs": [
+      1,
+      1,
+      3
+    ],
+    "maxConcurrent": 44,
+    "resBytesDecoded": 43553,
+    "resBytesTransfer": 26003,
+    "allDoneAtMs": 90423,
+    "firstDoneAtMs": 3961
+  },
+  "spanCount": 2282,
+  "aggregate": {
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 174,
+      "totalMs": 6.7,
+      "maxMs": 0.2
+    },
+    "dbvc.ve.drawer.value_summary.batch_flush": {
+      "count": 44,
+      "totalMs": 1995649.5,
+      "maxMs": 87512.1
+    },
+    "dbvc.ve.prefetch.pump": {
+      "count": 2034,
+      "totalMs": 572.4,
+      "maxMs": 4.5
+    },
+    "dbvc.ve.descriptor_batch_request": {
+      "count": 14,
+      "totalMs": 75002.8,
+      "maxMs": 32010.1
+    },
+    "dbvc.ve.api.getDescriptors": {
+      "count": 14,
+      "totalMs": 74998.1,
+      "maxMs": 32009.7
+    },
+    "dbvc.ve.api.getDescriptor": {
+      "count": 1,
+      "totalMs": 32541.6,
+      "maxMs": 32541.6
+    },
+    "dbvc.ve.descriptor_request": {
+      "count": 1,
+      "totalMs": 32541.8,
+      "maxMs": 32541.8
+    }
+  },
+  "topSpans": [],
+  "notes": "DISCARDED (contaminated, but informative): the mouse was resting on a page marker, so the overlay-app viewport descriptor prefetch (paused unless a panel is open or a marker is hovered) ran concurrently \u2014 14 api.getDescriptors batches (4 tokens each, concurrency 2) + 1 hover api.getDescriptor, all queued behind the 44 value-summary POSTs on the same 2 PHP workers (getDescriptor waited 32.5 s). prefetch.pump fired 2034 times (572 ms CPU) because the idle-callback re-arms every cycle while requests are in flight. Value-summary figures match runs 1-2 (all done 90.4 s). Backfilled by run3."
+}

@@ -402,6 +402,32 @@ final class ObjectNavigationReadModel
     }
 
     /**
+     * Polish (2026-09-16, live QA E-157 observation): under the title sorts
+     * MySQL orders the empty string before "A", so untitled objects (shown as
+     * "Post #ID") led every A → Z page. Push them to the end of BOTH title
+     * orders while keeping WP_Query's own `post_title, ID` clauses and the
+     * ID tiebreak intact. Marker-gated like filterPostsWhere.
+     *
+     * @param string   $orderby
+     * @param WP_Query $query
+     * @return string
+     */
+    public function filterPostsOrderBy($orderby, $query)
+    {
+        global $wpdb;
+
+        if (! ($query instanceof WP_Query) || ! $query->get(self::QUERY_MARKER)) {
+            return $orderby;
+        }
+
+        if (! in_array($query->get(self::QUERY_MARKER . '_sort'), ['title_asc', 'title_desc'], true)) {
+            return $orderby;
+        }
+
+        return "({$wpdb->posts}.post_title = '') ASC" . ($orderby !== '' ? ', ' . $orderby : '');
+    }
+
+    /**
      * @param string $search
      * @param string $subtype
      * @param int    $page
@@ -420,10 +446,12 @@ final class ObjectNavigationReadModel
         $this->author_restricted_post_types = $this->collectAuthorRestrictedPostTypes($post_types);
 
         add_filter('posts_where', [$this, 'filterPostsWhere'], 10, 2);
+        add_filter('posts_orderby', [$this, 'filterPostsOrderBy'], 10, 2);
 
         $query = new WP_Query(
             [
                 self::QUERY_MARKER => true,
+                self::QUERY_MARKER . '_sort' => $sort,
                 'post_type' => $post_types,
                 'post_status' => 'any',
                 'posts_per_page' => $per_page + 1,
@@ -442,6 +470,7 @@ final class ObjectNavigationReadModel
         );
 
         remove_filter('posts_where', [$this, 'filterPostsWhere'], 10);
+        remove_filter('posts_orderby', [$this, 'filterPostsOrderBy'], 10);
         $this->author_restricted_post_types = [];
 
         $items = [];

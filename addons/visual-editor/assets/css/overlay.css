@@ -2748,7 +2748,6 @@ textarea.dbvc-ve-panel__input--textlike {
      matches the mockup's intent (mockup uses 0.72; 0.85 is a middle
      ground that stays legible on a real display). */
   color: var(--dbvc-ve-color-text-light);
-  opacity: 0.85;
   box-shadow: none;
   backdrop-filter: none;
 }
@@ -2756,6 +2755,17 @@ textarea.dbvc-ve-panel__input--textlike {
 .dbvc-ve-toolbar__button svg {
   width: var(--dbvc-ve-font-icon--m);
   height: var(--dbvc-ve-font-icon--m);
+  /* Polish (2026-09-16): the 0.85 de-emphasis used to sit on the button,
+     which also faded the count badge inside it (axe measured the badge at
+     4.3:1 even with navy text). The glyph keeps the fade; the badge paints
+     at full opacity. */
+  opacity: 0.85;
+}
+
+.dbvc-ve-toolbar__button:hover svg,
+.dbvc-ve-toolbar__button:focus svg,
+.dbvc-ve-toolbar__button[aria-expanded="true"] svg {
+  opacity: 1;
 }
 
 .dbvc-ve-toolbar__button:hover,
@@ -2797,7 +2807,10 @@ textarea.dbvc-ve-panel__input--textlike {
   border: var(--dbvc-ve-border--light-s);
   border-radius: var(--dbvc-ve-border-radius--l);
   background: var(--dbvc-ve-notice-dot--color-bg);
-  color: var(--dbvc-ve-color-text-light);
+  /* Polish (2026-09-16): light text on the primary orange measured 2.8:1
+     (R6-C D4 axe). Navy on orange is 6.2:1; the error / empty states keep
+     light text (5.7:1 / 4.5:1 on their darker fills). */
+  color: var(--dbvc-ve-color-dark);
   font-size: var(--dbvc-ve-font--overline);
   font-weight: var(--dbvc-ve-font-weight--bold);
 }
@@ -2805,11 +2818,13 @@ textarea.dbvc-ve-panel__input--textlike {
 .dbvc-ve-toolbar[data-state="error"] .dbvc-ve-toolbar__count,
 .dbvc-ve-toolbar__button[data-state="error"] .dbvc-ve-toolbar__count {
   background: var(--dbvc-ve-color-error);
+  color: var(--dbvc-ve-color-text-light);
 }
 
 .dbvc-ve-toolbar[data-state="empty"] .dbvc-ve-toolbar__count,
 .dbvc-ve-toolbar__button[data-state="empty"] .dbvc-ve-toolbar__count {
   background: var(--dbvc-ve-color-warning);
+  color: var(--dbvc-ve-color-text-light);
 }
 
 .dbvc-ve-toolbar__message,

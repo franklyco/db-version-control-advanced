@@ -1,0 +1,95 @@
+{
+  "scenario": "s6-perf-c",
+  "run": "run1",
+  "capturedAt": "21:12:57",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 15890,
+    "domContentLoaded": 17118,
+    "load": 25457
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "publicId": "vertical:palette_vertical_global_palette",
+    "clickToGridReadyMs": 4500,
+    "cells": 19,
+    "panelState": "locked",
+    "requests": [
+      [
+        "s/control-center/open",
+        19,
+        4379,
+        57982
+      ]
+    ],
+    "requestCount": 1
+  },
+  "spanCount": 30,
+  "aggregate": {
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 38.2,
+      "maxMs": 20.2
+    },
+    "dbvc.ve.drawer.open_row": {
+      "count": 1,
+      "totalMs": 4463.2,
+      "maxMs": 4463.2
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 2,
+      "totalMs": 0.2,
+      "maxMs": 0.1
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 1,
+      "totalMs": 0.4,
+      "maxMs": 0.4
+    },
+    "dbvc.ve.panel.open.toolbar": {
+      "count": 1,
+      "totalMs": 49.4,
+      "maxMs": 49.4
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 1.4,
+      "maxMs": 1.4
+    },
+    "dbvc.ve.prefetch.pump": {
+      "count": 22,
+      "totalMs": 6.5,
+      "maxMs": 1.3
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.open_row",
+      "startTime": 19,
+      "duration": 4463.2
+    },
+    {
+      "name": "dbvc.ve.panel.open.toolbar",
+      "startTime": 4425,
+      "duration": 49.4
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 4403,
+      "duration": 20.2
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 1,
+      "duration": 18
+    }
+  ],
+  "notes": "perf-c (E-163) in place; same protocol as s6. Setup call also recorded: drawer list_fetch 3765 ms, the row's value-summary batch server wait 3484-3576 ms."
+}

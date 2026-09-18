@@ -1,0 +1,67 @@
+{
+  "scenario": "s3",
+  "run": "run5",
+  "capturedAt": "17:44:20",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14476,
+    "domContentLoaded": 15336,
+    "load": 23235
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "rows": 382,
+    "clickToRows": 3624,
+    "chips": 12,
+    "listResource": [
+      "/wp-json/dbvc/v1/visual-editor/session/ves_j9ntjhi1a457/control-center/controls",
+      25336,
+      3560,
+      1,
+      9677,
+      175297
+    ]
+  },
+  "spanCount": 5,
+  "aggregate": {
+    "dbvc.ve.drawer.open": {
+      "count": 1,
+      "totalMs": 0.7,
+      "maxMs": 0.7
+    },
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 9.2,
+      "maxMs": 9
+    },
+    "dbvc.ve.drawer.list_fetch": {
+      "count": 1,
+      "totalMs": 3580.9,
+      "maxMs": 3580.9
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 1,
+      "totalMs": 0,
+      "maxMs": 0
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.list_fetch",
+      "startTime": 25334,
+      "duration": 3580.9
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 28898,
+      "duration": 9
+    }
+  ],
+  "notes": "listResource = [url, requestStart, serverWait(ms), download(ms), transferSize, decodedBodySize] from the Resource Timing entry for the controls list request"
+}

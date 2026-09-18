@@ -1,0 +1,13 @@
+{
+  "scenario": "s4-perf-c",
+  "run": "short-scroll",
+  "capturedAt": "21:17",
+  "viewport": {"w": 1280, "h": 720, "dpr": 2},
+  "hidden": false,
+  "protocol": "perf-c (E-163) in place. S3 steady state (all groups expanded), clear timing, 16 frames x 250 px (4 408 px) of drawer scroll, poll until every value-summary POST completed. serverWaitMs entries = [startMs after scroll start, responseStart-requestStart, decodedBytes].",
+  "listFetchMs": 3696,
+  "batches": [8, 8, 8, 8],
+  "serverWaitMs": [[58, 3571, 1170], [126, 6675, 1110], [192, 6964, 780], [258, 10071, 945]],
+  "allDoneAtMs": 10332,
+  "notes": "First (uncontended) 8-row batch 3 571 ms vs 3 887-4 013 ms for 7-10-row batches in s4/run1-5 (E-162): the per-id getVisibleRecord() re-collection (8 x 62 ms) is gone; the remaining cost is the WP floor + the ACF store re-materialisation (audit F1). Completion pairs every ~3.4 s (was ~3.8 s) on the host's 2 PHP workers."
+}

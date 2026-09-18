@@ -1,0 +1,67 @@
+{
+  "scenario": "s4",
+  "run": "run2",
+  "capturedAt": "17:58:23",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14357,
+    "domContentLoaded": 15055,
+    "load": 22800
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "visRows": 382,
+    "scrollPx": 46554,
+    "scrollMs": 2913,
+    "pxPerFrame": 250,
+    "posts": 44,
+    "postsDone": 44,
+    "rowsQueued": 379,
+    "batchHist": {
+      "3": 1,
+      "7": 3,
+      "8": 14,
+      "9": 17,
+      "10": 9
+    },
+    "statuses": {
+      "200": 44
+    },
+    "serverWaitMs": [
+      3837,
+      46158,
+      87085
+    ],
+    "queueMs": [
+      1,
+      1,
+      4
+    ],
+    "maxConcurrent": 44,
+    "resBytesDecoded": 43287,
+    "resBytesTransfer": 26030,
+    "allDoneAtMs": 90034,
+    "firstDoneAtMs": 3901
+  },
+  "spanCount": 218,
+  "aggregate": {
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 174,
+      "totalMs": 6,
+      "maxMs": 0.1
+    },
+    "dbvc.ve.drawer.value_summary.batch_flush": {
+      "count": 44,
+      "totalMs": 2007890.2,
+      "maxMs": 87088
+    }
+  },
+  "topSpans": [],
+  "notes": "same protocol as run1"
+}

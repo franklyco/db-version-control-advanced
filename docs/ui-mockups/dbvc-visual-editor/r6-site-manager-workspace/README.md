@@ -69,7 +69,7 @@ Nothing in `index.html` reacts to clicks. In `states.html` only the two header t
 
 ## Known limitations
 
-- **Toolbar count badge contrast** (`--dbvc-ve-color-text-light` on `--dbvc-ve-color-primary`, 2.95:1) — the mockup mirrors the *live* toolbar, so this is a **production** defect in `overlay.css` `.dbvc-ve-toolbar__count`, outside R6 scope; recorded for the toolbar owner.
+- **Toolbar count badge contrast** (`--dbvc-ve-color-text-light` on `--dbvc-ve-color-primary`, 2.95:1) — the mockup mirrors the *live* toolbar, so this is a **production** defect in `overlay.css` `.dbvc-ve-toolbar__count`, outside R6 scope; recorded for the toolbar owner. **Fixed 2026-09-16 (E-158): navy text on the primary fill and the dock fade moved to the glyph — 6.17:1.**
 - **`landmark-unique` in `states.html`** — 17 `complementary` landmarks named "Site Manager" (and their "Current object" regions) coexist on the gallery page. Gallery artefact; production has one.
 - **Dark `--dbvc-ve-color-text-subtle`**: the mockup ships 0.58 alpha as a *proposed* correction to the live 0.52 (4.45:1). Until `overlay.css` is corrected, production dark meta text is marginally under AA (decision 12).
 - Sibling-surface stand-ins (BCC, Media Manager, panel) are shape approximations for stacking review, not copies of the live CSS.

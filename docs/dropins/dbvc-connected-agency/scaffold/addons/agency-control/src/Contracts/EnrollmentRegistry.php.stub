@@ -1,0 +1,14 @@
+<?php
+namespace Dbvc\AgencyControl\Contracts;
+
+interface EnrollmentRegistry
+{
+    /**
+     * Return trusted agency/client/environment/epoch and permissions from an already
+     * authenticated principal; do not accept these bindings from observation fields.
+     */
+    public function resolvePrincipal($authenticatedPrincipal);
+
+    /** Read authorized subscriptions; caller must preserve scope on every retrieval. */
+    public function subscriptionsFor(array $enrollment);
+}

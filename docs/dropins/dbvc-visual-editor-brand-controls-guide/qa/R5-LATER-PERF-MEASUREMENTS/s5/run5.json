@@ -1,0 +1,136 @@
+{
+  "scenario": "s5",
+  "run": "run5",
+  "capturedAt": "18:19:46",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14178,
+    "domContentLoaded": 14843,
+    "load": 22504
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "token": "ve_43b23e3919ce",
+    "hoverToBadgeMs": 23,
+    "hoverToClickMs": 332,
+    "clickToPanelReadyMs": 1105,
+    "panelState": "ready",
+    "panelTitle": "Home",
+    "controls": 1,
+    "requests": [
+      [
+        "s/descriptors",
+        16,
+        721,
+        29249
+      ],
+      [
+        "s/descriptors",
+        28,
+        704,
+        26471
+      ],
+      [
+        "s/descriptor/ve_43b23e3919ce",
+        181,
+        1223,
+        6105
+      ],
+      [
+        "s/descriptors",
+        745,
+        671,
+        31735
+      ]
+    ],
+    "requestCount": 4
+  },
+  "spanCount": 122,
+  "aggregate": {
+    "dbvc.ve.prefetch.pump": {
+      "count": 112,
+      "totalMs": 40.7,
+      "maxMs": 0.9
+    },
+    "dbvc.ve.api.getDescriptors": {
+      "count": 3,
+      "totalMs": 2123,
+      "maxMs": 725
+    },
+    "dbvc.ve.descriptor_batch_request": {
+      "count": 3,
+      "totalMs": 2123.8,
+      "maxMs": 725.3
+    },
+    "dbvc.ve.descriptor_request": {
+      "count": 1,
+      "totalMs": 1226.1,
+      "maxMs": 1226.1
+    },
+    "dbvc.ve.api.getDescriptor": {
+      "count": 1,
+      "totalMs": 1225.9,
+      "maxMs": 1225.9
+    },
+    "dbvc.ve.panel.open.marker": {
+      "count": 1,
+      "totalMs": 1084.7,
+      "maxMs": 1084.7
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 9.7,
+      "maxMs": 9.7
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.descriptor_request",
+      "startTime": 181,
+      "duration": 1226.1
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptor",
+      "startTime": 181,
+      "duration": 1225.9
+    },
+    {
+      "name": "dbvc.ve.panel.open.marker",
+      "startTime": 332,
+      "duration": 1084.7
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 16,
+      "duration": 725.3
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptors",
+      "startTime": 16,
+      "duration": 725
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 28,
+      "duration": 706.5
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptors",
+      "startTime": 28,
+      "duration": 706.3
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 745,
+      "duration": 692
+    }
+  ],
+  "notes": "protocol as in discarded-warmup notes"
+}

@@ -31,11 +31,13 @@
 | 20 | Console | 0 errors across the whole pass | | |
 | 21 | R6.1 kind filter | Kind row shows **All · Content · Taxonomies** as a radiogroup; Taxonomies → strip narrows to the taxonomies (+ its own All), rows are terms only; Content → post types only; ←/→ moves the checked kind and keeps focus on it after results load | | |
 | 22 | R6.1 type implies kind | With All checked, pick a taxonomy tab → Taxonomies becomes checked and the strip narrows | | |
-| 23 | R6.1 sort | Title A → Z: page 1 alphabetical (untitled objects first — see Known), Load more appends the next alphabetical page with no repeats; status reads "Showing n · more available · Title A → Z"; sort survives kind/type changes | | |
+| 23 | R6.1 sort | Title A → Z: page 1 alphabetical (untitled objects last — see Known), Load more appends the next alphabetical page with no repeats; status reads "Showing n · more available · Title A → Z"; sort survives kind/type changes | | |
 | 24 | R6.1 Best match | Empty search + Recently updated: typing switches the select to **Best match** (offered only while a term is present); clearing returns to Recently updated; an explicit order (e.g. Newest first) is kept while typing and after clearing | | |
 | 25 | R6.1 persistence | Set Content + Oldest first, Open a row (same tab) → on arrival the drawer is open with **Content checked** and **Oldest first** selected, results in oldest order; reload keeps a picked type tab too | | |
 | 26 | R6.1 keyboard order | Tab from the search field: kind (one stop) → sort select → selected type tab → first row | | |
 
-**Known/expected:** under Title A → Z / Z → A, objects with an empty title sort first/last (MySQL orders the empty string before "A"; they display as "Post #ID"), same as the admin list; the `wp.media` modal stays light regardless of the appearance override (core-styled); `landmark-unique` only matters on the mockup gallery page; the BCC's own toolbar button now lights when opened from the workspace (R6-E polish).
+**Known/expected:** under Title A → Z / Z → A, objects with an empty title (displayed as "Post #ID") sort **last** in both orders (E-158); the `wp.media` modal stays light regardless of the appearance override (core-styled); `landmark-unique` only matters on the mockup gallery page; the BCC's own toolbar button now lights when opened from the workspace (R6-E polish).
 
 **Rollback if anything fails:** untick the flag (soft rollback, seconds) — see `releases/SITE-MANAGER-WORKSPACE-RELEASE-NOTES-AND-ROLLBACK.md`.
+
+**VE-prefs-2 (2026-09-16):** Preferences → "Site Manager on page load": Always open → reload with the drawer closed → it opens (no focus steal); Always closed → reload with it open → it stays closed, and switching back to Remember + reload restores the open drawer. The section is absent when the workspace flag is off.

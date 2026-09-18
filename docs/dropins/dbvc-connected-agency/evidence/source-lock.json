@@ -1,0 +1,146 @@
+{
+  "schema_version": "agency-control.source-evidence.v0.1",
+  "review_date": "2026-09-13",
+  "repository": "franklyco/db-version-control-main",
+  "branch": "codex/visual-editor-r5-later-arc",
+  "commit": "977888535a306989e48c5a34104fb9d101298cf3",
+  "default_branch": "master",
+  "default_head": "c88764bdbb21546347e474a912237013bc323b21",
+  "runtime_verified": false,
+  "scope": "source review, not exhaustive security or runtime audit",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "git_blob_sha": "5c3df9dd9fd494c0211a4c0db8fb6c1577549fae",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/AGENTS.md"
+    },
+    {
+      "path": "docs/README.md",
+      "git_blob_sha": "5f8a6d53a6900341c616dfe2c5db7538b7c84277",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/README.md"
+    },
+    {
+      "path": "docs/agent-entrypoints.md",
+      "git_blob_sha": "8358637ba528f66247c4e4bd17e591089d18c157",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/agent-entrypoints.md"
+    },
+    {
+      "path": "docs/agents/MAINTENANCE.md",
+      "git_blob_sha": "8d96ec89b7b54b50bdd834abd3c24541f3fe2358",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/agents/MAINTENANCE.md"
+    },
+    {
+      "path": "docs/agents/facets/cli-and-automation.md",
+      "git_blob_sha": "658db54e38558615efcd11afd84ba2c5c7acf281",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/agents/facets/cli-and-automation.md"
+    },
+    {
+      "path": "docs/agents/facets/settings-hooks-and-extensions.md",
+      "git_blob_sha": "391b663767c8ce44da149fc8cd147abf04058827",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/agents/facets/settings-hooks-and-extensions.md"
+    },
+    {
+      "path": "docs/agents/facets/proposals-and-media.md",
+      "git_blob_sha": "3e900a45d32d9c83cc34b02ab888d02382f8ab41",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/agents/facets/proposals-and-media.md"
+    },
+    {
+      "path": "composer.json",
+      "git_blob_sha": "918cd5ae22a50a599a1f41c36624199be6f01fa9",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/composer.json"
+    },
+    {
+      "path": "package.json",
+      "git_blob_sha": "f5875a75865d7d654d8a6ed2b71d4a23123123bf",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/package.json"
+    },
+    {
+      "path": "includes/hooks.php",
+      "git_blob_sha": "6f20acada566d9d01c31600af77c0950866ffa39",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/includes/hooks.php"
+    },
+    {
+      "path": "addons/visual-editor/src/Journal/ChangeJournalRecorder.php",
+      "git_blob_sha": "78d61562eb6ebbae7d55bb2b5910bcc4e952d097",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/visual-editor/src/Journal/ChangeJournalRecorder.php"
+    },
+    {
+      "path": "addons/visual-editor/src/Journal/ChangeJournalStore.php",
+      "git_blob_sha": "7b27d2f6e14ac8151e8170a9c7e5dfa20df05e4e",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/visual-editor/src/Journal/ChangeJournalStore.php"
+    },
+    {
+      "path": "addons/visual-editor/src/Save/MutationService.php",
+      "git_blob_sha": "8012211fa7b6bb7f8cd4f71ac6f808861334bfb7",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/visual-editor/src/Save/MutationService.php"
+    },
+    {
+      "path": "addons/bricks/bricks-artifacts.php",
+      "git_blob_sha": "d581582adfa530392ef669af0bf43e2584e581d6",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/bricks-artifacts.php"
+    },
+    {
+      "path": "addons/bricks/bricks-idempotency.php",
+      "git_blob_sha": "1a08af1e0d100d79081b2a092bceb23164c3ad08",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/bricks-idempotency.php"
+    },
+    {
+      "path": "addons/bricks/bricks-protected-variants.php",
+      "git_blob_sha": "ea2481898fb995ec40f4ff38bd90e7aebe176e79",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/bricks-protected-variants.php"
+    },
+    {
+      "path": "addons/bricks/portability/class-dbvc-bricks-portability-apply-service.php",
+      "git_blob_sha": "c0c22a284e379b00d7d197e9b09b472e835d6849",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/portability/class-dbvc-bricks-portability-apply-service.php"
+    },
+    {
+      "path": "addons/bricks/bricks-command-queue.php",
+      "git_blob_sha": "65c1ce94357efce50c0950e15472d7ab56d274f2",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/bricks-command-queue.php"
+    },
+    {
+      "path": "addons/bricks/bricks-apply.php",
+      "git_blob_sha": "ebb6e132a85f861a40fce7f27077097c027dda72",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/bricks-apply.php"
+    },
+    {
+      "path": "addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md",
+      "git_blob_sha": "dc701d1675a99cf12f13d2f797cac305fe493e4d",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md"
+    },
+    {
+      "path": "db-version-control.php",
+      "git_blob_sha": "7055ad64a6f8d824355c9d7f96cc1d0faf95398c",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/db-version-control.php"
+    },
+    {
+      "path": "docs/agents/manifest.json",
+      "git_blob_sha": "9b5dfe66a16f1ba35587e95f159f4dcb48caec0b",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/agents/manifest.json"
+    },
+    {
+      "path": "addons/bricks/bricks-packages.php",
+      "git_blob_sha": "5fa32651ea94f2e2d20604e2e5f76ad9f5e5854a",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/bricks-packages.php"
+    },
+    {
+      "path": "addons/bricks/portability/class-dbvc-bricks-portability-normalizer.php",
+      "git_blob_sha": "aa831b417178198a402c3f26727d30fd5344e0af",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/portability/class-dbvc-bricks-portability-normalizer.php"
+    },
+    {
+      "path": "addons/bricks/portability/class-dbvc-bricks-portability-template-apply-service.php",
+      "git_blob_sha": "c22ffaccfdd816a2f7602c730d100de4eb0c0102",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/addons/bricks/portability/class-dbvc-bricks-portability-template-apply-service.php"
+    },
+    {
+      "path": "docs/reference/import-identity-matching.md",
+      "git_blob_sha": "5e3c15e4545f0bed7b0f8398966b2644402d1296",
+      "url": "https://github.com/franklyco/db-version-control-main/blob/977888535a306989e48c5a34104fb9d101298cf3/docs/reference/import-identity-matching.md"
+    }
+  ],
+  "branch_head_rechecked_at": "2026-09-16",
+  "package_architecture_revision": "single-repository-two-addons-0.2.0",
+  "local_checkout_inspected": false
+}

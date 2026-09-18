@@ -1,0 +1,67 @@
+{
+  "schema_version": "dropin.task-plan.v1",
+  "notes": "Planning checklist, not DBVC capability manifest or verification ledger",
+  "tasks": [
+    {
+      "id": "M0",
+      "title": "Local reconciliation and gates",
+      "depends_on": [],
+      "status": "not_started",
+      "runtime_verified": false
+    },
+    {
+      "id": "M1",
+      "title": "Local observation and durable outbox",
+      "depends_on": [
+        "M0"
+      ],
+      "status": "not_started",
+      "runtime_verified": false
+    },
+    {
+      "id": "M2",
+      "title": "Authenticated reporting pilot",
+      "depends_on": [
+        "M1"
+      ],
+      "status": "not_started",
+      "runtime_verified": false
+    },
+    {
+      "id": "M3",
+      "title": "Baselines and framework review",
+      "depends_on": [
+        "M2"
+      ],
+      "status": "not_started",
+      "runtime_verified": false
+    },
+    {
+      "id": "M4",
+      "title": "Target preparation",
+      "depends_on": [
+        "M3"
+      ],
+      "status": "not_started",
+      "runtime_verified": false
+    },
+    {
+      "id": "M5",
+      "title": "One guarded round trip",
+      "depends_on": [
+        "M4"
+      ],
+      "status": "not_started",
+      "runtime_verified": false
+    },
+    {
+      "id": "M6",
+      "title": "Fleet rollout",
+      "depends_on": [
+        "M5"
+      ],
+      "status": "not_started",
+      "runtime_verified": false
+    }
+  ]
+}

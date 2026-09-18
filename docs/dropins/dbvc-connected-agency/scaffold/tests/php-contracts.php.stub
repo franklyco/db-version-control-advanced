@@ -1,0 +1,83 @@
+<?php
+/** Standalone starter tests. Run through scripts/run_php_checks.py, not WordPress. */
+$root = dirname(__DIR__);
+require_once $root . '/includes/Dbvc/ConnectedProtocol/RoleGate.php';
+require_once $root . '/includes/Dbvc/ConnectedProtocol/Comparison.php';
+require_once $root . '/addons/agency-control/src/Routing/RoutingPolicy.php';
+require_once $root . '/addons/connected-environments/src/Lifecycle/TransferExclusions.php';
+
+$checks = 0;
+function check($actual, $expected, $message)
+{
+    global $checks;
+    ++$checks;
+    if ($actual !== $expected) {
+        fwrite(STDERR, 'FAIL: ' . $message . PHP_EOL);
+        exit(1);
+    }
+}
+
+use Dbvc\ConnectedProtocol\RoleGate;
+use Dbvc\ConnectedProtocol\Comparison;
+use Dbvc\AgencyControl\Routing\RoutingPolicy;
+use Dbvc\Connected\Lifecycle\TransferExclusions;
+
+check(RoleGate::state(false, false, false, false), 'disabled', 'disabled before readiness');
+check(RoleGate::state(true, true, true, true), 'emergency_disabled', 'kill switch');
+check(RoleGate::state(true, false, false, true), 'migration_required', 'migration hold');
+check(RoleGate::state(true, false, true, false), 'unsupported_runtime', 'runtime hold');
+
+foreach (array(
+    array('a', 'a', 'a', 'synchronized'), array('a', 'b', 'a', 'outgoing'),
+    array('a', 'a', 'b', 'incoming'), array('a', 'b', 'b', 'converged'),
+    array('a', 'b', 'c', 'conflict'), array(null, 'a', 'a', 'baseline_required'),
+) as $case) {
+    check(Comparison::environment($case[0], $case[1], $case[2], array('v1', 'v1', 'v1')), $case[3], 'three-way ' . $case[3]);
+}
+check(Comparison::environment('a', 'a', 'a', array('v1', 'v2', 'v1')), 'unknown', 'profile mismatch');
+check(Comparison::environment('a', 'a', 'a', array('v1', 'v1', 'v1'), false), 'unknown', 'incomplete');
+check(Comparison::environment('a', 'a', 'a', array('v1', 'v1', 'v1'), true, false), 'unknown', 'stale');
+check(Comparison::framework('a', 'a', 'v2', 'v1'), array('drift' => 'clean', 'version' => 'version_differs'), 'no invented version ordering');
+
+$fixtureDir = $argv[1];
+$registry = json_decode(file_get_contents($fixtureDir . '/registry.json'), true);
+$expectations = json_decode(file_get_contents($fixtureDir . '/expected-routing.json'), true);
+foreach ($expectations as $name => $expected) {
+    $event = json_decode(file_get_contents($fixtureDir . '/' . $name), true);
+    check(RoutingPolicy::decide($event, 'a-prod', $registry), $expected, 'routing ' . $name);
+}
+$event = json_decode(file_get_contents($fixtureDir . '/class-observation.json'), true);
+$event['origin'] = 'apply';
+$event['causation_id'] = 'forged-operation';
+check(RoutingPolicy::decide($event, 'a-prod', $registry)['framework_review'], array('framework-button'), 'untrusted origin');
+check(RoutingPolicy::decide($event, 'a-prod', $registry, true)['framework_review'], array(), 'trusted result');
+$event['client_id'] = 'client-b';
+$rejected = false;
+try { RoutingPolicy::decide($event, 'a-prod', $registry); }
+catch (\InvalidArgumentException $error) { $rejected = true; }
+check($rejected, true, 'sender authority rejected');
+
+check(TransferExclusions::isOperationalOption('dbvc_ce_credentials'), true, 'connection exclusion');
+check(TransferExclusions::isOperationalOption('bricks_global_classes'), false, 'content is not operational option');
+
+// WordPress function stub supplies settings only. Any accidental WP API registration
+// in these bootstraps will fail this no-WordPress harness rather than appear verified.
+define('WPINC', 'wp-includes');
+$settings = array();
+function get_option($key, $default = false)
+{
+    global $settings;
+    return array_key_exists($key, $settings) ? $settings[$key] : $default;
+}
+include $root . '/addons/connected-environments/bootstrap.php';
+include $root . '/addons/agency-control/bootstrap.php';
+check(class_exists('Dbvc\\Connected\\Runtime', false), false, 'connector off does not load runtime');
+check(class_exists('Dbvc\\AgencyControl\\Runtime', false), false, 'hub off does not load runtime');
+$settings['dbvc_addon_agency_control_enabled'] = '1';
+$hub = include $root . '/addons/agency-control/bootstrap.php';
+check($hub['registered'], false, 'hub placeholder is not active');
+check(class_exists('Dbvc\\Connected\\Runtime', false), false, 'hub does not require connector');
+$settings['dbvc_addon_connected_environments_enabled'] = '1';
+$connector = include $root . '/addons/connected-environments/bootstrap.php';
+check($connector['state'], 'scaffold_only', 'connector placeholder is explicit');
+echo 'PASS: ' . $checks . ' pure PHP starter assertions; not WordPress runtime verification.' . PHP_EOL;

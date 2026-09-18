@@ -352,3 +352,17 @@ numbers.
 **Rough time budget for the maintainer.** Environment setup + S1 =
 ~15 min. Each additional scenario ≈ 8–12 min (6 runs × ~1 min each,
 plus hard-refresh + wait). Total ≈ 90 minutes for a clean sweep.
+
+---
+
+## Amendments from the 2026-09-17 sweep (E-162)
+
+Learned running S1–S6 for real (`R5-LATER-PERF-AUDIT-REPORT.md` §2 has the exact per-scenario procedure used):
+
+- **Assert `document.hidden === false` inside every capture** and discard the run if it is true — a background tab, a macOS fullscreen Chrome on another Space, or a fully occluded window all throttle timers ≈ 25× (E-123 re-confirmed: `badges.query_collection_mount` 1 201 ms hidden vs ≈ 50 ms foreground).
+- `about:blank` cannot be used as the between-runs page from the browser tooling; a static asset URL on the site (e.g. `assets/css/workspace.css`) works and keeps the load path cold.
+- **S4:** call `performance.setResourceTimingBufferSize(5000)` before the scroll (the default 250 overflows), poll until every value-summary POST has completed, and record from Resource Timing per request: `responseStart − requestStart` (server wait), `requestStart − startTime` (client queueing) and the overlapping-request maximum (real concurrency). Between S4 runs wait until `curl -w '%{time_starttransfer}' …/wp-json/` is back under ≈ 1.5 s — dispatched batches keep running server-side after navigation.
+- **S5:** clicking the marker itself does nothing; the panel opens from the **Edit badge** (`.dbvc-ve-badge`) that appears on hover. Hover un-pauses the viewport descriptor prefetch, so the hover → click delay decides whether the panel waits on an in-flight request (300 ms used).
+- **S6:** the palette parent row lives in the collapsed-by-default `Site Settings Advanced` group; expand it (or all groups) in setup and let the row's own value-summary batch finish before clearing timing.
+- Park the mouse on the admin bar between runs — a cursor resting on a page marker keeps the prefetch active and contaminates S3/S4 (`s4/discarded-hover-prefetch.json`).
+

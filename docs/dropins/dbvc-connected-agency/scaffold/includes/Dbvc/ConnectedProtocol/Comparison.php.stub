@@ -1,0 +1,34 @@
+<?php
+namespace Dbvc\ConnectedProtocol;
+
+/** Pure classification of already validated comparable hashes. Not a normalizer. */
+final class Comparison
+{
+    public static function environment($base, $source, $target, array $profiles, $complete = true, $fresh = true)
+    {
+        if (! $complete || ! $fresh || count($profiles) !== 3 ||
+            count(array_unique($profiles, SORT_STRING)) !== 1 || $profiles[0] === '' ||
+            $source === null || $target === null) {
+            return 'unknown';
+        }
+        if ($base === null) { return 'baseline_required'; }
+        if ($source === $target) { return $source === $base ? 'synchronized' : 'converged'; }
+        if ($target === $base) { return 'outgoing'; }
+        if ($source === $base) { return 'incoming'; }
+        return 'conflict';
+    }
+
+    public static function framework($actual, $adoptedHash, $adoptedVersion, $desiredVersion, $overrideHash = null)
+    {
+        $version = ($adoptedVersion === null || $desiredVersion === null) ? 'unknown'
+            : ($adoptedVersion === $desiredVersion ? 'current' : 'version_differs');
+        // Version inequality alone cannot prove behind vs ahead or a different channel.
+        if ($actual === null || $adoptedHash === null) {
+            return array('drift' => 'unknown', 'version' => $version);
+        }
+        $drift = $overrideHash !== null
+            ? ($actual === $overrideHash ? 'approved_override' : 'override_changed')
+            : ($actual === $adoptedHash ? 'clean' : 'local_drift');
+        return array('drift' => $drift, 'version' => $version);
+    }
+}

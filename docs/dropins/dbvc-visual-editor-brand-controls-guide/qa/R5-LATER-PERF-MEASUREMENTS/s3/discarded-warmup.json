@@ -1,0 +1,59 @@
+{
+  "scenario": "s3",
+  "run": "discarded-warmup",
+  "capturedAt": "17:40:02",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14618,
+    "domContentLoaded": 15666,
+    "load": 23667
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "rows": 382,
+    "clickToRows": 3662,
+    "chips": 12
+  },
+  "spanCount": 5,
+  "aggregate": {
+    "dbvc.ve.drawer.open": {
+      "count": 1,
+      "totalMs": 1.9,
+      "maxMs": 1.9
+    },
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 12.6,
+      "maxMs": 11.8
+    },
+    "dbvc.ve.drawer.list_fetch": {
+      "count": 1,
+      "totalMs": 3619.9,
+      "maxMs": 3619.9
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 1,
+      "totalMs": 0.1,
+      "maxMs": 0.1
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.list_fetch",
+      "startTime": 25721,
+      "duration": 3619.9
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 29322,
+      "duration": 11.8
+    }
+  ],
+  "notes": "warmup run (first BCC list request after site restart) \u2014 not counted"
+}

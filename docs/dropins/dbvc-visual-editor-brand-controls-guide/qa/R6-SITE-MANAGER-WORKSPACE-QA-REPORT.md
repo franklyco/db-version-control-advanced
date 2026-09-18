@@ -74,7 +74,7 @@ R6 behaves on the live site as the contract, mockup and automated suites predict
 ### Observations (not fixed)
 
 - Between two probes on the arrival page the persisted sort changed `oldest` → `newest` once; a deterministic drift check across four kind/type transitions kept `oldest`, and a WordPress "Edit Page" tab opened in the same real-Chrome window during the pass, so the change is attributed to a manual interaction with the live tab. Not reproducible; no code path writes `sort` outside `setSort` / `syncRelevanceWithSearch` / restore.
-- Under Title A → Z, untitled objects (rendered "Post #ID") sort first — MySQL empty-string order, identical to the admin list. Could be pushed last with a `CASE WHEN post_title = ''` orderby if it ever matters.
+- ~~Under Title A → Z, untitled objects (rendered "Post #ID") sort first — MySQL empty-string order, identical to the admin list.~~ **Fixed 2026-09-16 (E-158): a marker-gated `posts_orderby` puts untitled objects last under both title orders.**
 - Type discovery on this LocalWP site takes several seconds on a cold page (pre-existing TTFB, R5.later-perf).
 
 ### Verdict

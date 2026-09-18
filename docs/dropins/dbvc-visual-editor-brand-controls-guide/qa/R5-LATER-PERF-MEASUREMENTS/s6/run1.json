@@ -1,0 +1,96 @@
+{
+  "scenario": "s6",
+  "run": "run1",
+  "capturedAt": "18:23:30",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14353,
+    "domContentLoaded": 15048,
+    "load": 22765
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "publicId": "vertical:palette_vertical_global_palette",
+    "clickToGridReadyMs": 13779,
+    "cells": 19,
+    "panelState": "locked",
+    "panelTitle": "Site Settings",
+    "requests": [
+      [
+        "s/control-center/open",
+        18,
+        13677,
+        57982
+      ]
+    ],
+    "requestCount": 1
+  },
+  "spanCount": 32,
+  "aggregate": {
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 33.8,
+      "maxMs": 16.9
+    },
+    "dbvc.ve.drawer.open_row": {
+      "count": 1,
+      "totalMs": 13747,
+      "maxMs": 13747
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 2,
+      "totalMs": 0.1,
+      "maxMs": 0.1
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 1,
+      "totalMs": 0.2,
+      "maxMs": 0.2
+    },
+    "dbvc.ve.panel.open.toolbar": {
+      "count": 1,
+      "totalMs": 42.3,
+      "maxMs": 42.3
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 1.2,
+      "maxMs": 1.2
+    },
+    "dbvc.ve.prefetch.pump": {
+      "count": 24,
+      "totalMs": 5.7,
+      "maxMs": 0.8
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.open_row",
+      "startTime": 17,
+      "duration": 13747
+    },
+    {
+      "name": "dbvc.ve.panel.open.toolbar",
+      "startTime": 13715,
+      "duration": 42.3
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 13697,
+      "duration": 16.9
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 1,
+      "duration": 16.9
+    }
+  ],
+  "notes": "protocol as in discarded-warmup notes"
+}

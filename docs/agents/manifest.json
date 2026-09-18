@@ -67,17 +67,17 @@
                     "type": "admin_post",
                     "identifier": "Additional current-checkout admin handlers surfaces",
                     "discovery_ids": [
-                        "hook.listener.admin_post_.3e418600"
+                        "hook.listener.admin_post_.81b61f57"
                     ]
                 },
                 {
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_bricks_audit_event.4c16b2f3",
-                        "hook.extension_point.dbvc_bricks_audit_event.f593c3e6",
-                        "hook.extension_point.dbvc_bricks_portability_max_media_file_bytes.0b222c52",
-                        "hook.extension_point.dbvc_bricks_portability_max_media_file_bytes.11c60ad7"
+                        "hook.extension_point.dbvc_bricks_audit_event.07d19ad8",
+                        "hook.extension_point.dbvc_bricks_audit_event.072ebf6a",
+                        "hook.extension_point.dbvc_bricks_portability_max_media_file_bytes.02340bcd",
+                        "hook.extension_point.dbvc_bricks_portability_max_media_file_bytes.9c9c96c8"
                     ]
                 }
             ],
@@ -240,9 +240,9 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_bricks_command_pull_allow_page_load_context.ff827948",
-                        "hook.extension_point.dbvc_bricks_command_pull_lock_seconds.ad2754b3",
-                        "hook.extension_point.dbvc_bricks_command_pull_min_interval_seconds.6eadecef"
+                        "hook.extension_point.dbvc_bricks_command_pull_allow_page_load_context.052ffa8f",
+                        "hook.extension_point.dbvc_bricks_command_pull_lock_seconds.f2360a40",
+                        "hook.extension_point.dbvc_bricks_command_pull_min_interval_seconds.f31e34b8"
                     ]
                 }
             ],
@@ -463,7 +463,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_bricks_onboarding_allow_page_load_context.e160f64b"
+                        "hook.extension_point.dbvc_bricks_onboarding_allow_page_load_context.9dd8e4f2"
                     ]
                 },
                 {
@@ -632,8 +632,8 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_bricks_audit_event.a5cc069b",
-                        "hook.extension_point.dbvc_bricks_protected_variant_.24fce744"
+                        "hook.extension_point.dbvc_bricks_audit_event.aa7b5a58",
+                        "hook.extension_point.dbvc_bricks_protected_variant_.883f104d"
                     ]
                 }
             ],
@@ -1081,26 +1081,26 @@
                     "type": "admin_post",
                     "identifier": "Additional current-checkout admin handlers surfaces",
                     "discovery_ids": [
-                        "hook.listener.admin_post_.cc911563",
-                        "hook.listener.wp_ajax_.067ea38a",
-                        "hook.listener.wp_ajax_.1686653e",
-                        "hook.listener.wp_ajax_.6a0d8e72",
-                        "hook.listener.wp_ajax_.81698332",
-                        "hook.listener.wp_ajax_.86511be4",
-                        "hook.listener.wp_ajax_.d1cc7ef9"
+                        "hook.listener.admin_post_.1581ab20",
+                        "hook.listener.wp_ajax_.3ef2b4ee",
+                        "hook.listener.wp_ajax_.3770de18",
+                        "hook.listener.wp_ajax_.2d21bb1d",
+                        "hook.listener.wp_ajax_.1a3f1f4a",
+                        "hook.listener.wp_ajax_.ceeb3181",
+                        "hook.listener.wp_ajax_.e9bb92ce"
                     ]
                 },
                 {
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_cc_import_executor_media_ingest.49eefa35",
-                        "hook.extension_point.dbvc_cc_import_executor_media_timeout.9841f957",
-                        "hook.extension_point.dbvc_cc_import_executor_pre_write.736cfe90",
-                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.06357e73",
-                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.4f75f09f",
-                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.51e2f982",
-                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.61e1a691"
+                        "hook.extension_point.dbvc_cc_import_executor_media_ingest.0c697bb1",
+                        "hook.extension_point.dbvc_cc_import_executor_media_timeout.072b0358",
+                        "hook.extension_point.dbvc_cc_import_executor_pre_write.2fc0bf26",
+                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.62fe132c",
+                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.f31e8cd8",
+                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.a1fbeb40",
+                        "hook.extension_point.dbvc_cc_v2_enable_recovery_qa_fixture.236bc0d0"
                     ]
                 },
                 {
@@ -1326,7 +1326,7 @@
                         "rest.10a68abc63126bd5",
                         "rest.164c8acc40770023",
                         "rest.2c0b6e7098b6d326",
-                        "rest.2c6592da113e4d85",
+                        "rest.5356ebecbc2dbfc8",
                         "rest.2cea40c122dba16c",
                         "rest.3a99c7ffca15a1c2",
                         "rest.3b1b46940cb41b28",
@@ -1338,7 +1338,7 @@
                         "rest.7ae3fe0ef390c0bf",
                         "rest.8042873b4b1dde68",
                         "rest.822d3ec61af5c477",
-                        "rest.954a9d0af8729b2f",
+                        "rest.6f68bc9229e8f1d3",
                         "rest.962ec3486bcf625f",
                         "rest.962f44fa8ec77c12",
                         "rest.8b80558338c2edeb",
@@ -1361,34 +1361,41 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_visual_editor_audit_event.14ad54ad",
-                        "hook.extension_point.dbvc_visual_editor_base_capability.229f85de",
-                        "hook.extension_point.dbvc_visual_editor_descriptor_batch_limit.bb03e273",
-                        "hook.extension_point.dbvc_visual_editor_control_center_description.c6dfb57c",
-                        "hook.extension_point.dbvc_visual_editor_control_center_providers.799148fb",
-                        "hook.extension_point.dbvc_visual_editor_curation_export_path.03b25a10",
-                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.8efdf138",
-                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.3b704999",
-                        "hook.extension_point.dbvc_visual_editor_invalidate_cache.f9b6eb43",
-                        "hook.extension_point.dbvc_visual_editor_control_registry_invalid.05edcf01",
-                        "hook.extension_point.dbvc_visual_editor_media_index_build_completed.144d938f",
-                        "hook.extension_point.dbvc_visual_editor_media_index_exported.90047f02",
-                        "hook.extension_point.dbvc_visual_editor_media_index_imported.fbb45cc9",
-                        "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.c8ae9455",
-                        "hook.extension_point.dbvc_visual_editor_media_index_rebuild_skipped.a757fac4",
-                        "hook.extension_point.dbvc_visual_editor_media_index_rebuild_started.33810e3e",
-                        "hook.extension_point.dbvc_visual_editor_media_index_reconciled.9dba836a",
-                        "hook.extension_point.dbvc_visual_editor_media_scan_completed.c0bdae8f",
-                        "hook.extension_point.dbvc_visual_editor_option_capability.199f6f76",
-                        "hook.extension_point.dbvc_visual_editor_performance_profile_enabled.a035fee4",
-                        "hook.extension_point.dbvc_visual_editor_performance_profile_log.c3255fcc",
-                        "hook.extension_point.dbvc_visual_editor_performance_profile_max_events.f0e40755",
-                        "hook.extension_point.dbvc_visual_editor_performance_profile_summary.f0f496a7",
-                        "hook.extension_point.dbvc_visual_editor_restricted_option_group_roots.e23acbb9",
-                        "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.67cf1221",
-                        "hook.extension_point.dbvc_visual_editor_session_refresh_interval.8d796a0d",
-                        "hook.extension_point.dbvc_visual_editor_session_ttl.0086f4bd",
-                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.6d6d3290"
+                        "hook.extension_point.dbvc_visual_editor_audit_event.e4bf563b",
+                        "hook.extension_point.dbvc_visual_editor_base_capability.d2ddaecb",
+                        "hook.extension_point.dbvc_visual_editor_descriptor_batch_limit.cc7ee022",
+                        "hook.extension_point.dbvc_visual_editor_control_center_description.5c71dc9a",
+                        "hook.extension_point.dbvc_visual_editor_control_center_providers.1fe6d3a6",
+                        "hook.extension_point.dbvc_visual_editor_curation_export_path.57569c3f",
+                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.acd5edaf",
+                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.3fcbdfb0",
+                        "hook.extension_point.dbvc_visual_editor_invalidate_cache.31b82f2c",
+                        "hook.extension_point.dbvc_visual_editor_control_registry_invalid.4ede4948",
+                        "hook.extension_point.dbvc_visual_editor_media_index_build_completed.8ca58612",
+                        "hook.extension_point.dbvc_visual_editor_media_index_exported.aab8867b",
+                        "hook.extension_point.dbvc_visual_editor_media_index_imported.6b586470",
+                        "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.f02869c2",
+                        "hook.extension_point.dbvc_visual_editor_media_index_rebuild_skipped.a17bd215",
+                        "hook.extension_point.dbvc_visual_editor_media_index_rebuild_started.cef1ff85",
+                        "hook.extension_point.dbvc_visual_editor_media_index_reconciled.19855ef8",
+                        "hook.extension_point.dbvc_visual_editor_media_scan_completed.92ef356a",
+                        "hook.extension_point.dbvc_visual_editor_option_capability.14c329ec",
+                        "hook.extension_point.dbvc_visual_editor_performance_profile_enabled.abe6c181",
+                        "hook.extension_point.dbvc_visual_editor_performance_profile_log.a538c4f9",
+                        "hook.extension_point.dbvc_visual_editor_performance_profile_max_events.303447d7",
+                        "hook.extension_point.dbvc_visual_editor_performance_profile_summary.2b95950f",
+                        "hook.extension_point.dbvc_visual_editor_restricted_option_group_roots.edcd6e70",
+                        "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.45462fcd",
+                        "hook.extension_point.dbvc_visual_editor_session_refresh_interval.ae09d75f",
+                        "hook.extension_point.dbvc_visual_editor_session_ttl.b863c3d2",
+                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.9ef71cb0",
+                        "hook.extension_point.dbvc_visual_editor_bricks_acf_tag_index_enabled.c11433d0",
+                        "hook.extension_point.dbvc_visual_editor_bricks_acf_fields_cache_enabled.2df8f392",
+                        "hook.extension_point.dbvc_visual_editor_bricks_acf_fields_cache_flush.bac26edf",
+                        "hook.extension_point.dbvc_visual_editor_bricks_acf_fields_cache_salt.0ed39cd3",
+                        "hook.extension_point.dbvc_visual_editor_bricks_acf_fields_cache_size_cap.2fea6cb5",
+                        "hook.extension_point.dbvc_visual_editor_bricks_acf_fields_cache_trigger_post_types.834f0c17",
+                        "hook.extension_point.dbvc_visual_editor_bricks_acf_fields_cache_ttl.27080365"
                     ]
                 },
                 {
@@ -1411,10 +1418,10 @@
                     "type": "ajax",
                     "identifier": "R3-BX curation admin-ajax handlers (kill-switch gated, manage_options + nonce): save decision, bulk save, export seed, adopt suggested priorities",
                     "discovery_ids": [
-                        "hook.listener.wp_ajax_.07655148",
-                        "hook.listener.wp_ajax_.b8aa9da8",
-                        "hook.listener.wp_ajax_.ddf64420",
-                        "hook.listener.wp_ajax_.e50b6f45"
+                        "hook.listener.wp_ajax_.5673b933",
+                        "hook.listener.wp_ajax_.711d5222",
+                        "hook.listener.wp_ajax_.29d950df",
+                        "hook.listener.wp_ajax_.c13d5127"
                     ]
                 },
                 {
@@ -1459,7 +1466,13 @@
             ],
             "settings": [
                 "dbvc_addon_visual_editor_enabled",
-                "dbvc_visual_editor_media_manager_enabled"
+                "dbvc_visual_editor_media_manager_enabled",
+                "dbvc_visual_editor_bricks_acf_tag_index_enabled",
+                "dbvc_visual_editor_bricks_acf_tag_index_verified",
+                "dbvc_visual_editor_bricks_acf_fields_cache_enabled",
+                "dbvc_visual_editor_bricks_acf_fields_cache_salt",
+                "dbvc_visual_editor_bricks_acf_fields_cache_verified",
+                "dbvc_visual_editor_bricks_acf_fields_cache_meta"
             ],
             "hooks": [
                 "dbvc_visual_editor_audit_event",
@@ -1477,7 +1490,14 @@
                 "dbvc_visual_editor_session_descriptor_compression_level",
                 "dbvc_visual_editor_session_refresh_interval",
                 "dbvc_visual_editor_session_ttl",
-                "dbvc_visual_editor_shared_global_field_names"
+                "dbvc_visual_editor_shared_global_field_names",
+                "dbvc_visual_editor_bricks_acf_tag_index_enabled",
+                "dbvc_visual_editor_bricks_acf_fields_cache_enabled",
+                "dbvc_visual_editor_bricks_acf_fields_cache_flush",
+                "dbvc_visual_editor_bricks_acf_fields_cache_salt",
+                "dbvc_visual_editor_bricks_acf_fields_cache_size_cap",
+                "dbvc_visual_editor_bricks_acf_fields_cache_trigger_post_types",
+                "dbvc_visual_editor_bricks_acf_fields_cache_ttl"
             ],
             "safety": {
                 "classification": "mixed",
@@ -1656,6 +1676,18 @@
                 {
                     "path": "addons/visual-editor/src/Rest/Controllers/SharedGlobalFieldsController.php",
                     "line": 48
+                },
+                {
+                    "path": "addons/visual-editor/src/Performance/Bricks/AcfTagIndexShim.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/Performance/Bricks/AcfFieldsCache.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/Performance/Bricks/AcfFieldsCacheTriggers.php",
+                    "line": 1
                 }
             ],
             "test_refs": [
@@ -1666,7 +1698,9 @@
                 "tests/phpunit/VisualEditorMediaManagerR1DTest.php",
                 "tests/phpunit/VisualEditorMediaManagerR1ETest.php",
                 "tests/visual-editor-media-manager-state.test.cjs",
-                "tests/playwright/visual-editor-media-manager-table.spec.js"
+                "tests/playwright/visual-editor-media-manager-table.spec.js",
+                "tests/phpunit/VisualEditorBricksAcfTagIndexTest.php",
+                "tests/phpunit/VisualEditorBricksAcfFieldsCacheTest.php"
             ],
             "doc_refs": [
                 "addons/visual-editor/docs/README.md"
@@ -1846,19 +1880,19 @@
                     "type": "admin_post",
                     "identifier": "Additional current-checkout admin handlers surfaces",
                     "discovery_ids": [
-                        "hook.listener.admin_post_.193ec077",
-                        "hook.listener.admin_post_.2388fe98",
-                        "hook.listener.admin_post_.3232195f",
-                        "hook.listener.admin_post_.f48fcfd8",
-                        "hook.listener.admin_post_.fd5960c9"
+                        "hook.listener.admin_post_.617636db",
+                        "hook.listener.admin_post_.7a210b6e",
+                        "hook.listener.admin_post_.9a6a9a9a",
+                        "hook.listener.admin_post_.238b0a7d",
+                        "hook.listener.admin_post_.57c94511"
                     ]
                 },
                 {
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_ai_acf_json_directories.9cd38762",
-                        "hook.extension_point.dbvc_ai_package_retention_days.7162b445"
+                        "hook.extension_point.dbvc_ai_acf_json_directories.8d474d6f",
+                        "hook.extension_point.dbvc_ai_package_retention_days.f978ecde"
                     ]
                 },
                 {
@@ -3518,19 +3552,19 @@
                     "type": "admin_post",
                     "identifier": "Additional current-checkout admin handlers surfaces",
                     "discovery_ids": [
-                        "hook.listener.admin_post_.7a7977a1",
-                        "hook.listener.admin_post_.e45e08b6",
-                        "hook.listener.admin_post_.af1f4307",
-                        "hook.listener.admin_post_.58efb22c",
-                        "hook.listener.admin_post_.cde17486",
-                        "hook.listener.admin_post_.10a8bc80"
+                        "hook.listener.admin_post_.24ac4779",
+                        "hook.listener.admin_post_.98694e5d",
+                        "hook.listener.admin_post_.f15fdf02",
+                        "hook.listener.admin_post_.00221569",
+                        "hook.listener.admin_post_.9909ee9b",
+                        "hook.listener.admin_post_.ff80925c"
                     ]
                 },
                 {
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_configuration_portability_domains.2bcddec4"
+                        "hook.extension_point.dbvc_configuration_portability_domains.91ca035d"
                     ]
                 }
             ],
@@ -3820,56 +3854,56 @@
                     "type": "hook",
                     "identifier": "Core import/export filters and actions",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_acf_options_post_id.02f58204",
-                        "hook.extension_point.dbvc_acf_options_post_id.d35c0d30",
-                        "hook.extension_point.dbvc_after_export_fse_theme_data.b5a0f4db",
-                        "hook.extension_point.dbvc_after_export_menus.a5f0bb9f",
-                        "hook.extension_point.dbvc_after_export_options.6c7f6868",
-                        "hook.extension_point.dbvc_after_export_options_group.a0635046",
-                        "hook.extension_point.dbvc_after_export_post.142ce923",
-                        "hook.extension_point.dbvc_after_export_term.9d0dcd32",
-                        "hook.extension_point.dbvc_after_import_fse_theme_data.fc42495a",
-                        "hook.extension_point.dbvc_after_import_term.8a30cb79",
-                        "hook.extension_point.dbvc_allowed_export_filename_formats.5ddc623e",
-                        "hook.extension_point.dbvc_allowed_export_filename_formats.62fa7a2b",
-                        "hook.extension_point.dbvc_allowed_export_filename_formats.ae2781f5",
-                        "hook.extension_point.dbvc_allowed_export_filename_formats.df7951a5",
-                        "hook.extension_point.dbvc_allowed_statuses_for_export.515064f3",
-                        "hook.extension_point.dbvc_allowed_statuses_for_export.7c768d89",
-                        "hook.extension_point.dbvc_allowed_statuses_for_export.9239c953",
-                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.33f2dea5",
-                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.56ddfcec",
-                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.b5a9ae14",
-                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.ef0711ca",
-                        "hook.extension_point.dbvc_available_options_groups.def998a7",
-                        "hook.extension_point.dbvc_available_taxonomies.684ed22a",
-                        "hook.extension_point.dbvc_excluded_option_keys.57cd37c6",
-                        "hook.extension_point.dbvc_export_all_post_statuses.62c4f2c4",
-                        "hook.extension_point.dbvc_export_all_post_statuses.a6b8bed3",
-                        "hook.extension_point.dbvc_export_filename_mode.83fcacbb",
-                        "hook.extension_point.dbvc_export_filename_part.354a3c52",
-                        "hook.extension_point.dbvc_export_fse_theme_data.796c3066",
-                        "hook.extension_point.dbvc_export_fse_theme_file_path.3591cd45",
-                        "hook.extension_point.dbvc_export_menu_data.bf777e89",
-                        "hook.extension_point.dbvc_export_menus_data.5edc4b31",
-                        "hook.extension_point.dbvc_export_menus_file_path.0936f4b5",
-                        "hook.extension_point.dbvc_export_options_data.c9a4b77b",
-                        "hook.extension_point.dbvc_export_options_file_path.9891652e",
-                        "hook.extension_point.dbvc_export_options_group_file_path.a3d56039",
-                        "hook.extension_point.dbvc_export_options_group_filename.6bd9e1ed",
-                        "hook.extension_point.dbvc_export_post_data.41cf0a54",
-                        "hook.extension_point.dbvc_export_post_data.c6102edd",
-                        "hook.extension_point.dbvc_export_post_file_path.59b68201",
-                        "hook.extension_point.dbvc_export_post_file_path.9110299e",
-                        "hook.extension_point.dbvc_export_post_file_path.b6d29f45",
-                        "hook.extension_point.dbvc_export_term_data.b1ff3d83",
-                        "hook.extension_point.dbvc_export_term_file_path.2b463f6a",
-                        "hook.extension_point.dbvc_import_backup_override.373a7fb4",
-                        "hook.extension_point.dbvc_meta_sanitize_skip_keys.3371871d",
-                        "hook.extension_point.dbvc_selected_options_groups.da741e1a",
-                        "hook.extension_point.dbvc_should_export_on_option_update.478c4746",
-                        "hook.extension_point.dbvc_should_export_post.0d37219d",
-                        "hook.extension_point.dbvc_supported_post_types.aedd10f3"
+                        "hook.extension_point.dbvc_acf_options_post_id.cdf514b9",
+                        "hook.extension_point.dbvc_acf_options_post_id.a8472155",
+                        "hook.extension_point.dbvc_after_export_fse_theme_data.7a5565fb",
+                        "hook.extension_point.dbvc_after_export_menus.f0652320",
+                        "hook.extension_point.dbvc_after_export_options.f6f5ab6d",
+                        "hook.extension_point.dbvc_after_export_options_group.26319461",
+                        "hook.extension_point.dbvc_after_export_post.6b47eeb5",
+                        "hook.extension_point.dbvc_after_export_term.22e6ec57",
+                        "hook.extension_point.dbvc_after_import_fse_theme_data.47301a0b",
+                        "hook.extension_point.dbvc_after_import_term.cae88c5c",
+                        "hook.extension_point.dbvc_allowed_export_filename_formats.ddbec072",
+                        "hook.extension_point.dbvc_allowed_export_filename_formats.b41965e8",
+                        "hook.extension_point.dbvc_allowed_export_filename_formats.f04b7a41",
+                        "hook.extension_point.dbvc_allowed_export_filename_formats.ab854fe2",
+                        "hook.extension_point.dbvc_allowed_statuses_for_export.22c57334",
+                        "hook.extension_point.dbvc_allowed_statuses_for_export.cccd4f38",
+                        "hook.extension_point.dbvc_allowed_statuses_for_export.60b4f55a",
+                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.539d55aa",
+                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.139456b2",
+                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.f143202e",
+                        "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.052ec6f1",
+                        "hook.extension_point.dbvc_available_options_groups.f21ed3ed",
+                        "hook.extension_point.dbvc_available_taxonomies.480f2f07",
+                        "hook.extension_point.dbvc_excluded_option_keys.5b3d64f7",
+                        "hook.extension_point.dbvc_export_all_post_statuses.e64bf9fe",
+                        "hook.extension_point.dbvc_export_all_post_statuses.93880ae3",
+                        "hook.extension_point.dbvc_export_filename_mode.f1bdfa53",
+                        "hook.extension_point.dbvc_export_filename_part.0d5b4b88",
+                        "hook.extension_point.dbvc_export_fse_theme_data.ca565011",
+                        "hook.extension_point.dbvc_export_fse_theme_file_path.09f6a4ff",
+                        "hook.extension_point.dbvc_export_menu_data.738a3ca3",
+                        "hook.extension_point.dbvc_export_menus_data.2f3d5b2d",
+                        "hook.extension_point.dbvc_export_menus_file_path.33662a2a",
+                        "hook.extension_point.dbvc_export_options_data.10395c2e",
+                        "hook.extension_point.dbvc_export_options_file_path.fcbf3cf0",
+                        "hook.extension_point.dbvc_export_options_group_file_path.840e2043",
+                        "hook.extension_point.dbvc_export_options_group_filename.6a07c335",
+                        "hook.extension_point.dbvc_export_post_data.d85f1efa",
+                        "hook.extension_point.dbvc_export_post_data.ea12e554",
+                        "hook.extension_point.dbvc_export_post_file_path.02e74386",
+                        "hook.extension_point.dbvc_export_post_file_path.8a23f45d",
+                        "hook.extension_point.dbvc_export_post_file_path.d61d81a6",
+                        "hook.extension_point.dbvc_export_term_data.321247f3",
+                        "hook.extension_point.dbvc_export_term_file_path.ec32216e",
+                        "hook.extension_point.dbvc_import_backup_override.99d7608e",
+                        "hook.extension_point.dbvc_meta_sanitize_skip_keys.cb365826",
+                        "hook.extension_point.dbvc_selected_options_groups.73d58c9b",
+                        "hook.extension_point.dbvc_should_export_on_option_update.6c2bb3de",
+                        "hook.extension_point.dbvc_should_export_post.1170a992",
+                        "hook.extension_point.dbvc_supported_post_types.58556a1b"
                     ],
                     "source_ref": {
                         "path": "includes/class-options-groups.php",
@@ -4105,8 +4139,8 @@
                     "type": "admin_post",
                     "identifier": "Entity Editor download handlers",
                     "discovery_ids": [
-                        "hook.listener.admin_post_dbvc_entity_editor_download.990565fa",
-                        "hook.listener.admin_post_dbvc_entity_editor_download_bulk.345da60b"
+                        "hook.listener.admin_post_dbvc_entity_editor_download.41c55605",
+                        "hook.listener.admin_post_dbvc_entity_editor_download_bulk.b6192395"
                     ],
                     "source_ref": {
                         "path": "admin/class-entity-editor-app.php",
@@ -4252,8 +4286,8 @@
                     "type": "hook",
                     "identifier": "Entity Editor protected-meta filters",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_entity_editor_protected_post_meta_keys.c685e6ad",
-                        "hook.extension_point.dbvc_entity_editor_protected_term_meta_keys.4b15da90"
+                        "hook.extension_point.dbvc_entity_editor_protected_post_meta_keys.48a1ee0f",
+                        "hook.extension_point.dbvc_entity_editor_protected_term_meta_keys.22cc6610"
                     ],
                     "source_ref": {
                         "path": "includes/class-entity-editor-indexer.php",
@@ -4264,18 +4298,18 @@
                     "type": "admin_post",
                     "identifier": "Additional current-checkout admin handlers surfaces",
                     "discovery_ids": [
-                        "hook.listener.admin_post_dbvc_entity_editor_transfer_packet.6fb1f9c9"
+                        "hook.listener.admin_post_dbvc_entity_editor_transfer_packet.d7b2326a"
                     ]
                 },
                 {
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_entity_editor_protected_post_meta_keys.7696a135",
-                        "hook.extension_point.dbvc_entity_editor_protected_term_meta_keys.9ba3e7be",
-                        "hook.extension_point.dbvc_entity_editor_wsform_snapshot_restore_result.33b65602",
-                        "hook.extension_point.dbvc_third_party_wsform_form_snapshot_payload.9c039d71",
-                        "hook.extension_point.dbvc_third_party_wsform_setting_options.eef89c25"
+                        "hook.extension_point.dbvc_entity_editor_protected_post_meta_keys.b842d34c",
+                        "hook.extension_point.dbvc_entity_editor_protected_term_meta_keys.0ab52bb1",
+                        "hook.extension_point.dbvc_entity_editor_wsform_snapshot_restore_result.9826c918",
+                        "hook.extension_point.dbvc_third_party_wsform_form_snapshot_payload.a08debfe",
+                        "hook.extension_point.dbvc_third_party_wsform_setting_options.eb7f44d6"
                     ]
                 }
             ],
@@ -4445,18 +4479,18 @@
                     "type": "hook",
                     "identifier": "Bricks add-on extension points",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_bricks_addon_job_run.bf470ffc",
-                        "hook.extension_point.dbvc_bricks_admin_tabs.db60c761",
-                        "hook.extension_point.dbvc_bricks_audit_event.e9e87af9",
-                        "hook.extension_point.dbvc_bricks_diff_row_data.7ba28272",
-                        "hook.extension_point.dbvc_bricks_fleet_mode_planning.bb82964a",
-                        "hook.extension_point.dbvc_bricks_governance_overlay.170fddc0",
-                        "hook.extension_point.dbvc_bricks_meta_keys.3a009a02",
-                        "hook.extension_point.dbvc_bricks_proposal_transition.9c44132d",
-                        "hook.extension_point.dbvc_bricks_remote_package_max_bytes.72f36f8a",
-                        "hook.extension_point.dbvc_bricks_render_extra_panels.60a57651",
-                        "hook.extension_point.dbvc_bricks_supported_schema_versions.a508f0a6",
-                        "hook.extension_point.dbvc_bricks_ui_event.81a53d12"
+                        "hook.extension_point.dbvc_bricks_addon_job_run.9c31508e",
+                        "hook.extension_point.dbvc_bricks_admin_tabs.dabd093c",
+                        "hook.extension_point.dbvc_bricks_audit_event.7fc299aa",
+                        "hook.extension_point.dbvc_bricks_diff_row_data.480ed868",
+                        "hook.extension_point.dbvc_bricks_fleet_mode_planning.7ccef019",
+                        "hook.extension_point.dbvc_bricks_governance_overlay.589889ec",
+                        "hook.extension_point.dbvc_bricks_meta_keys.882d7fad",
+                        "hook.extension_point.dbvc_bricks_proposal_transition.0b417208",
+                        "hook.extension_point.dbvc_bricks_remote_package_max_bytes.65ab517a",
+                        "hook.extension_point.dbvc_bricks_render_extra_panels.3bb266ec",
+                        "hook.extension_point.dbvc_bricks_supported_schema_versions.32007a46",
+                        "hook.extension_point.dbvc_bricks_ui_event.a4a54e3a"
                     ],
                     "source_ref": {
                         "path": "addons/bricks/bricks-addon.php",
@@ -4467,8 +4501,8 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_bricks_reference_unresolved_policy.cccda06b",
-                        "hook.extension_point.dbvc_localize_bricks_entity_references.c2d0e6a9"
+                        "hook.extension_point.dbvc_bricks_reference_unresolved_policy.00233550",
+                        "hook.extension_point.dbvc_localize_bricks_entity_references.754431d0"
                     ]
                 },
                 {
@@ -4573,31 +4607,31 @@
                     "type": "hook",
                     "identifier": "DBVC WordPress change lifecycle extension points",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_after_comment_changes.3621ce1a",
-                        "hook.extension_point.dbvc_after_customizer_save.368e8dab",
-                        "hook.extension_point.dbvc_after_fse_changes.75ddbd48",
-                        "hook.extension_point.dbvc_after_media_delete.e87f2881",
-                        "hook.extension_point.dbvc_after_media_trash.ff08181b",
-                        "hook.extension_point.dbvc_after_menu_item_deletion.c2e98032",
-                        "hook.extension_point.dbvc_after_menu_item_save.51787446",
-                        "hook.extension_point.dbvc_after_menu_updates.f6522600",
-                        "hook.extension_point.dbvc_after_option_update.49303d0c",
-                        "hook.extension_point.dbvc_after_pattern_changes.54b0a192",
-                        "hook.extension_point.dbvc_after_plugin_changes.a5a96cd1",
-                        "hook.extension_point.dbvc_after_post_deletion.eb924cc0",
-                        "hook.extension_point.dbvc_after_post_meta_update.4e6f092c",
-                        "hook.extension_point.dbvc_after_post_status_transition.ac17af11",
-                        "hook.extension_point.dbvc_after_post_trash.4286a29b",
-                        "hook.extension_point.dbvc_after_post_untrash.51f16026",
-                        "hook.extension_point.dbvc_after_term_changes.ac1842a5",
-                        "hook.extension_point.dbvc_after_term_deletion.7b4d1f74",
-                        "hook.extension_point.dbvc_after_theme_changes.b5c86ede",
-                        "hook.extension_point.dbvc_after_user_updates.2375f51b",
-                        "hook.extension_point.dbvc_after_widget_updates.ec4a8604",
-                        "hook.extension_point.dbvc_skip_meta_keys.3ee52ca5",
-                        "hook.extension_point.dbvc_skip_option_names.71d34f5c",
-                        "hook.extension_point.dbvc_skip_read_cap_check.43688e13",
-                        "hook.extension_point.dbvc_skip_read_cap_check.fa6b0e91"
+                        "hook.extension_point.dbvc_after_comment_changes.938fe244",
+                        "hook.extension_point.dbvc_after_customizer_save.b3e24b1f",
+                        "hook.extension_point.dbvc_after_fse_changes.8683dd70",
+                        "hook.extension_point.dbvc_after_media_delete.e1972fea",
+                        "hook.extension_point.dbvc_after_media_trash.670d4c27",
+                        "hook.extension_point.dbvc_after_menu_item_deletion.b1221091",
+                        "hook.extension_point.dbvc_after_menu_item_save.01dc31c1",
+                        "hook.extension_point.dbvc_after_menu_updates.82d41790",
+                        "hook.extension_point.dbvc_after_option_update.7b9e3e2b",
+                        "hook.extension_point.dbvc_after_pattern_changes.90b18ae5",
+                        "hook.extension_point.dbvc_after_plugin_changes.1a4e5e3e",
+                        "hook.extension_point.dbvc_after_post_deletion.aaec2a21",
+                        "hook.extension_point.dbvc_after_post_meta_update.824f0b44",
+                        "hook.extension_point.dbvc_after_post_status_transition.aeabbdac",
+                        "hook.extension_point.dbvc_after_post_trash.b93361e9",
+                        "hook.extension_point.dbvc_after_post_untrash.2671097d",
+                        "hook.extension_point.dbvc_after_term_changes.0246d1d0",
+                        "hook.extension_point.dbvc_after_term_deletion.0076baa7",
+                        "hook.extension_point.dbvc_after_theme_changes.3f7740dd",
+                        "hook.extension_point.dbvc_after_user_updates.f2766eb3",
+                        "hook.extension_point.dbvc_after_widget_updates.48bb7570",
+                        "hook.extension_point.dbvc_skip_meta_keys.2d1f0260",
+                        "hook.extension_point.dbvc_skip_option_names.8972408a",
+                        "hook.extension_point.dbvc_skip_read_cap_check.6cb2e41f",
+                        "hook.extension_point.dbvc_skip_read_cap_check.a5e68e8d"
                     ],
                     "source_ref": {
                         "path": "includes/hooks.php",
@@ -4714,7 +4748,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_allow_uid_fallback_matching.65b18cc4"
+                        "hook.extension_point.dbvc_allow_uid_fallback_matching.aa89b5a8"
                     ]
                 },
                 {
@@ -4840,16 +4874,16 @@
                     "type": "admin_post",
                     "identifier": "Additional current-checkout admin handlers surfaces",
                     "discovery_ids": [
-                        "hook.listener.admin_post_.617afcdb",
-                        "hook.listener.admin_post_.b879896b",
-                        "hook.listener.admin_post_.d59332e9"
+                        "hook.listener.admin_post_.a2f76509",
+                        "hook.listener.admin_post_.9caba02a",
+                        "hook.listener.admin_post_.457472c3"
                     ]
                 },
                 {
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_media_hydration_package_max_uncompressed_bytes.eeedf254"
+                        "hook.extension_point.dbvc_media_hydration_package_max_uncompressed_bytes.71237d80"
                     ]
                 }
             ],
@@ -4991,7 +5025,7 @@
                     "type": "admin_post",
                     "identifier": "Clear media cache handler",
                     "discovery_ids": [
-                        "hook.listener.admin_post_dbvc_clear_media_cache.4e4bdc50"
+                        "hook.listener.admin_post_dbvc_clear_media_cache.1afdea93"
                     ],
                     "source_ref": {
                         "path": "includes/hooks.php",
@@ -5013,7 +5047,7 @@
                     "type": "hook",
                     "identifier": "Media resolver extension points",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_media_use_legacy_sync.90d482d4"
+                        "hook.extension_point.dbvc_media_use_legacy_sync.2b25688e"
                     ],
                     "source_ref": {
                         "path": "includes/class-media-sync.php",
@@ -5908,7 +5942,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_proposal_zip_resource_limits.018daeae"
+                        "hook.extension_point.dbvc_proposal_zip_resource_limits.1efcd8bf"
                     ]
                 }
             ],
@@ -6042,11 +6076,11 @@
                     "type": "hook",
                     "identifier": "Masking extension points",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_auto_export_mask_modes.17b1ee7f",
-                        "hook.extension_point.dbvc_auto_export_mask_modes.d12a4a12",
-                        "hook.extension_point.dbvc_auto_export_mask_settings.76741a8b",
-                        "hook.extension_point.dbvc_maskable_post_fields.d975fb41",
-                        "hook.extension_point.dbvc_masking_chunk_size.e99a7423"
+                        "hook.extension_point.dbvc_auto_export_mask_modes.9e30dc0c",
+                        "hook.extension_point.dbvc_auto_export_mask_modes.c8886334",
+                        "hook.extension_point.dbvc_auto_export_mask_settings.07e04bf7",
+                        "hook.extension_point.dbvc_maskable_post_fields.512b0479",
+                        "hook.extension_point.dbvc_masking_chunk_size.666fa47f"
                     ],
                     "source_ref": {
                         "path": "admin/admin-page.php",
@@ -6057,7 +6091,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_export_mask_protected_post_fields.b6f6dadc"
+                        "hook.extension_point.dbvc_export_mask_protected_post_fields.6bf90079"
                     ]
                 }
             ],
@@ -6354,8 +6388,8 @@
                     "type": "ajax",
                     "identifier": "Content Collector AJAX handlers (source only)",
                     "discovery_ids": [
-                        "hook.listener.wp_ajax_cc_get_urls_from_sitemap.16d2660a",
-                        "hook.listener.wp_ajax_cc_process_single_url.d09e0829"
+                        "hook.listener.wp_ajax_cc_get_urls_from_sitemap.29136de9",
+                        "hook.listener.wp_ajax_cc_process_single_url.0173cc42"
                     ],
                     "source_ref": {
                         "path": "_source/content-collector/includes/class-cc-ajax.php",
@@ -6633,7 +6667,7 @@
                     "type": "hook",
                     "identifier": "Snapshot capture control filter",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_enable_snapshot_capture.bffa11b5"
+                        "hook.extension_point.dbvc_enable_snapshot_capture.7085be0a"
                     ],
                     "source_ref": {
                         "path": "includes/class-snapshot-manager.php",
@@ -6644,7 +6678,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_enable_snapshot_capture.4e824800"
+                        "hook.extension_point.dbvc_enable_snapshot_capture.e731bb30"
                     ]
                 }
             ],
@@ -6758,11 +6792,11 @@
                     "type": "admin_post",
                     "identifier": "Core sync and backup admin-post handlers",
                     "discovery_ids": [
-                        "hook.listener.admin_post_dbvc_download_backup.24a6fce1",
-                        "hook.listener.admin_post_dbvc_download_sync.887a3624",
-                        "hook.listener.admin_post_dbvc_purge_sync.688d16f1",
-                        "hook.listener.admin_post_dbvc_upload_sync.b86069d7",
-                        "hook.listener.wp_ajax_dbvc_purge_status.36411a77"
+                        "hook.listener.admin_post_dbvc_download_backup.c711ff0a",
+                        "hook.listener.admin_post_dbvc_download_sync.7785e001",
+                        "hook.listener.admin_post_dbvc_purge_sync.7c451aa7",
+                        "hook.listener.admin_post_dbvc_upload_sync.af2370e4",
+                        "hook.listener.wp_ajax_dbvc_purge_status.54738ad3"
                     ],
                     "source_ref": {
                         "path": "includes/hooks.php",

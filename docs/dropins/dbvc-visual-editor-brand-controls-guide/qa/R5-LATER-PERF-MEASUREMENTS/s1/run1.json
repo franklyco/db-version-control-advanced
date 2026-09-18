@@ -1,0 +1,94 @@
+{
+  "scenario": "s1",
+  "run": "run1",
+  "capturedAt": "04:53:15",
+  "viewport": {
+    "w": 1440,
+    "h": 900,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 17528,
+    "domContentLoaded": 18379,
+    "load": 26456
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "spanCount": 16,
+  "aggregate": {
+    "dbvc.ve.overlay_boot": {
+      "count": 1,
+      "totalMs": 1303.3,
+      "maxMs": 1303.3
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 5,
+      "totalMs": 1,
+      "maxMs": 0.3
+    },
+    "dbvc.ve.session.public_map_request": {
+      "count": 1,
+      "totalMs": 1218.3,
+      "maxMs": 1218.3
+    },
+    "dbvc.ve.api.getSession": {
+      "count": 1,
+      "totalMs": 1218.2,
+      "maxMs": 1218.2
+    },
+    "dbvc.ve.session.public_map_sync": {
+      "count": 1,
+      "totalMs": 0.1,
+      "maxMs": 0.1
+    },
+    "dbvc.ve.markers.recover_query_collections": {
+      "count": 4,
+      "totalMs": 1.1,
+      "maxMs": 0.5
+    },
+    "dbvc.ve.prefetch.setup": {
+      "count": 1,
+      "totalMs": 0.2,
+      "maxMs": 0.2
+    },
+    "dbvc.ve.markers.mount": {
+      "count": 1,
+      "totalMs": 5,
+      "maxMs": 5
+    },
+    "dbvc.ve.badges.query_collection_mount": {
+      "count": 1,
+      "totalMs": 50.4,
+      "maxMs": 50.4
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.overlay_boot",
+      "startTime": 18311,
+      "duration": 1303.3
+    },
+    {
+      "name": "dbvc.ve.session.public_map_request",
+      "startTime": 18339,
+      "duration": 1218.3
+    },
+    {
+      "name": "dbvc.ve.api.getSession",
+      "startTime": 18339,
+      "duration": 1218.2
+    },
+    {
+      "name": "dbvc.ve.badges.query_collection_mount",
+      "startTime": 19564,
+      "duration": 50.4
+    },
+    {
+      "name": "dbvc.ve.markers.mount",
+      "startTime": 19559,
+      "duration": 5
+    }
+  ],
+  "notes": "workspace closed for the sweep (persisted isOpen:false); perf-a + perf-b switches ON and verified; logged-in admin; 3 warmup loads discarded"
+}
