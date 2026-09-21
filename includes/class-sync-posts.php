@@ -4929,6 +4929,12 @@ $acf_relationship_fields = [
             return;
         }
 
+        // Allow operational-state owners (for example connector enrollment gates) to drop keys before import.
+        $options = apply_filters('dbvc_import_options_data', $options);
+        if (! is_array($options)) {
+            return;
+        }
+
         foreach ($options as $key => $value) {
             update_option($key, maybe_unserialize($value));
         }

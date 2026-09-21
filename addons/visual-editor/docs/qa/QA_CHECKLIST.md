@@ -62,6 +62,7 @@ Use this as validation coverage, not implementation priority. Current P0-P5 exec
 
 ## UX
 - [ ] Editable fields open expected input
+- [x] Duplicate nested ACF paths honor the current object's exact selector, and WYSIWYG panels expose Paragraph, Heading 1-6, and Preformatted block choices
 - [x] Source details displays escaped semantic markup for the Butler Automation WYSIWYG hero heading (`hero_section_hero_h1 = <h1>`) and omits the line for its missing/unrendered Card Image panel
 - [ ] Populated image and CSS-background browser fixtures still need panel-open confirmation; focused/runtime coverage confirms populated `image_src` descriptors report `<img>` and missing-media descriptors do not inherit parent tags
 - [ ] Unsupported fields show honest state

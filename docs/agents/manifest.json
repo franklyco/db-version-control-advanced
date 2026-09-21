@@ -4026,6 +4026,17 @@
                     "source_ref": {
                         "path": "includes/class-import-router.php"
                     }
+                },
+                {
+                    "type": "hook",
+                    "identifier": "dbvc_import_options_data filter applied before options.json keys are written",
+                    "discovery_ids": [
+                        "hook.extension_point.dbvc_import_options_data.4ddb5a0f"
+                    ],
+                    "source_ref": {
+                        "path": "includes/class-sync-posts.php",
+                        "line": 4933
+                    }
                 }
             ],
             "requirements": [
@@ -4052,7 +4063,9 @@
                 "dbvc_import_filename_format",
                 "dbvc_import_require_review"
             ],
-            "hooks": [],
+            "hooks": [
+                "dbvc_import_options_data"
+            ],
             "safety": {
                 "classification": "wordpress_write",
                 "human_reviewed": true,
@@ -4086,7 +4099,9 @@
                 "engine.core.export",
                 "proposal.core.apply"
             ],
-            "known_gaps": [],
+            "known_gaps": [
+                "options.json import writes every remaining key with update_option; the dbvc_import_options_data filter (added 2026-09-17) lets operational-state owners such as the Connected Environments connector drop enrollment/gate keys before import."
+            ],
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "verified_date": "2026-08-05",
@@ -5291,7 +5306,7 @@
             ],
             "test_refs": [],
             "doc_refs": [
-                "docs/roadmap.md"
+                "docs/ROADMAP.md"
             ],
             "related": [
                 "identity.core.entities",
@@ -5361,7 +5376,7 @@
             ],
             "test_refs": [],
             "doc_refs": [
-                "docs/roadmap.md"
+                "docs/ROADMAP.md"
             ],
             "related": [
                 "settings.core.import_export",
@@ -5433,7 +5448,7 @@
             ],
             "test_refs": [],
             "doc_refs": [
-                "docs/roadmap.md"
+                "docs/ROADMAP.md"
             ],
             "related": [
                 "engine.core.import",
@@ -6900,6 +6915,1562 @@
             "title": "Sync package upload, download, purge, and FTP window",
             "summary": "Provides authenticated admin handlers for sync archives, backup downloads, cache/purge status, and a scheduled temporary FTP upload window.",
             "primary_category": "snapshots_backups"
+        },
+        {
+            "id": "addon.connected_environments.observation",
+            "title": "Connected Environments connector: local Bricks observation",
+            "summary": "Independently gated connector add-on that records save-side dirty markers for Bricks global classes and variables and for `service` posts (`wp.service`, identity = DBVC vf_object_uid, meta through DBVC's masking owners), snapshots each logical object and the collection order in a background worker, and stores immutable observation events in a durable local outbox. Once enrolled with a hub (application-password principal, credential sealed with the installation salts), a leased outbound worker delivers batches and settles each event from the hub's outcome. No content application. It also polls its hub inbox outbound-only, storing deliveries durably before acknowledging; received observations are never applied. M3 step 3: the `wp.service` domain reports a coverage projection (`collection.order` under profile `wp-service-inventory-v1`, the sorted set of portable UIDs; complete only when every observed post has a UID) on reconciliation and after every per-object change, so the hub can verify absence for service posts; the Add-ons tab shows a read-only inbox table. M4 step 1: the connector answers the hub's release payload requests with the canonical bodies it recorded (only while the stored hash still equals the manifest hash under the current epoch, otherwise it reports the mismatch) and runs prepare requests as dry runs (identity by portable UID only, current persisted state through the read-only observers, exact whole-object patch or explicit blocker), storing every receipt in dbvc_ce_preparations before reporting it; both ride the inbox poll schedule and never write content. M4 step 2: prepare receipts carry a dependency ledger per item (Bricks category and var(--name) references, service parent/terms/media as present|selected|unresolved|unsupported; unresolved or unsupported entries block), deletion items resolve to remove_object or noop, and the Add-ons tab lists the receipts. M5 step 1: a separate apply gate (dbvc_addon_connected_environments_apply_enabled, off by default, cleared when the connector is disabled, excluded from options export) lets the release worker execute approved releases: Bricks option collections only, one conditional SQL write per container guarded by the receipt's storage fingerprint (WHERE SHA2(option_value)=…), verified before image journalled in dbvc_ce_operations, after-state verified through the read-only observer, compensation by the same conditional write, stale instead of overwrite, the change reported with origin=apply; service posts are unsupported for apply in this step.",
+            "status": "experimental",
+            "primary_category": "observability",
+            "tags": [
+                "object:bricks_global_class",
+                "object:bricks_variable",
+                "object:option",
+                "object:post",
+                "operation:configure",
+                "operation:inspect",
+                "risk:wordpress_write",
+                "scope:addon:connected_environments",
+                "surface:admin",
+                "surface:cron",
+                "surface:database",
+                "surface:hook",
+                "surface:php",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "connected environments",
+                "connector",
+                "dbvc_ce",
+                "local observation outbox",
+                "Bricks class observation"
+            ],
+            "addon_or_owner": "Connected Environments add-on",
+            "surfaces": [
+                {
+                    "type": "database",
+                    "identifier": "Connector-owned durable stores (created only through the enable lifecycle)",
+                    "discovery_ids": [
+                        "database.table.dbvc_ce_state",
+                        "database.table.dbvc_ce_jobs",
+                        "database.table.dbvc_ce_objects",
+                        "database.table.dbvc_ce_outbox",
+                        "database.table.dbvc_ce_identity",
+                        "database.table.dbvc_ce_inbox",
+                        "database.table.dbvc_ce_preparations",
+                        "database.table.dbvc_ce_operations"
+                    ],
+                    "source_ref": {
+                        "path": "addons/connected-environments/src/Storage/Schema.php",
+                        "line": 30
+                    }
+                },
+                {
+                    "type": "hook",
+                    "identifier": "Connector extension points",
+                    "discovery_ids": [
+                        "hook.extension_point.dbvc_connected_bricks_available.69527fc4",
+                        "hook.extension_point.dbvc_connected_processing_delay.d8d77ac1",
+                        "hook.extension_point.dbvc_connected_transaction_strategy.ff3d61d1",
+                        "hook.extension_point.dbvc_connected_allow_insecure_hub.37986833",
+                        "hook.extension_point.dbvc_connected_inbox_poll_interval.5998b237",
+                        "hook.extension_point.dbvc_connected_service_ignored_meta_keys.29b80cdc",
+                        "hook.extension_point.dbvc_connected_service_post_type.64be3427",
+                        "hook.extension_point.dbvc_skip_meta_keys.97e16b44"
+                    ]
+                },
+                {
+                    "type": "cron",
+                    "identifier": "dbvc_connected_process_observations, dbvc_connected_deliver_outbox and dbvc_connected_poll_inbox (single events; the inbox poll reschedules itself with jitter; hook names passed via class constants, so static discovery does not list them)",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "addons/connected-environments/src/Capture/DirtyCapture.php",
+                        "line": 16
+                    }
+                },
+                {
+                    "type": "php",
+                    "identifier": "DBVC_Connected_Environments_Addon gate, settings owner and status report (option keys use class constants; see settings list)",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "addons/connected-environments/bootstrap.php",
+                        "line": 41
+                    }
+                },
+                {
+                    "type": "admin",
+                    "identifier": "Connected Environments subtab inside DBVC Configure > Add-ons (no new menu)",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "admin/admin-page.php",
+                        "line": 1
+                    }
+                }
+            ],
+            "requirements": [
+                "dbvc_addon_connected_environments_enabled = '1' (off by default) and DBVC_CONNECTED_EMERGENCY_DISABLE undefined or false",
+                "Single-site WordPress; multisite is refused at the gate",
+                "Bricks theme present for available domain coverage (absent Bricks yields unavailable coverage, never tombstones)",
+                "WP-Cron page-triggered spawning, an external cron runner, or `wp dbvc connected process` to drain the worker",
+                "For wp.service identity, the service post type must be among DBVC's configured post types (dbvc_post_types) so vf_object_uid is assigned on save; otherwise members report identity_missing"
+            ],
+            "inputs": [
+                "WordPress core added_option/updated_option/deleted_option hooks for bricks_global_classes and bricks_global_variables",
+                "Explicit reconciliation requests (enable transition, `wp dbvc connected reconcile`)",
+                "WordPress save_post/deleted_post/post-meta hooks for the configured service post type",
+                "Hub inbox pages (GET /inbox) and acknowledgements"
+            ],
+            "outputs": [
+                "Dirty markers with generations (wp_dbvc_ce_jobs)",
+                "Per-object and collection-order projections with version-1 canonical bodies and SHA-256 hashes (wp_dbvc_ce_objects)",
+                "Immutable agency-control.observation.v0.2 events with sequence and digest (wp_dbvc_ce_outbox)",
+                "Instance identity sidecar rows (wp_dbvc_ce_identity)",
+                "Provisional environment identity and worker status (wp_dbvc_ce_state)",
+                "Per-object wp.service projections (profile wp-service-v1; masked fields mark the projection incomplete)",
+                "Durable inbox rows of received deliveries (wp_dbvc_ce_inbox) with local cursor"
+            ],
+            "artifacts": [
+                "Local outbox events (pending; no transport in this release)"
+            ],
+            "storage_touched": [
+                "wp_dbvc_ce_state",
+                "wp_dbvc_ce_jobs",
+                "wp_dbvc_ce_objects",
+                "wp_dbvc_ce_outbox",
+                "wp_dbvc_ce_identity",
+                "WordPress cron option (single event)",
+                "Bricks option rows (read only, direct persisted read bypassing caches and filters)",
+                "Outbound HTTPS to the enrolled hub (observations batches; no inbound traffic)",
+                "wp_dbvc_ce_inbox",
+                "Service posts and their meta/terms (read only)",
+                "wp_dbvc_ce_preparations",
+                "wp_dbvc_ce_operations",
+                "bricks_global_classes / bricks_global_variables (conditional writes, only when the apply gate is on and an approval exists)"
+            ],
+            "settings": [
+                "dbvc_addon_connected_environments_apply_enabled",
+                "dbvc_addon_connected_environments_enabled",
+                "dbvc_connected_schema_version"
+            ],
+            "hooks": [
+                "dbvc_connected_bricks_available",
+                "dbvc_connected_processing_delay",
+                "dbvc_connected_transaction_strategy",
+                "dbvc_excluded_option_keys (listener: excludes operational keys from options export)",
+                "dbvc_import_options_data (listener: drops operational keys on options import)",
+                "dbvc_connected_allow_insecure_hub",
+                "dbvc_connected_inbox_poll_interval",
+                "dbvc_connected_service_post_type",
+                "dbvc_connected_service_ignored_meta_keys",
+                "dbvc_skip_meta_keys (consumer: existing core filter applied to the wp.service projection)"
+            ],
+            "safety": {
+                "classification": "wordpress_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "Writes are limited to connector management tables and the cron option; the worker and listeners never modify Bricks options or any other content.",
+                    "Save-side listeners perform one atomic upsert plus one read per watched save and no network requests; measured +2.1 queries and about +1.3 ms per save in the disposable lab.",
+                    "Coalesced snapshots report settled state, not a complete keystroke history.",
+                    "Environment identity is provisional and local; it is not network authority and must be replaced or bound by M2 enrollment.",
+                    "Disabling the module stops listeners and clears the scheduled event but retains stored observations; nothing is deleted automatically.",
+                    "Delivery is outbound only, TLS-verified, and uses the same immutable event ids/bodies on every retry; plain http hubs are accepted only for the local environment type or an explicit filter.",
+                    "The hub credential is stored sealed with a key derived from the installation salts; a database copied to another installation cannot read it and holds delivery (credentials_unreadable).",
+                    "wp.service projections reuse dbvc_sanitize_post_meta_safe() and the configured masking rules; masked/redacted fields leave the site only as placeholders and mark the projection incomplete.",
+                    "Inbox polling stores before acknowledging and never advances the cursor past unacknowledged deliveries; nothing received is written to content.",
+                    "With the apply gate on, approved releases write Bricks option collections; the write is conditional on the receipt's container fingerprint and journalled, but generated CSS is not rebuilt and a shared container edited concurrently by an unrelated writer between the conditional check and commit is protected only by the single-statement write."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "addons/connected-environments/bootstrap.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Runtime.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Capture/OptionSignalListener.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Capture/DirtyCapture.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Worker/ObservationWorker.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Adapters/BricksOptionCollectionObserver.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Adapters/DomainRegistry.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Storage/Schema.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Storage/JobStore.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Storage/ObjectStore.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Storage/OutboxStore.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Storage/StateStore.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Storage/Transaction.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Identity/InstanceIdentity.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Lifecycle/TransferExclusions.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Inspection/StatusReport.php"
+                },
+                {
+                    "path": "db-version-control.php"
+                },
+                {
+                    "path": "admin/admin-page.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Enrollment/EnrollmentService.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Transport/HubClient.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Transport/OutboundWorker.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Lifecycle/SecretBox.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Adapters/ServicePostObserver.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Capture/PostSignalListener.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Transport/InboxWorker.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Storage/InboxStore.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ConnectedAdminSurfacesTest.php",
+                "tests/phpunit/ConnectedApplyTest.php",
+                "tests/phpunit/ConnectedEnvironmentsDeliveryTest.php",
+                "tests/phpunit/ConnectedEnvironmentsInboxTest.php",
+                "tests/phpunit/ConnectedEnvironmentsIsolationTest.php",
+                "tests/phpunit/ConnectedEnvironmentsObservationTest.php",
+                "tests/phpunit/ConnectedEnvironmentsServiceObserverTest.php",
+                "tests/phpunit/ConnectedReleaseTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md",
+                "docs/dropins/dbvc-connected-agency/IMPLEMENTATION-GUIDE.md"
+            ],
+            "related": [
+                "cli.connected.inspect",
+                "cli.connected.process",
+                "protocol.connected.contracts",
+                "addon.agency_control.scaffold",
+                "hooks.core.lifecycle",
+                "engine.core.export",
+                "cli.connected.transport",
+                "cli.agency.inspect",
+                "cli.agency.manage"
+            ],
+            "known_gaps": [
+                "Received inbox observations are stored for the M3 comparison; there is no environment comparison view yet.",
+                "Only the active Bricks class/variable collections are covered; trash, categories, locked flags and templates are not observed.",
+                "Empty PHP arrays canonicalize as empty lists; an empty map is indistinguishable from an empty list in Bricks storage.",
+                "Emergency-disable constant, multisite refusal and non-transactional engines are covered by source review and the lab, not by the in-process PHPUnit suite; the held-migration gate (option on, schema absent) is covered by PHPUnit.",
+                "Live verification ran in a disposable WP-CLI lab loading this checkout, not on the active LocalWP site (which loads the main checkout on another branch).",
+                "wp.service inventory reads every post of the type in one run (bounded by the pilot's expected post counts); media files and revisions are not observed."
+            ],
+            "opportunity": {
+                "disposition": "deferred",
+                "priority": "medium",
+                "effort": "large",
+                "recommended_surface": "rest",
+                "rationale": "Authenticated hub-mediated reporting (M2) is the next milestone; it must not start before the observation slice is reviewed.",
+                "reviewed_date": "2026-09-17"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-19",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution",
+                    "pre_post_option_hash",
+                    "rest_authorization_contract_test"
+                ],
+                "live_runtime_verified": false,
+                "notes": "M2 step 2 (2026-09-19): wp.service observer (DBVC identity, masking, tombstones, offline reconciliation) and inbox poll (store-before-ack, crash recovery, holds) covered by PHPUnit; three-server lab delivered class/variable/service observations from A-prod and A-stage caught up 8 deliveries over real HTTP with no content applied. Focused PHPUnit (isolation, observation, delivery round trip through WordPress's application-password authentication via a loopback shim) passed. Two-server lab over real HTTP: enrollment exchange, provisional history superseded, reconciliation re-emitted under the enrolled epoch (sequence restarts at 1), 5 + 1 events delivered, source option hash unchanged, revoked/held cases. Verified on branch claude/dbvc-connected-agency-m2-receipt (manifest baseline commit retained per check contract)."
+            }
+        },
+        {
+            "id": "addon.connected_environments.admin_page",
+            "title": "Connected Environments admin page (connector + hub)",
+            "summary": "Dedicated administrator page `DBVC Export > Connected Environments` (page=dbvc-connected) shared by the Connected Environments connector and the Agency Control hub. Registered (menu, assets, routes) only while at least one gate is ready, so disabled modules add nothing. A role-adaptive React app (src/connected-app, built to build/connected-app.js) wraps the existing CLI inspectors over cookie + nonce admin REST routes under dbvc/v1: role-neutral `connected-admin/overview` (roles, gates, both status reports, settings) and `connected-admin/settings` (same validation as the Add-ons tab; the apply gate cannot stay on while the connector is off), connector `connected/*` (status, jobs, objects, outbox, inbox, inventory, preparations, operations, run/{process|deliver|poll|release}, reconcile, enroll, resume) and hub `agency/*` (every inspector read as GET, every manage action as POST, enable-subscription). All routes require manage_options (401 anonymous / 403 otherwise) and answer with Cache-Control: no-store; write routes return the inspector's WP_Error unchanged (400 by default). Slice A1 ships the shell, Overview (hub stat cards + attention list, connector connection/coverage/pending cards), Settings (gates, apply confirmation, enrollment/resume) and the Run now runners; the page never prints tokens or app passwords. Slice A2 adds the hub Environments section: registry table (status, hold reason, epoch, last contact + freshness, received), Hold (operator note) / Release hold / Revoke (inline confirmation), the invitation form whose token is shown once in a modal with the enroll command (the hub stores only the hash) and the invitations list (`agency/invitations`, never tokens). Slice A3 adds the hub Compare section (same-client pair picker, domain filter, freshness/coverage banner, state chips as filters, rows with pairing, state, reasons and hash prefixes; Confirm baseline only where BaselineService would accept, Accept absent, Link instance…) and the object drawer (identity, both sides' projections, baselines, recent events through the new instance filters on `agency/events|projections|baselines`). Slice A4 adds the hub Framework section: Status (framework-status rows with drift/version badges and reasons, Adopt desired version, Approve override with a required rationale, Detach override, subscribe-an-object form), Definitions (versions grouped per definition, Set desired, Publish form from hash / environment object / copied version with the profile defaulted per domain) and Reviews (state chips, Classify now, Resolve with a required note). Later slices add Releases and connector Activity sections per the design guide.",
+            "status": "experimental",
+            "primary_category": "settings_configuration",
+            "tags": [
+                "operation:configure",
+                "operation:inspect",
+                "risk:wordpress_write",
+                "scope:addon:connected_environments",
+                "scope:addon:agency_control",
+                "surface:admin",
+                "surface:rest",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "connected environments page",
+                "dbvc-connected",
+                "connected admin",
+                "agency control page",
+                "hub dashboard"
+            ],
+            "addon_or_owner": "Core (page shell) + Connected Environments and Agency Control add-ons (role routes)",
+            "surfaces": [
+                {
+                    "type": "admin",
+                    "identifier": "DBVC Export > Connected Environments submenu (page=dbvc-connected, manage_options; registered only while a gate is ready)",
+                    "discovery_ids": [
+                        "admin.menu.301fe7150fae"
+                    ],
+                    "source_ref": {
+                        "path": "admin/class-connected-admin-page.php",
+                        "line": 58
+                    }
+                },
+                {
+                    "type": "rest",
+                    "identifier": "dbvc/v1/connected-admin/{overview,settings} (role-neutral; literal registrations)",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "admin/class-connected-admin-page.php",
+                        "line": 127
+                    }
+                },
+                {
+                    "type": "rest",
+                    "identifier": "dbvc/v1/connected/* connector admin routes (paths built from a method map, so static discovery does not list them)",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "addons/connected-environments/src/Admin/RestController.php",
+                        "line": 1
+                    }
+                },
+                {
+                    "type": "rest",
+                    "identifier": "dbvc/v1/agency/* hub admin routes (paths built from a method map, so static discovery does not list them)",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "addons/agency-control/src/Admin/RestController.php",
+                        "line": 1
+                    }
+                }
+            ],
+            "requirements": [
+                "At least one gate ready: dbvc_addon_connected_environments_enabled = '1' or dbvc_addon_agency_control_enabled = '1'",
+                "manage_options capability with a cookie session and a valid wp_rest nonce",
+                "Built assets present (build/connected-app.js, build/style-connected-app.css, build/connected-app.asset.php); rebuild with `npm run build`"
+            ],
+            "inputs": [
+                "Settings form (connector enabled, apply gate, hub enabled)",
+                "Enrollment form (hub URL + one-time invitation token; the token is submitted once and never echoed)",
+                "Runner and manage actions posted as JSON to the role routes"
+            ],
+            "outputs": [
+                "Overview JSON (roles, gates, connector and hub status reports, settings, generated_at)",
+                "Inspector result arrays returned unchanged for each read route",
+                "Runner acknowledgements (claimed/acknowledged counts, delivered/received counts)"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "dbvc_addon_connected_environments_enabled, dbvc_addon_connected_environments_apply_enabled, dbvc_addon_agency_control_enabled (through each add-on's save_settings)",
+                "Whatever the wrapped inspector action touches (connector and hub management tables; content only through the apply gate)"
+            ],
+            "settings": [
+                "dbvc_addon_agency_control_enabled",
+                "dbvc_addon_connected_environments_apply_enabled",
+                "dbvc_addon_connected_environments_enabled"
+            ],
+            "hooks": [
+                "admin_menu (listener, priority 20)",
+                "rest_api_init (listener; page routes plus each add-on runtime's admin routes)",
+                "admin_enqueue_scripts (listener, only on the page's load hook)"
+            ],
+            "safety": {
+                "classification": "wordpress_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "conditional",
+                "backup_required": false,
+                "warnings": [
+                    "Turning the apply gate on requires an explicit inline confirmation; with it on, approved releases write Bricks option collections on the connector.",
+                    "Write routes proxy the same inspector actions as the WP-CLI commands; they share the CLI's validation and return its WP_Error codes.",
+                    "Responses are marked no-store; the page shows tokens and app passwords once only inside the response that created them (hub invite) and never stores them."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "admin/class-connected-admin-page.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Admin/RestController.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Admin/RestController.php"
+                },
+                {
+                    "path": "src/connected-app/index.js"
+                },
+                {
+                    "path": "src/connected-app/style.css"
+                },
+                {
+                    "path": "connected-app.js"
+                },
+                {
+                    "path": "db-version-control.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ConnectedAdminPageTest.php",
+                "tests/phpunit/ConnectedEnvironmentsIsolationTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-admin-page.md",
+                "docs/implementation/active/connected-environments-agency-control.md",
+                "docs/ui-mockups/dbvc-connected-environments/admin-page/README.md"
+            ],
+            "related": [
+                "addon.connected_environments.observation",
+                "addon.agency_control.scaffold",
+                "cli.connected.inspect",
+                "cli.connected.process",
+                "cli.connected.transport",
+                "cli.agency.inspect",
+                "cli.agency.manage"
+            ],
+            "known_gaps": [
+                "Slices A1–A4 only: Releases (incl. the release composer from a Compare selection) and connector Activity sections are not built yet; the Add-ons tab tables remain the detail view until they land.",
+                "Role routes are registered from method maps, so static discovery cannot list them; the PHPUnit contract test compares each read route with its inspector output instead.",
+                "Desktop-only layout (no responsive breakpoints), matching the design decision D-058."
+            ],
+            "opportunity": {
+                "disposition": "candidate",
+                "priority": "high",
+                "effort": "large",
+                "recommended_surface": "admin",
+                "rationale": "Slices A2-A7 of the design guide add the remaining sections on the same routes and tokens.",
+                "candidate_scope": "Environments (invite/hold/release/revoke), Compare + baselines + links + object drawer, Framework, Releases stepper, connector Activity/Inbox/Releases, dark tokens and empty/error states, then retiring the Add-ons tab tables.",
+                "excluded_operations": [
+                    "Any content write outside the apply gate",
+                    "Displaying stored tokens or app passwords"
+                ],
+                "next_action": "Implement slice A5 (Releases stepper + release composer from a Compare selection).",
+                "related_record": "addon.connected_environments.observation",
+                "reviewed_date": "2026-09-20"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-20",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "rest_authorization_contract_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": false,
+                "notes": "A1 (2026-09-20): PHPUnit covers gating (no menu/routes with both gates off, per-role registration), 401/403/200 authorization, no-store header, overview shape, read routes equal to inspector output, runner acknowledgement, settings semantics, bootstrap config and built assets. Page rendered and exercised in the disposable lab (hub + connector servers) with the built-in browser; not on the live LocalWP site. A2 (2026-09-20): PHPUnit covers invite → invitations list without token → exchange → hold (409 twice) → release (enrolled URL kept) → revoke (hold/release refused); lab: hold refused the connector's batch with 409, release re-enabled, invite modal showed the token once with focus returned to the opener, revoke confirmed inline. A3 (2026-09-20): PHPUnit seeds two environments through the machine receipt route and checks compare shape parity with the CLI, baseline confirmation, instance links and the instance filters; lab: drawer with Escape/focus restoration, Link instance, Accept absent, Confirm baseline exercised in the built-in browser. A4 (2026-09-20): PHPUnit drives publish → subscribe → status unknown/clean → classify auto-resolve → drift → classified item resolved with a note → override (rationale required) → new desired version (behind_version, needs_rebase_review) → adopt → detach over the admin routes; lab: the same flow through the page's buttons and forms."
+            }
+        },
+        {
+            "id": "cli.connected.inspect",
+            "title": "Connected Environments read-only inspection commands",
+            "summary": "wp dbvc connected status|jobs|objects|outbox|inbox|inventory report gate, schema, provisional identity, dirty markers, stored projections, outbox events and a read-only observer inventory without assigning identity or touching content. preparations lists the prepare receipts this environment produced (--operation shows one in full). operations lists the execution journal (--operation shows the steps and execution receipt).",
+            "status": "experimental",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:bricks_global_class",
+                "object:bricks_variable",
+                "operation:inspect",
+                "operation:list",
+                "risk:read_only",
+                "scope:addon:connected_environments",
+                "surface:cli",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "wp dbvc connected status",
+                "wp dbvc connected inventory",
+                "connector status CLI"
+            ],
+            "addon_or_owner": "Connected Environments add-on",
+            "runtime_entrypoint": "wp dbvc connected status",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc connected status|jobs|objects|outbox|inbox|inventory|preparations|operations",
+                    "discovery_ids": [
+                        "cli.command.dbvc.connected.status",
+                        "cli.command.dbvc.connected.jobs",
+                        "cli.command.dbvc.connected.objects",
+                        "cli.command.dbvc.connected.outbox",
+                        "cli.command.dbvc.connected.inventory",
+                        "cli.command.dbvc.connected.inbox",
+                        "cli.command.dbvc.connected.preparations",
+                        "cli.command.dbvc.connected.operations"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-connected-cli.php",
+                        "line": 1
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "status works in every gate state; the other commands require gate state ready"
+            ],
+            "inputs": [
+                "Optional --domain, --state, --cursor, --limit, --fields, --format"
+            ],
+            "outputs": [
+                "Gate/schema/identity/queue/outbox/scheduler/worker summary",
+                "Bounded job, object, event and inventory rows"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Connector tables (read only)",
+                "Bricks option rows (read only)"
+            ],
+            "settings": [
+                "dbvc_addon_connected_environments_enabled"
+            ],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "Inventory reports identity_missing for members without a sidecar mapping instead of assigning one.",
+                    "Status output contains the provisional environment id and epoch; these are identifiers, not secrets, and no credentials exist yet."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-connected-cli.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Inspection/StatusReport.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ConnectedEnvironmentsObservationTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md"
+            ],
+            "related": [
+                "addon.connected_environments.observation",
+                "cli.connected.process"
+            ],
+            "known_gaps": [
+                "Table output on PHP 8.4 with the bundled WP-CLI can be preceded by upstream deprecation notices; use --format=json for parsing."
+            ],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "This is the implemented developer inspection surface for the observation slice.",
+                "reviewed_date": "2026-09-17"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-19",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": false,
+                "notes": "2026-09-19: inbox listing added and executed in the three-server lab. DBVC_Connected_CLI_Inspector covered by focused PHPUnit; every command executed in the disposable WP-CLI lab loading this checkout with table and JSON output. Verified on branch claude/dbvc-connected-agency-m0-ac4c5d at 2e46f00b (manifest baseline commit retained per check contract)."
+            }
+        },
+        {
+            "id": "cli.connected.process",
+            "title": "Connected Environments reconcile and process commands",
+            "summary": "wp dbvc connected reconcile marks supported domains dirty (origin=reconciliation); wp dbvc connected process runs one bounded observation batch now. Both write connector management state only and never edit Bricks content.",
+            "status": "experimental",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:bricks_global_class",
+                "object:bricks_variable",
+                "operation:generate",
+                "risk:wordpress_write",
+                "scope:addon:connected_environments",
+                "surface:cli",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "wp dbvc connected process",
+                "wp dbvc connected reconcile",
+                "connector worker CLI"
+            ],
+            "addon_or_owner": "Connected Environments add-on",
+            "runtime_entrypoint": "wp dbvc connected process",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc connected reconcile|process",
+                    "discovery_ids": [
+                        "cli.command.dbvc.connected.reconcile",
+                        "cli.command.dbvc.connected.process"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-connected-cli.php",
+                        "line": 1
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Connector gate state ready and runtime registered in the process"
+            ],
+            "inputs": [
+                "reconcile: optional --domain",
+                "process: optional --limit (1-500) and --budget seconds (1-600)"
+            ],
+            "outputs": [
+                "reconcile: resulting generation per domain and whether processing is scheduled",
+                "process: worker run summary (claimed, acknowledged, requeued, retried, events, tombstones, per-job outcomes)"
+            ],
+            "artifacts": [
+                "Outbox events and projection rows"
+            ],
+            "storage_touched": [
+                "wp_dbvc_ce_jobs",
+                "wp_dbvc_ce_objects",
+                "wp_dbvc_ce_outbox",
+                "wp_dbvc_ce_identity",
+                "wp_dbvc_ce_state",
+                "WordPress cron option"
+            ],
+            "settings": [
+                "dbvc_addon_connected_environments_enabled"
+            ],
+            "hooks": [
+                "dbvc_connected_processing_delay",
+                "dbvc_connected_transaction_strategy"
+            ],
+            "safety": {
+                "classification": "wordpress_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "Reprocessing an unchanged collection emits no duplicate events; identity assignment for newly seen members is the only non-idempotent side effect and is stable afterwards.",
+                    "Processing acknowledges a marker only under its lease and captured generation; a newer generation stays pending."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-connected-cli.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Worker/ObservationWorker.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ConnectedEnvironmentsObservationTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md"
+            ],
+            "related": [
+                "addon.connected_environments.observation",
+                "cli.connected.inspect"
+            ],
+            "known_gaps": [
+                "LocalWP installations need an explicit runner (this command or `wp cron event run`) while WP-Cron page triggers are unavailable."
+            ],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "Implemented explicit runner for the observation slice.",
+                "reviewed_date": "2026-09-17"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-17",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": false,
+                "notes": "Focused PHPUnit covers generation-aware acknowledgement, requeue, lease fencing, duplicate suppression and tombstones; the disposable lab drained real markers through both `wp cron event run` and this command. Verified on branch claude/dbvc-connected-agency-m0-ac4c5d at 2e46f00b (manifest baseline commit retained per check contract)."
+            }
+        },
+        {
+            "id": "addon.agency_control.scaffold",
+            "title": "Agency Control hub: enrollment, receipt, routing, inbox, comparison, framework review, releases, preparation and approval",
+            "summary": "Independently gated studio-hub add-on. Enabling it installs hub stores and registers dbvc-agency/v1 enrollment exchange, observation receipt, capabilities, inbox and inbox/ack routes. Enrolled environments authenticate with a bound WordPress application password; the hub assigns the epoch, stores immutable events with per-event outcomes, routes each accepted event through the trusted registry (explicit client and framework subscriptions) into per-target deliveries with a frozen policy revision and into raw framework review items, keeps sequence-guarded projections, and holds enrollments on site-URL drift. No comparison, promotion or content application. M3 step 1 adds hash-level three-way environment comparison over each environment's own projections and explicitly confirmed pair/object baselines (with operator instance links for independently enrolled lineages). M3 step 2 adds immutable framework definition versions (studio-supplied order, per-channel desired version), explicit adoption on framework subscriptions, approved overrides (exact hash, frozen policy revision, rationale; needs_rebase_review when the desired version changes) and a read-only framework status report; nothing applies content or promotes a client edit. M3 step 3 adds review-item resolution through the status report (`observed → classified → resolved`, automatic for superseded/clean/approved-and-current items, explicit with a note otherwise) and an administrator panel in DBVC's Add-ons tab (environments, open invitations, framework status, review items, and an invitation form whose token is shown once via admin-post + a per-user transient; the action registers only inside wp-admin). M4 step 1 adds release manifests (objects selected from a source environment's current projections with fixed after-hashes), authorized payload transfer (the source connector supplies canonical bodies that the hub verifies by hash before the release seals with a digest), per-target prepare requests and immutable prepare receipts (the target connector's dry run, stored with its digest and annotated with the hub's own projections/baselines). Machine routes: GET releases/payload-requests, POST releases/{uid}/payloads, GET releases/prepare-requests, POST releases/{uid}/prepare-receipts. Nothing applies content; a receipt expires and is not permission to write. M4 step 2: release items carry an operation (replace, or delete for a verified absence whose payload is the canonical null); the administrator panel lists releases and prepare receipts. M5 step 1 adds approvals (dbvc_ac_approvals): an explicit studio action on a received ready/no-op prepare receipt that binds release digest, receipt digest, target epoch and policy revision, expires with the receipt, is retrieved by the target on its own poll (GET releases/apply-requests), and is consumed by exactly one execution receipt (POST releases/{uid}/apply-receipts); verified applied objects advance the pair baseline.",
+            "status": "experimental",
+            "primary_category": "internal_foundation",
+            "tags": [
+                "object:bricks_global_class",
+                "object:bricks_variable",
+                "object:setting",
+                "operation:compare",
+                "operation:configure",
+                "operation:inspect",
+                "operation:list",
+                "operation:route",
+                "risk:wordpress_write",
+                "scope:addon:agency_control",
+                "surface:admin",
+                "surface:admin_post",
+                "surface:database",
+                "surface:hook",
+                "surface:php",
+                "surface:rest",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "agency control",
+                "studio hub",
+                "dbvc_ac",
+                "dbvc-agency/v1",
+                "enrollment exchange",
+                "observation receipt",
+                "subscriptions",
+                "deliveries",
+                "inbox",
+                "framework definitions",
+                "overrides",
+                "framework status",
+                "review items",
+                "hub admin panel",
+                "invitation form",
+                "release manifest",
+                "payloads",
+                "prepare receipt",
+                "dry run",
+                "approval",
+                "apply receipt",
+                "execution"
+            ],
+            "addon_or_owner": "Agency Control add-on",
+            "surfaces": [
+                {
+                    "type": "php",
+                    "identifier": "DBVC_Agency_Control_Addon gate and settings owner; Dbvc\\AgencyControl\\Runtime::boot()",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "addons/agency-control/bootstrap.php",
+                        "line": 36
+                    }
+                },
+                {
+                    "type": "rest",
+                    "identifier": "POST dbvc-agency/v1/enrollments/exchange (invitation token authority); POST …/observations, GET …/capabilities, GET …/inbox, POST …/inbox/ack, GET …/releases/payload-requests, POST …/releases/{release_uid}/payloads, GET …/releases/prepare-requests, POST …/releases/{release_uid}/prepare-receipts, GET …/releases/apply-requests, POST …/releases/{release_uid}/apply-receipts (enrolled application-password principal); namespace passed via class constant, so static discovery does not list them",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "addons/agency-control/src/Rest/Controller.php",
+                        "line": 23
+                    }
+                },
+                {
+                    "type": "database",
+                    "identifier": "Hub-owned stores (created only through the enable lifecycle)",
+                    "discovery_ids": [
+                        "database.table.dbvc_ac_invitations",
+                        "database.table.dbvc_ac_environments",
+                        "database.table.dbvc_ac_events",
+                        "database.table.dbvc_ac_projections",
+                        "database.table.dbvc_ac_subscriptions",
+                        "database.table.dbvc_ac_deliveries",
+                        "database.table.dbvc_ac_review_items",
+                        "database.table.dbvc_ac_baselines",
+                        "database.table.dbvc_ac_instance_links",
+                        "database.table.dbvc_ac_definitions",
+                        "database.table.dbvc_ac_overrides",
+                        "database.table.dbvc_ac_releases",
+                        "database.table.dbvc_ac_release_items",
+                        "database.table.dbvc_ac_preparations",
+                        "database.table.dbvc_ac_approvals"
+                    ],
+                    "source_ref": {
+                        "path": "addons/agency-control/src/Storage/Schema.php",
+                        "line": 28
+                    }
+                },
+                {
+                    "type": "hook",
+                    "identifier": "Hub extension points",
+                    "discovery_ids": [
+                        "hook.extension_point.dbvc_agency_control_transaction_strategy.1f59cc4e",
+                        "hook.extension_point.dbvc_agency_control_freshness_seconds.cd011d36"
+                    ]
+                },
+                {
+                    "type": "admin",
+                    "identifier": "Agency Control group inside the Connected Environments add-on subtab",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "admin/admin-page.php",
+                        "line": 1
+                    }
+                },
+                {
+                    "type": "admin_post",
+                    "identifier": "admin_post_dbvc_agency_invite — administrator invitation action (manage_options + nonce; registered only when is_admin() and the hub gate is ready); Dbvc\\AgencyControl\\Admin\\HubPanel",
+                    "discovery_ids": [
+                        "hook.listener.admin_post_.6d6fd9dc"
+                    ],
+                    "source_ref": {
+                        "path": "addons/agency-control/src/Admin/HubPanel.php",
+                        "line": 34
+                    }
+                }
+            ],
+            "requirements": [
+                "dbvc_addon_agency_control_enabled = '1' (off by default) and DBVC_AGENCY_EMERGENCY_DISABLE undefined or false",
+                "Single-site WordPress",
+                "Application passwords available (HTTPS, or WP_ENVIRONMENT_TYPE=local for disposable labs)"
+            ],
+            "inputs": [
+                "Administrator invitation requests (wp dbvc agency invite)",
+                "Connector exchange requests carrying a single-use token",
+                "Authenticated observation batches (≤50 events, ≤256 KiB)"
+            ],
+            "outputs": [
+                "Service user + application password per environment (credential returned once in the exchange response)",
+                "Environment registry rows with hub-assigned epoch and status enabled|held|revoked",
+                "Immutable received events with routing_state=pending and per-event outcomes",
+                "Sequence-guarded projections and gap summaries",
+                "Per-target deliveries (delivery_id doubles as the target's inbox cursor; pending survive offline targets; cancelled at retrieval when a subscription is disabled or the source revoked)",
+                "Framework review items in state observed (raw observations awaiting the M3 adopted-version comparison)",
+                "Three-way comparison rows (synchronized|outgoing|incoming|converged|conflict|baseline_required|unknown with reasons, observed flags, hashes) and confirmed baselines"
+            ],
+            "artifacts": [
+                "Hub event log and projections"
+            ],
+            "storage_touched": [
+                "wp_dbvc_ac_invitations",
+                "wp_dbvc_ac_environments",
+                "wp_dbvc_ac_events",
+                "wp_dbvc_ac_projections",
+                "wp_users/wp_usermeta (service users, application passwords)",
+                "wp_user_roles option (dbvc_connected_environment role)",
+                "dbvc_addon_agency_control_enabled, dbvc_agency_control_schema_version options",
+                "wp_dbvc_ac_subscriptions",
+                "wp_dbvc_ac_deliveries",
+                "wp_dbvc_ac_review_items",
+                "wp_dbvc_ac_baselines",
+                "wp_dbvc_ac_instance_links",
+                "wp_dbvc_ac_definitions",
+                "wp_dbvc_ac_overrides",
+                "wp_dbvc_ac_releases",
+                "wp_dbvc_ac_release_items",
+                "wp_dbvc_ac_preparations",
+                "wp_dbvc_ac_approvals",
+                "wp_dbvc_ac_baselines (advanced by verified applies)"
+            ],
+            "settings": [
+                "dbvc_addon_agency_control_enabled",
+                "dbvc_agency_control_schema_version"
+            ],
+            "hooks": [
+                "dbvc_agency_control_transaction_strategy",
+                "dbvc_agency_control_freshness_seconds"
+            ],
+            "safety": {
+                "classification": "wordpress_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "partial",
+                "backup_required": false,
+                "warnings": [
+                    "Writes are management data only: users, application passwords, invitations, environments, events, projections. No site content is ever modified.",
+                    "Only the SHA-256 of an invitation token is stored; the token and the application password are shown exactly once.",
+                    "Machine routes accept only the enrolled application-password principal; administrator cookies and unbound application passwords are refused (401/403).",
+                    "Observation bodies carry no recipients, client or agency fields; such fields are rejected per event. A sender-labelled apply origin is stored as an ordinary observation.",
+                    "ACK means durable receipt, not delivery; routing/delivery are not implemented (routing_state stays pending).",
+                    "Routing reads membership only from the registry; wire fields naming recipients, clients or agencies are rejected; a sender-labelled apply origin never suppresses framework review.",
+                    "Inbox retrieval serves only the authenticated target's pending deliveries and rechecks subscription/source status; acknowledgements affect only that target's ids.",
+                    "Baselines advance only through wp dbvc agency baseline-confirm (equal, complete, fresh projections; --accept-absent for one-sided verified absence); receipt, routing, delivery and acknowledgement never touch them. Comparison is hash-level: it classifies, it cannot show path diffs."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "addons/agency-control/bootstrap.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Runtime.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Rest/Controller.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Enrollment/EnrollmentService.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Receipt/ObservationReceipt.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/Schema.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/EnvironmentRegistry.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/EventStore.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/ProjectionStore.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/InvitationStore.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Routing/RoutingPolicy.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Routing/RoutingWorker.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/SubscriptionStore.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/DeliveryStore.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/ReviewStore.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Enrollment/SubscriptionService.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Comparison/ComparisonService.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Comparison/BaselineService.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/BaselineStore.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Storage/InstanceLinkStore.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/AgencyControlComparisonTest.php",
+                "tests/phpunit/AgencyControlEnrollmentReceiptTest.php",
+                "tests/phpunit/AgencyControlFrameworkTest.php",
+                "tests/phpunit/AgencyControlRoutingInboxTest.php",
+                "tests/phpunit/ConnectedAdminSurfacesTest.php",
+                "tests/phpunit/ConnectedApplyTest.php",
+                "tests/phpunit/ConnectedEnvironmentsDeliveryTest.php",
+                "tests/phpunit/ConnectedEnvironmentsInboxTest.php",
+                "tests/phpunit/ConnectedEnvironmentsIsolationTest.php",
+                "tests/phpunit/ConnectedReleaseTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md",
+                "docs/dropins/dbvc-connected-agency/IMPLEMENTATION-GUIDE.md"
+            ],
+            "related": [
+                "addon.connected_environments.observation",
+                "protocol.connected.contracts"
+            ],
+            "known_gaps": [
+                "Framework adopted versions, approved overrides and definition catalog (M3 step 2) are not implemented; review items stay `observed`. wp.service never-observed target objects stay unknown because the domain has no collection-coverage projection. Independently created (not DBVC-imported) posts differ by post_date_gmt.",
+                "Site-URL hold compares the sender header with the enrolled URL; an identical clone (same URL) is indistinguishable until it re-enrolls.",
+                "Live verification ran in a disposable three-server lab loading this checkout, not on the active LocalWP site."
+            ],
+            "opportunity": {
+                "disposition": "deferred",
+                "priority": "medium",
+                "effort": "large",
+                "recommended_surface": "rest",
+                "rationale": "Delivery/inbox routes and subscriptions follow in the next reporting step once receipt is reviewed.",
+                "reviewed_date": "2026-09-18"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-19",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "rest_authorization_contract_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": false,
+                "notes": "M3 step 1 (2026-09-19): comparison PHPUnit (state matrix, explicit confirmation, accept-absent, stale/incomplete/coverage unknowns, scope refusals, link pairing) plus a three-server lab where two real connectors reported the same fixture: unlinked Bricks sidecars showed as unobserved on the other side, an explicit link paired them, baseline-confirm recorded 3 baselines, a class edit classified as outgoing and an independently created service post stayed baseline_required. M2 step 2 (2026-09-19): routing/inbox acceptance PHPUnit (package routing examples, A/B isolation, offline catch-up, disabled subscription and revoked source cancellation, held inbox, forged acks) plus a three-server real-HTTP lab (hub, A-prod, A-stage): class edit → review item + A-stage inbox, service edit → A-stage only, offline A-stage caught up 8 deliveries, cancelled/forged cases; lab dropped. PHPUnit: 5 hub tests (invitation exchange/principal binding, rejections, receipt outcomes, projection ordering and gaps, limits/auth/revocation/hold) plus the connector round-trip suite. Disposable two-server lab (PHP built-in servers, real Basic-auth HTTP, WordPress 6.9.4, MySQL 8.0.16): invite → enroll → 5 events delivered and stored, incremental edit delivered, forged environment/recipients rejected per event, site-URL drift held with 409, admin credentials refused; all lab tables dropped afterwards. Verified on branch claude/dbvc-connected-agency-m2-receipt (manifest baseline commit retained per check contract)."
+            }
+        },
+        {
+            "id": "protocol.connected.contracts",
+            "title": "Connected Protocol shared contract layer",
+            "summary": "Pure PHP contracts under includes/Dbvc/ConnectedProtocol shared by the connector and the hub: version-1 canonicalizer and hash, agency-control.observation.v0.2 event builder/validator, pure RoleGate and three-way/framework Comparison classification, and the read-only DomainObserver port. No WordPress registration, storage or network.",
+            "status": "experimental",
+            "primary_category": "internal_foundation",
+            "tags": [
+                "object:option",
+                "operation:compare",
+                "operation:validate",
+                "risk:read_only",
+                "scope:core",
+                "surface:php",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "ConnectedProtocol",
+                "canonicalizer",
+                "observation event contract"
+            ],
+            "addon_or_owner": "DBVC core (shared contract layer)",
+            "surfaces": [
+                {
+                    "type": "php",
+                    "identifier": "Dbvc\\ConnectedProtocol\\{Canonicalizer, ObservationEvent, RoleGate, Comparison, DomainObserver} via includes/Dbvc/ConnectedProtocol/autoload.php",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "includes/Dbvc/ConnectedProtocol/autoload.php",
+                        "line": 19
+                    }
+                }
+            ],
+            "requirements": [
+                "None beyond the plugin bootstrap; the autoloader loads a class only when referenced"
+            ],
+            "inputs": [
+                "PHP values, candidate event bodies, comparable hashes"
+            ],
+            "outputs": [
+                "Canonical JSON bytes and SHA-256 hashes",
+                "Validation error codes",
+                "Gate and comparison states"
+            ],
+            "artifacts": [],
+            "storage_touched": [],
+            "settings": [],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "Hashes are comparable only within the same canonicalizer version and profile.",
+                    "The validator implements the explicit v0.2 example contract, not general JSON Schema."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "includes/Dbvc/ConnectedProtocol/Canonicalizer.php"
+                },
+                {
+                    "path": "includes/Dbvc/ConnectedProtocol/ObservationEvent.php"
+                },
+                {
+                    "path": "includes/Dbvc/ConnectedProtocol/RoleGate.php"
+                },
+                {
+                    "path": "includes/Dbvc/ConnectedProtocol/Comparison.php"
+                },
+                {
+                    "path": "includes/Dbvc/ConnectedProtocol/DomainObserver.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ConnectedProtocolContractsTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md",
+                "docs/dropins/dbvc-connected-agency/contracts/README.md"
+            ],
+            "related": [
+                "addon.connected_environments.observation",
+                "addon.agency_control.scaffold"
+            ],
+            "known_gaps": [
+                "Cross-language golden hashes are not published; the Python package demo is illustrative only."
+            ],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "Internal contract layer; no operator surface is warranted.",
+                "reviewed_date": "2026-09-17"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-17",
+                "evidence_types": [
+                    "source_review",
+                    "focused_unit_test"
+                ],
+                "live_runtime_verified": false,
+                "notes": "12 focused PHPUnit tests cover ordering, missing/null/empty distinctions, number handling, volatile-key scoping, invalid input rejection, package example validation and digest stability, gate precedence and comparison states. Verified on branch claude/dbvc-connected-agency-m0-ac4c5d at 2e46f00b (manifest baseline commit retained per check contract)."
+            }
+        },
+        {
+            "id": "cli.connected.transport",
+            "title": "Connected Environments enroll, deliver, poll and resume commands",
+            "summary": "wp dbvc connected enroll exchanges a hub invitation for an application-password principal; deliver sends one outbound batch now; poll retrieves and acknowledges hub deliveries (store-before-ack); resume clears a local delivery hold after the hub-side cause was reviewed (some holds require re-enrollment). release runs the release worker once (payload requests for releases this environment sources; prepare receipts, i.e. dry runs, for releases targeting it). With the apply gate on, release also executes approved releases (conditional, journalled, verified writes).",
+            "status": "experimental",
+            "primary_category": "cli_automation",
+            "tags": [
+                "operation:configure",
+                "operation:upload",
+                "risk:remote_write",
+                "scope:addon:connected_environments",
+                "surface:cli",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "wp dbvc connected enroll",
+                "wp dbvc connected deliver",
+                "wp dbvc connected resume",
+                "wp dbvc connected poll"
+            ],
+            "addon_or_owner": "Connected Environments add-on",
+            "runtime_entrypoint": "wp dbvc connected deliver",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc connected enroll|deliver|poll|resume|release",
+                    "discovery_ids": [
+                        "cli.command.dbvc.connected.enroll",
+                        "cli.command.dbvc.connected.deliver",
+                        "cli.command.dbvc.connected.resume",
+                        "cli.command.dbvc.connected.poll",
+                        "cli.command.dbvc.connected.release"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-connected-cli.php",
+                        "line": 1
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Connector gate state ready",
+                "A hub invitation token for enroll; an enrolled, unheld connection for deliver"
+            ],
+            "inputs": [
+                "enroll: --hub=<url> --token=<invitation>",
+                "deliver: optional --limit (1-50)"
+            ],
+            "outputs": [
+                "enroll: environment id, hub-assigned epoch, agency/client ids, principal username, superseded event count, reconciliation generations (never the secret)",
+                "deliver: batch id, sent/delivered/duplicate/rejected/released counts, HTTP status, hold state"
+            ],
+            "artifacts": [
+                "Outbox rows settled with hub receipts"
+            ],
+            "storage_touched": [
+                "wp_dbvc_ce_state (enrollment, sealed credential, connection state, delivery status)",
+                "wp_dbvc_ce_outbox",
+                "wp_dbvc_ce_jobs (reconciliation markers)",
+                "Outbound HTTPS to the hub",
+                "wp_dbvc_ce_inbox"
+            ],
+            "settings": [
+                "dbvc_addon_connected_environments_enabled"
+            ],
+            "hooks": [
+                "dbvc_connected_allow_insecure_hub"
+            ],
+            "safety": {
+                "classification": "remote_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "partial",
+                "backup_required": false,
+                "warnings": [
+                    "enroll consumes the invitation and stores a credential; re-running it needs a fresh invitation and rotates the epoch.",
+                    "deliver never edits content; retries reuse immutable event ids and bodies, and the hub answers duplicates as duplicate."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-connected-cli.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Enrollment/EnrollmentService.php"
+                },
+                {
+                    "path": "addons/connected-environments/src/Transport/OutboundWorker.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ConnectedApplyTest.php",
+                "tests/phpunit/ConnectedEnvironmentsDeliveryTest.php",
+                "tests/phpunit/ConnectedReleaseTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md"
+            ],
+            "related": [
+                "addon.connected_environments.observation",
+                "cli.connected.inspect",
+                "cli.connected.process",
+                "addon.agency_control.scaffold"
+            ],
+            "known_gaps": [
+                "No admin UI for enrollment yet; CLI only."
+            ],
+            "opportunity": {
+                "disposition": "deferred",
+                "priority": "low",
+                "effort": "medium",
+                "recommended_surface": "admin",
+                "rationale": "An administrator enrollment form can follow once the hub inbox step settles the protocol.",
+                "reviewed_date": "2026-09-18"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-19",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": false,
+                "notes": "2026-09-19: poll executed over real HTTP in the lab (8 deliveries stored and acknowledged; idle poll retrieves 0). Inspector methods covered by the connector round-trip PHPUnit suite; enroll and deliver executed over real HTTP in the disposable two-server lab. Verified on branch claude/dbvc-connected-agency-m2-receipt (manifest baseline commit retained per check contract)."
+            }
+        },
+        {
+            "id": "cli.agency.inspect",
+            "title": "Agency Control read-only inspection commands",
+            "summary": "wp dbvc agency status|environments|events|projections|subscriptions|deliveries|reviews|baselines|links|definitions|overrides report hub gate, schema, protocol limits, enrolled environments (no secrets), received events, projections, sequence gaps, subscriptions (with adopted version and channel), per-target delivery summaries, framework review items (with --state/--environment filters, drift/version/resolution columns), confirmed baselines, instance links, published definition versions and overrides; compare is the read-only three-way comparison and framework-status the read-only drift/version report per enabled framework subscription. releases (with --release for items and payload states) and preparations (with --operation for the full receipt and hub notes) list release manifests and prepare receipts. approvals lists approvals with execution outcomes (--approval shows the execution receipt). `invitations` lists enrollment invitations with their state (open/consumed/expired) and never their tokens (only hashes are stored). `events`, `projections` and `baselines` accept `--instance=<uid>` (baselines match either side) for per-object views.",
+            "status": "experimental",
+            "primary_category": "cli_automation",
+            "tags": [
+                "operation:inspect",
+                "operation:list",
+                "risk:read_only",
+                "scope:addon:agency_control",
+                "surface:cli",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "wp dbvc agency status",
+                "wp dbvc agency events",
+                "hub status CLI",
+                "wp dbvc agency compare",
+                "wp dbvc agency framework-status",
+                "wp dbvc agency definitions"
+            ],
+            "addon_or_owner": "Agency Control add-on",
+            "runtime_entrypoint": "wp dbvc agency status",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc agency status|environments|events|projections|subscriptions|deliveries|reviews|compare|baselines|links|definitions|overrides|framework-status|releases|preparations|approvals|invitations",
+                    "discovery_ids": [
+                        "cli.command.dbvc.agency.status",
+                        "cli.command.dbvc.agency.environments",
+                        "cli.command.dbvc.agency.events",
+                        "cli.command.dbvc.agency.projections",
+                        "cli.command.dbvc.agency.subscriptions",
+                        "cli.command.dbvc.agency.deliveries",
+                        "cli.command.dbvc.agency.reviews",
+                        "cli.command.dbvc.agency.compare",
+                        "cli.command.dbvc.agency.baselines",
+                        "cli.command.dbvc.agency.links",
+                        "cli.command.dbvc.agency.definitions",
+                        "cli.command.dbvc.agency.overrides",
+                        "cli.command.dbvc.agency.framework-status",
+                        "cli.command.dbvc.agency.releases",
+                        "cli.command.dbvc.agency.preparations",
+                        "cli.command.dbvc.agency.approvals",
+                        "cli.command.dbvc.agency.invitations"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-agency-cli.php",
+                        "line": 1
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "status works in every gate state; the others require gate state ready"
+            ],
+            "inputs": [
+                "Optional --client, --environment, --limit, --fields, --format",
+                "framework-status: [--environment] [--definition] [--drift]",
+                "reviews: [--definition] [--environment] [--state]",
+                "releases: [--release] [--source]",
+                "preparations: [--operation] [--release] [--target]"
+            ],
+            "outputs": [
+                "Gate/schema/protocol summary",
+                "Environment, event and projection rows",
+                "framework-status: drift (clean|local_drift|approved_override|override_changed|unknown) and version (current|behind_version|ahead_version|channel_mismatch|version_differs|unknown) per subscription with reasons"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Hub tables (read only)"
+            ],
+            "settings": [
+                "dbvc_addon_agency_control_enabled"
+            ],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "Output includes environment ids, epochs and principal user ids; never tokens or passwords."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-agency-cli.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/AgencyControlFrameworkTest.php",
+                "tests/phpunit/ConnectedEnvironmentsIsolationTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md"
+            ],
+            "related": [
+                "addon.agency_control.scaffold",
+                "cli.agency.manage"
+            ],
+            "known_gaps": [
+                "Inspector methods have direct PHPUnit coverage only through the hub store tests; CLI formatting was exercised in the lab."
+            ],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "Implemented inspection surface.",
+                "reviewed_date": "2026-09-18"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-19",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": false,
+                "notes": "2026-09-19: compare/baselines/links executed in the lab. 2026-09-19: subscriptions/deliveries/reviews listings added and executed in the lab. Executed in the disposable two-server lab (status, environments, events, projections). Verified on branch claude/dbvc-connected-agency-m2-receipt (manifest baseline commit retained per check contract)."
+            }
+        },
+        {
+            "id": "cli.agency.manage",
+            "title": "Agency Control invite, subscription, routing, baseline, framework and hold/release/revoke commands",
+            "summary": "wp dbvc agency invite creates a single-use expiring enrollment invitation (token printed once); subscribe / subscribe-framework / unsubscribe / enable-subscription manage explicit same-client subscriptions and framework bindings; route processes pending received events into deliveries and review items; baseline-confirm records pair/object baselines for currently agreeing objects (--accept-absent for one-sided verified absence); link-instance / unlink-instance declare lineage between instances on two environments; revoke deletes the environment's application password; release clears a hold after review. definition-publish records an immutable definition version (hash supplied, read from one environment's fresh complete projection, or copied from a published version; order explicit or by publish sequence, never inferred from the label) and definition-desire marks a channel's desired version (approved overrides on that channel become needs_rebase_review); adopt-version declares which version a framework subscription follows; override-approve records an exact approved hash with rationale and the frozen policy revision; override-detach ends it. review-classify stamps open review items with the drift/version state from framework-status (auto-resolving superseded, clean/current and approved-and-current items) and review-resolve closes one explicitly with a note. release-create fixes an immutable manifest from a source environment's current projections (payloads are then collected from its connector and verified by hash), release-withdraw ends one, prepare-request asks a target to dry-run a sealed release (its connector returns the receipt; nothing is written). approve binds a received ready/no-op prepare receipt for execution; revoke-approval withdraws an unconsumed approval. `hold --environment --reason` places an operator hold (recorded as operator:<note>): the hub refuses the environment's batches with 409 and keeps its deliveries pending until `release`; revoked environments cannot be held.",
+            "status": "experimental",
+            "primary_category": "cli_automation",
+            "tags": [
+                "operation:configure",
+                "operation:delete",
+                "risk:wordpress_write",
+                "scope:addon:agency_control",
+                "surface:cli",
+                "workflow:client_onboarding",
+                "workflow:connected_environments"
+            ],
+            "aliases": [
+                "wp dbvc agency invite",
+                "wp dbvc agency revoke",
+                "wp dbvc agency release",
+                "wp dbvc agency subscribe",
+                "wp dbvc agency route",
+                "wp dbvc agency definition-publish",
+                "wp dbvc agency adopt-version",
+                "wp dbvc agency override-approve"
+            ],
+            "addon_or_owner": "Agency Control add-on",
+            "runtime_entrypoint": "wp dbvc agency invite",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc agency invite|subscribe|subscribe-framework|unsubscribe|enable-subscription|route|baseline-confirm|link-instance|unlink-instance|definition-publish|definition-desire|adopt-version|override-approve|override-detach|review-classify|review-resolve|release-create|release-withdraw|prepare-request|approve|revoke-approval|revoke|release|hold",
+                    "discovery_ids": [
+                        "cli.command.dbvc.agency.invite",
+                        "cli.command.dbvc.agency.revoke",
+                        "cli.command.dbvc.agency.release",
+                        "cli.command.dbvc.agency.hold",
+                        "cli.command.dbvc.agency.subscribe",
+                        "cli.command.dbvc.agency.subscribe-framework",
+                        "cli.command.dbvc.agency.unsubscribe",
+                        "cli.command.dbvc.agency.enable-subscription",
+                        "cli.command.dbvc.agency.route",
+                        "cli.command.dbvc.agency.baseline-confirm",
+                        "cli.command.dbvc.agency.link-instance",
+                        "cli.command.dbvc.agency.unlink-instance",
+                        "cli.command.dbvc.agency.definition-publish",
+                        "cli.command.dbvc.agency.definition-desire",
+                        "cli.command.dbvc.agency.adopt-version",
+                        "cli.command.dbvc.agency.override-approve",
+                        "cli.command.dbvc.agency.override-detach",
+                        "cli.command.dbvc.agency.review-classify",
+                        "cli.command.dbvc.agency.review-resolve",
+                        "cli.command.dbvc.agency.release-create",
+                        "cli.command.dbvc.agency.release-withdraw",
+                        "cli.command.dbvc.agency.prepare-request",
+                        "cli.command.dbvc.agency.approve",
+                        "cli.command.dbvc.agency.revoke-approval"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-agency-cli.php",
+                        "line": 1
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Hub gate state ready"
+            ],
+            "inputs": [
+                "invite: --client=<id> [--agency] [--label] [--environment] [--ttl]",
+                "revoke/release: --environment=<id>",
+                "subscribe-framework: --environment --domain --instance --definition [--adopted-version] [--channel]",
+                "definition-publish: --definition --version [--agency] [--channel] [--domain --profile] [--hash | --from-environment --from-instance | --from-version] [--order] [--desired] [--note]",
+                "adopt-version: --id --version",
+                "override-approve: --environment --domain --instance --definition --rationale [--hash]",
+                "review-classify: [--environment] [--definition]",
+                "review-resolve: --id --note",
+                "release-create: --source [--items=domain:uid,…] [--delete=domain:uid,…] [--note]",
+                "prepare-request: --release --target",
+                "approve: --operation [--note]",
+                "revoke-approval: --approval [--reason]"
+            ],
+            "outputs": [
+                "invite: invitation id, token (once), expiry, hub URL",
+                "revoke/release: resulting environment status"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "wp_dbvc_ac_invitations",
+                "wp_dbvc_ac_environments",
+                "Application passwords (revoke)",
+                "wp_dbvc_ac_subscriptions",
+                "wp_dbvc_ac_deliveries",
+                "wp_dbvc_ac_review_items",
+                "wp_dbvc_ac_baselines",
+                "wp_dbvc_ac_instance_links",
+                "wp_dbvc_ac_definitions",
+                "wp_dbvc_ac_overrides",
+                "wp_dbvc_ac_releases",
+                "wp_dbvc_ac_release_items",
+                "wp_dbvc_ac_preparations",
+                "wp_dbvc_ac_approvals"
+            ],
+            "settings": [
+                "dbvc_addon_agency_control_enabled"
+            ],
+            "hooks": [],
+            "safety": {
+                "classification": "wordpress_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "no",
+                "backup_required": false,
+                "warnings": [
+                    "The invitation token is authority to enroll one environment until it expires; transmit it out of band and never commit it.",
+                    "Revocation is terminal for that enrollment; the environment must re-enroll with a new invitation.",
+                    "Subscriptions are validated against the registry (same agency and client, both enrolled, no self-subscription); disabling one cancels its pending deliveries at the target's next retrieval.",
+                    "Definition versions are immutable once published; a new desired version never rewrites or removes an override, it only flags it for rebase review. No command here writes content to any environment.",
+                    "approve authorizes the target connector to write one release (Bricks global classes/variables) on its next poll, only while its own apply gate is on and only against the container fingerprints its receipt recorded; the approval expires with the receipt and is consumed by one execution receipt."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-agency-cli.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Enrollment/EnrollmentService.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Enrollment/SubscriptionService.php"
+                },
+                {
+                    "path": "addons/agency-control/src/Comparison/BaselineService.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/AgencyControlComparisonTest.php",
+                "tests/phpunit/AgencyControlEnrollmentReceiptTest.php",
+                "tests/phpunit/AgencyControlFrameworkTest.php",
+                "tests/phpunit/AgencyControlRoutingInboxTest.php",
+                "tests/phpunit/ConnectedApplyTest.php",
+                "tests/phpunit/ConnectedReleaseTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/connected-environments-agency-control.md"
+            ],
+            "related": [
+                "addon.agency_control.scaffold",
+                "cli.agency.inspect",
+                "cli.connected.transport",
+                "addon.connected_environments.admin_page"
+            ],
+            "known_gaps": [
+                "No administrator UI for invitations yet."
+            ],
+            "opportunity": {
+                "disposition": "deferred",
+                "priority": "low",
+                "effort": "medium",
+                "recommended_surface": "admin",
+                "rationale": "Hub administration screens belong with the review/inbox step.",
+                "reviewed_date": "2026-09-18"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-09-19",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": false,
+                "notes": "2026-09-19: baseline-confirm and link-instance executed in the lab; covered by PHPUnit. 2026-09-19: subscribe, subscribe-framework, unsubscribe and route exercised in the lab; scope validation covered by PHPUnit. EnrollmentService invite/revoke/release covered by PHPUnit; invite executed in the lab. Verified on branch claude/dbvc-connected-agency-m2-receipt (manifest baseline commit retained per check contract)."
+            }
         }
     ],
     "ignored_discovery": []

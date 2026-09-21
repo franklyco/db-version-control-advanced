@@ -331,3 +331,98 @@ Phases 34-35 reconciled the implemented configuration portability workflow with 
 Same-checkout leaf help passed for both commands. Exact-domain JSON returned the `visual_editor` provider's version plus group, field, policy, and sensitive-field counts; aggregate status reported 11 domains, 41 groups, and 235 fields with explicit `current_values_read=no` and `writer_services_invoked=no` markers. `--apply` was rejected as an unknown parameter before command execution.
 
 A hash-only pre/post check covered all 235 unique option keys declared by registered provider field metadata. Both hashes were `cb40d0beb2b8c3905d62cf784010b81f04d0c3a3250aff798dfa2c80a98c2e97`, confirming the live inspection did not change registered configuration values. No export, download, upload, package/session read, diff, environment replacement, apply, backup, rollback, secret output, or other capability boundary was invoked.
+
+## Connected Environments Observation Slice Lab — 2026-09-17
+
+Branch `claude/dbvc-connected-agency-m0-ac4c5d` (worktree; **not** the checkout loaded by the live LocalWP site). A disposable lab loaded this checkout by symlinking it into `tmp/wordpress` (WordPress 6.9.4, PHP 8.4.3 CLI, LocalWP MySQL 8.0.16, prefix `wpcelab_`, Bricks 2.3.8 symlinked and activated, `WP_HTTP_BLOCK_EXTERNAL`). Same-checkout WP-CLI cases, all passed:
+
+- Both modules off: `wp dbvc connected status` → `disabled`/`disabled`; no `wpcelab_dbvc_ce_*` tables; the gate option did not exist; a `bricks_global_classes` save created no marker and no cron event.
+- Enable via `DBVC_Connected_Environments_Addon::save_settings()`: five InnoDB tables with the expected unique keys (`event_identity`, `event_sequence`, `dirty_object`, `object_profile`, identity keys); `transactional=true`; provisional identity; both domains `coverage=available` through real `BRICKS_VERSION` detection.
+- `wp dbvc connected reconcile` + `wp cron event run dbvc_connected_process_observations` (after the 20 s debounce): 2 markers acknowledged, 3 identities assigned, 5 events (3 members + 2 order projections), sequences 1–5, all `pending`; `bricks_global_classes` unchanged.
+- Burst of 3 distinct saves → one marker at generation 3 → one run emitting 3 events; 30 distinct saves → generation 30 and no additional cron events; save-side cost with listener on vs off: 4.13 vs 2.0 queries and 2.9 vs 1.62 ms per save (3-class fixture, `wp eval` loop).
+- Remove one class → tombstone event (`exists=no`, hash `74234e98…` = canonical `null`) plus an order event; projection row `exists=no` retains `storage_key`.
+- `DBVC_CONNECTED_EMERGENCY_DISABLE=true` in wp-config → `emergency_disabled`, runtime not registered, a save left the marker unchanged; removing the constant restored `ready`.
+- Disable → cron event cleared, 10 outbox and 5 projection rows retained. Hub only → `scaffold_only`, 241 REST routes with zero agency/connected matches, no hub tables.
+- `apply_filters('dbvc_excluded_option_keys')` contains the gate/schema keys; `dbvc_import_options_data` dropped `dbvc_addon_connected_environments_enabled` and `dbvc_ce_*` keys.
+
+Cleanup: 27 `wpcelab_` tables dropped (0 remain), lab `wp-config.php`, symlinks, wrapper, `sync/` and uploads removed. Focused PHPUnit: 35 tests / 543 assertions OK; full suite 718 tests with the 6 pre-existing failures reproduced identically on base `c88764b`. `live_runtime_verified` stays `false` for the new records until the live site loads this checkout.
+
+## Connected Environments M2 Step 1 Two-Server Lab — 2026-09-18
+
+Branch `claude/dbvc-connected-agency-m2-receipt` (stacked on `claude/dbvc-connected-agency-m0-ac4c5d`; not the checkout loaded by the live LocalWP site). One codebase (`tmp/wordpress`, this checkout symlinked) served twice by PHP's built-in server — hub on 127.0.0.1:8098 (prefix `wpachub_`), client on 127.0.0.1:8099 (prefix `wpceclient_`, Bricks 2.3.8 activated) — with `WP_ENVIRONMENT_TYPE=local`, external HTTP blocked and WP-Cron disabled (explicit runners). All passed:
+
+- Unauthenticated and administrator Basic-auth requests to `/index.php?rest_route=/dbvc-agency/v1/capabilities` → 401 `dbvc_agency_app_password_required`; `/wp-json/…` returned 301 on this permalink-less hub, which is why the connector uses the `rest_route` form.
+- `wp dbvc agency invite --client=client-a` (token shown once) → client `wp dbvc connected enroll --hub=http://127.0.0.1:8098 --token=…` over HTTP: service user `dbvc-env-…` in role `dbvc_connected_environment`, environment `local-…` enabled with hub epoch `enrolled-20260918-…`, 5 provisional outbox rows superseded, reconciliation requested.
+- `wp dbvc connected process` re-emitted 5 events under the enrolled epoch; `wp dbvc connected deliver` → sent 5 / delivered 5 / HTTP 200; hub `events` and `projections` show the 5 rows (`routing_state=pending`, origin `reconciliation`); `bricks_global_classes` serialized hash identical before and after.
+- One class edit → 1 event → delivered; hub projection updated to the new sequence.
+- curl batch with the enrolled credential but a foreign `environment_id`, plus an event carrying `recipients` → `environment_mismatch` and `invalid_event:unknown:recipients`, nothing stored.
+- Same credential with `X-DBVC-Site-URL: http://clone.invalid/` → 409, environment `held` with `site_url_mismatch`.
+- Sequence-restart fix applied after the first run showed hub gaps (1–5 consumed under the provisional epoch); PHPUnit now asserts 0 gaps after enrollment.
+
+Cleanup: both servers stopped, 53 lab tables dropped (0 remain), lab config/symlinks/uploads removed. Focused PHPUnit: 44 tests / 781 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.
+
+## Connected Environments M2 Step 2 Three-Server Lab — 2026-09-19
+
+Branch `claude/dbvc-connected-agency-m2-routing` (stacked on the M2 step-1 branch; not the checkout loaded by the live LocalWP site). One codebase served three times by PHP's built-in server — hub :8098 (`wplabhub_`), Client A production :8099 (`wplabaprod_`, Bricks 2.3.8), Client A staging :8100 (`wplabastage_`) — with a disposable mu-plugin registering the `service` post type, `WP_ENVIRONMENT_TYPE=local`, external HTTP blocked, WP-Cron disabled (explicit runners). All passed:
+
+- Both environments enrolled over HTTP with fixed invitation ids (`aprod`, `astage`); `wp dbvc agency subscribe --source=aprod --target=astage` created the three domain subscriptions.
+- Before the CPT fixture existed, `wp.service` markers were held with `source_unavailable:post_type_not_registered` (no tombstones, no false clean); after adding it, the next run observed the service post and delivered it.
+- A-prod delivered 2 classes + order, 1 variable + order, 1 service (6 events); the hub routed all six into pending A-stage deliveries (`routing_state=routed`).
+- `subscribe-framework` for the primary button class, then a class edit and a service edit on A-prod → 2 events delivered; hub `reviews` shows one `observed` item for `framework-btn-primary`; deliveries pending for A-stage: 8.
+- A-stage `wp dbvc connected poll` (first contact after being "offline"): 1 page, 8 retrieved, 8 stored, 8 acknowledged, cursor 0 → 8; A-stage still has zero service posts; hub deliveries 8 acked, `last_inbox_poll_at` recorded; idle poll retrieved 0.
+- Disabling the service subscription: a further service edit produced no A-stage delivery while a class edit did (1 retrieved).
+- curl ack from A-stage for `[424242, 1]` → `unknown`, `already_acked`; A-prod polling its own inbox → 0 items.
+
+Cleanup: three servers stopped, 85 lab tables dropped (0 remain), lab config/symlinks/mu-plugin/uploads removed. Focused PHPUnit: 59 tests / 1060 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.
+
+## Connected Environments M3 Step 1 Comparison Lab — 2026-09-19
+
+Branch `claude/dbvc-connected-agency-m3-baselines` (stacked; not the checkout loaded by the live LocalWP site). Same three-server layout as the M2 step-2 lab (hub :8098, A-prod :8099, A-stage :8100, `service` CPT mu-plugin, processing delay 0). Both connectors enrolled over HTTP and reported the same Bricks class fixture plus a service post carrying one shared `vf_object_uid`:
+
+- `wp dbvc agency compare --source=aprod --target=astage`: five rows all `baseline_required`; the Bricks class appeared twice (each environment's own sidecar UID) with `source_observed=no`/`target_observed=no` on the opposite side — independently enrolled lineages do not pair without a link.
+- `link-instance` for the two class UIDs → one paired row (`pairing=link`); `baseline-confirm --note="initial agreement"` → confirmed 3 (class, two order projections), skipped 1 (`wp.service`: `no_agreement`, because `post_date_gmt` differs on independently created posts); counts then 3 synchronized / 1 baseline_required.
+- Class edit on A-prod and service edit on A-stage, processed and delivered → class row `outgoing` (baseline hash = target hash ≠ source hash); service row still `baseline_required`; `baselines` lists the three confirmations with note and timestamp.
+
+Cleanup: servers stopped, 87 lab tables dropped (0 remain), lab files removed. Focused PHPUnit: 62 tests / 1151 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.
+
+## Connected Environments M3 Step 2 Framework Lab — 2026-09-19
+
+Branch `claude/dbvc-connected-agency-m3-framework` (stacked; not the checkout loaded by the live LocalWP site). Two-server layout (hub :8098 `wplabhub_`, A-prod :8099 `wplabaprod_` with Bricks 2.3.8, processing delay 0, external HTTP blocked, WP-Cron disabled). A-prod enrolled over HTTP and reported one real Bricks class:
+
+- `definition-publish --definition=btn-primary --version=1.0 --from-environment=aprod --from-instance=<sidecar uid> --desired` recorded the class's projection hash as version 1.0 / order 1 on `stable` with its source; republishing `1.0` with another hash was refused (`Definition versions are immutable`).
+- `subscribe-framework … --adopted-version=1.0` then `framework-status` → `clean` / `current`. A real `bricks_global_classes` save, processed and delivered → `local_drift`; `override-approve --rationale="client brand colour"` recorded the observed hash with the policy revision → `approved_override`; a further save → `override_changed`; reverting the save → `approved_override`.
+- `definition-publish 1.1 --from-version=1.0 --desired` → `rebase_reviews=1`; status `behind_version` with `override_state=needs_rebase_review`, the override's hash and rationale untouched. `1.10` published after `1.1` took order 3 (no label comparison). `adopt-version --id=1 --version=1.1` → `current`; `--version=1.10` → `ahead_version`; `override-detach` → `local_drift`, override `detached` and still listed.
+- A duplicate `--order=3` on `stable` was refused (`dbvc_agency_version_order_taken`) after the schema's `definition_order` unique key was present (the lab hub had been installed before the key was added, so `Schema::install()` was re-run once); the same order on `--channel=beta` was accepted. `wp option get bricks_global_classes` on A-prod was byte-identical before and after every hub action.
+
+Cleanup: servers stopped, 61 lab tables dropped (0 remain), lab config, symlinks, mu-plugin, uploads and wrapper removed. Focused PHPUnit: 68 tests / 1297 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.
+
+## Connected Environments M3 Step 3 Coverage, Review and Admin Lab — 2026-09-19
+
+Branch `claude/dbvc-connected-agency-m3-admin` (stacked; not the checkout loaded by the live LocalWP site). Three-server layout (hub :8098, A-prod :8099 with Bricks 2.3.8 and two `service` posts, A-stage :8100 with none; `service` CPT mu-plugin, processing delay 0, external HTTP blocked, WP-Cron disabled) served through a router script so `wp-admin` loads. A disposable mu-plugin provided a local-only auto-login for the lab administrator so no password was typed into the browser.
+
+- Hub projections listed `wp.service collection.order wp-service-inventory-v1` complete for both connectors; `compare --domain=wp.service` classified both A-prod services `baseline_required` with `target_observed=no` (coverage from A-stage's empty inventory; before this step they were `unknown`); `baseline-confirm --accept-absent` confirmed 2 and both became `outgoing`. A-stage `poll` stored and acknowledged 6 deliveries.
+- Framework subscription on the real class, then a real `bricks_global_classes` save: `reviews` showed one `observed` item with `event_sequence=7`; `review-classify` → `classified local_drift/current`; `review-resolve --id=1 --note=…` → `resolved operator` with the note.
+- Built-in browser on the hub (DBVC → Configure → Add-ons → Connected Environments): the panel rendered both environments (status, epoch, last contact, fresh, received counts), the invitation form, "Open invitations: None", the framework status row (`local_drift`/`current`) and review counts. Submitting the form for `client-b` redirected to the DBVC page with a success notice carrying the token once and the exact `wp dbvc connected enroll` command; a reload showed no notice or token and listed invitation 3 under open invitations. The `form` attribute wiring worked: no nested form, the request went through `admin-post.php` with the nonce. On A-stage the Connected Environments panel listed the 6 received observations, inventory row first, with hash prefixes and ack times, and no hub panel or invitation form (hub disabled there). Observation: the redirect hash does not activate the nested Add-ons subtab; the notice is visible regardless.
+
+Cleanup: three servers stopped (plus a stale :8100 server left by the M3 step 1 lab), 89 lab tables dropped (0 remain), lab config, router, symlinks, mu-plugin, uploads and wrapper removed. Focused PHPUnit: 73 tests / 1480 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.
+
+## Connected Environments M4 Step 1 Release/Prepare Lab — 2026-09-19
+
+Branch `claude/dbvc-connected-agency-m4-prepare` (stacked; not the checkout loaded by the live LocalWP site). Three-server layout (hub :8098 schema v6, A-prod :8099, A-stage :8100, both with Bricks 2.3.8, the same class, and a `service` post sharing one `vf_object_uid`; A-prod then edited both), processing delay 0, external HTTP blocked, WP-Cron disabled.
+
+- `wp dbvc agency release-create --source=aprod --items=bricks.global_class:<uid>,wp.service:shared-service-uid-0001` → release `open` with two `requested` items; `wp dbvc connected release` on A-prod → `payload_requests 2, payloads_sent 2, mismatched 0`; `releases --release` → `sealed`, digest, both items `received`.
+- `prepare-request --release --target=astage` → operation id; `wp dbvc connected release` on A-stage → one receipt stored and reported, outcome `partial`: the service `ready` (identity `vf_object_uid` → post 4, container `post_type:service#4`, patch `post_content`/`post_title` replace, storage fingerprint), the class `blocked identity_unmatched:creation_requires_decision` (independent sidecar lineage, identity source `sidecar`, `storage_key` null). Hub `preparations --operation` showed state `received`, the receipt, expiry one hour after preparation, and hub notes (`target_projection_agrees` true for the service, no hub hash for the unknown class). A-stage's `bricks_global_classes` option and post title were byte-identical before and after.
+- `link-instance` between the two class UIDs and a fresh `prepare-request` → receipt `ready` 2/0/0, class identity `btn001` via `sidecar+link`, patch `settings` replace, hub notes agreeing for both; A-stage content again unchanged. `status` on the hub reported `releases {sealed: 1}` and `preparations {received: 2}`.
+
+Cleanup: three servers stopped, 94 lab tables dropped (0 remain), lab files removed. Focused PHPUnit: 75 tests / 1654 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.
+
+## Connected Environments M5 Step 1 Guarded Round Trip Lab — 2026-09-19
+
+Branch `claude/dbvc-connected-agency-m5-apply` (stacked; not the checkout loaded by the live LocalWP site). Three-server layout (hub :8098 schema v8, A-prod :8099 and A-stage :8100 with Bricks 2.3.8 and the same two global classes plus one variable; both class lineages linked with `link-instance`), processing delay 0, external HTTP blocked, WP-Cron disabled.
+
+- A-prod edited `btn001` (added `_padding`); `release-create` + A-prod `release` → sealed; `prepare-request` for A-stage → receipt `ready` 1/0/0 with `apply_enabled false`; `approve --operation` → `approved` with the receipt's expiry.
+- Apply gate off: A-stage's `release` reported `apply_enabled false, apply_requests 0, executions 0` and its option was unchanged. Gate on (connector save with the apply checkbox): `apply_requests 1, executions 1, reported 1`, outcome `applied` 1/0/0; A-stage's `bricks_global_classes` now carried the padding on `btn001` with `txt002` untouched; `operations` showed the journal `write: written`, `verify: verified` and the `generated_css_not_rebuilt` warning, `reported_at` set.
+- Hub: `approvals` → `consumed applied`; `baselines` → one row `applied:<operation>` for the linked class pair; A-stage `process` observed one event with `origin=apply` and delivered it; `compare --source=aprod --target=astage` → the linked class `synchronized` (the other class and the order projection `baseline_required`, never confirmed).
+- Stale: A-prod edited `btn001` again, second release sealed, prepared and approved; A-stage then edited its own container (`txt002` colour) before polling; execution reported `stale` 0/0/1 with `container_changed_since_receipt`, the approval read `consumed stale`, and A-stage's concurrent edit survived byte-for-byte.
+
+Cleanup: three servers stopped, 97 lab tables dropped (0 remain), lab files removed. Focused PHPUnit: 79 tests / 1969 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.

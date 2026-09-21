@@ -4,6 +4,7 @@
 
 | Record | Disposition | Priority | Effort | Recommended surface | Candidate boundary | Rationale |
 |---|---|---|---|---|---|---|
+| [`addon.agency_control.scaffold`](../manifest.json) | `deferred` | `medium` | `large` | `rest` | Not applicable. | Delivery/inbox routes and subscriptions follow in the next reporting step once receipt is reviewed. |
 | [`addon.bricks.apply_restore`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`addon.bricks.command_queue`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`addon.bricks.configuration`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
@@ -12,13 +13,20 @@
 | [`addon.bricks.drift`](../manifest.json) | `covered_elsewhere` | `none` | `small` | `none` | Not applicable. | A dedicated read-only WP-CLI record now provides bounded stored-package or local-file drift inspection without expanding the REST record into an apply surface. |
 | [`addon.bricks.packages`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`addon.bricks.proposals`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
+| [`addon.connected_environments.admin_page`](../manifest.json) | `candidate` | `high` | `large` | `admin` | Environments (invite/hold/release/revoke), Compare + baselines + links + object drawer, Framework, Releases stepper, connector Activity/Inbox/Releases, dark tokens and empty/error states, then retiring the Add-ons tab tables. | Slices A2-A7 of the design guide add the remaining sections on the same routes and tokens. |
+| [`addon.connected_environments.observation`](../manifest.json) | `deferred` | `medium` | `large` | `rest` | Not applicable. | Authenticated hub-mediated reporting (M2) is the next milestone; it must not start before the observation slice is reviewed. |
 | [`addon.content_migration.runtime_guard`](../manifest.json) | `covered_elsewhere` | `none` | `medium` | `none` | Not applicable. | A dedicated read-only WP-CLI record now lists bounded latest V2 runs and materializes one exact current or historical run summary in memory from existing artifacts without using write-capable domain-context or readiness paths. |
 | [`addon.visual_editor.runtime`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`admin.core.capability_landscape`](../manifest.json) | `covered_elsewhere` | `none` | `small` | `none` | Not applicable. | Read-only list, show, and doctor access is now provided by the dedicated CLI capability record. |
 | [`ai.core.package_intake`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
+| [`cli.agency.inspect`](../manifest.json) | `not_recommended` | `none` | `small` | `none` | Not applicable. | Implemented inspection surface. |
+| [`cli.agency.manage`](../manifest.json) | `deferred` | `low` | `medium` | `admin` | Not applicable. | Hub administration screens belong with the review/inbox step. |
 | [`cli.bricks.doctor`](../manifest.json) | `not_recommended` | `none` | `small` | `none` | Not applicable. | This dedicated CLI record is the implemented inspection surface; no additional parity adapter is needed for the same bounded control-plane evidence. |
 | [`cli.bricks.drift.inspect`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`cli.configuration.portability.inspect`](../manifest.json) | `not_recommended` | `none` | `small` | `none` | Not applicable. | This dedicated CLI record is the implemented metadata-only boundary; package operations, current values, and writers require separately reviewed capabilities rather than broader parity here. |
+| [`cli.connected.inspect`](../manifest.json) | `not_recommended` | `none` | `small` | `none` | Not applicable. | This is the implemented developer inspection surface for the observation slice. |
+| [`cli.connected.process`](../manifest.json) | `not_recommended` | `none` | `small` | `none` | Not applicable. | Implemented explicit runner for the observation slice. |
+| [`cli.connected.transport`](../manifest.json) | `deferred` | `low` | `medium` | `admin` | Not applicable. | An administrator enrollment form can follow once the hub inbox step settles the protocol. |
 | [`cli.content_migration.runs.inspect`](../manifest.json) | `not_recommended` | `none` | `medium` | `none` | Not applicable. | This dedicated CLI record is the implemented bounded run-inspection surface; readiness and all writer workflows remain separate safety contracts rather than further parity for this record. |
 | [`cli.core.capabilities.inspect`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`cli.core.export`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
@@ -51,6 +59,7 @@
 | [`proposal.core.inspect`](../manifest.json) | `covered_elsewhere` | `none` | `medium` | `none` | Not applicable. | The dedicated cli.proposals.inspect record now provides exact-proposal conservative preflight and bounded sanitized entity summaries without calling the raw/pruning detail route or side-effectful canonical readiness readers. |
 | [`proposal.core.intake`](../manifest.json) | `covered_elsewhere` | `none` | `small` | `none` | Not applicable. | Trusted proposal ZIP upload already has a mapped WP-CLI command; fixture upload and deletion should remain separate safety reviews rather than inflating a generic parity count. |
 | [`proposal.core.masking`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
+| [`protocol.connected.contracts`](../manifest.json) | `not_recommended` | `none` | `small` | `none` | Not applicable. | Internal contract layer; no operator surface is warranted. |
 | [`settings.core.import_export`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`source.content_collector.ai`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`source.content_collector.explorer`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |

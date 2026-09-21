@@ -97,9 +97,9 @@ When this manifest ships with the plugin, administrators can review the same cur
 <!-- BEGIN GENERATED AGENT INDEX -->
 ### Current inventory
 
-- **54** curated records cover **450** enforced discovery surfaces; **0** are unmapped.
-- Source discovery identifies **26** WP-CLI leaf commands and **142** REST registrations.
-- Opportunity dispositions: **0** candidate, **0** needs review, **10** covered elsewhere, **0** deferred, **4** not recommended for further parity, and **40** unreviewed.
+- **63** curated records cover **542** enforced discovery surfaces; **0** are unmapped.
+- Source discovery identifies **82** WP-CLI leaf commands and **142** REST registrations.
+- Opportunity dispositions: **1** candidate, **0** needs review, **10** covered elsewhere, **4** deferred, **8** not recommended for further parity, and **40** unreviewed.
 
 ### Records by category
 
@@ -108,18 +108,18 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `addon_bricks` | 8 |
 | `addon_content_migration` | 4 |
 | `api_extensions` | 2 |
-| `cli_automation` | 15 |
+| `cli_automation` | 20 |
 | `entity_editor` | 3 |
 | `identity_entities` | 2 |
 | `import_export` | 4 |
-| `internal_foundation` | 1 |
+| `internal_foundation` | 3 |
 | `media_resolver` | 2 |
-| `observability` | 2 |
+| `observability` | 3 |
 | `proposal_review` | 6 |
-| `settings_configuration` | 3 |
+| `settings_configuration` | 4 |
 | `snapshots_backups` | 2 |
 
-Total curated records: **54**.
+Total curated records: **63**.
 <!-- END GENERATED AGENT INDEX -->
 
 ## Maintenance Commands

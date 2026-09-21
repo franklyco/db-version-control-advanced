@@ -82,6 +82,16 @@ Read:
 
 This library is opt-in task context. Do not load the full manifest for unrelated implementation work.
 
+## Connected Environments Connector or Agency Control Hub
+
+Read:
+
+1. `docs/implementation/active/connected-environments-agency-control.md`
+2. `docs/dropins/dbvc-connected-agency/START-HERE.md` and `IMPLEMENTATION-GUIDE.md` (design baseline; `.php.stub` templates are inert)
+3. `docs/dropins/dbvc-connected-agency/tracking/SESSION-HANDOFF.md` for the compact continuation state
+
+Never load code from `docs/dropins`; runtime owners are `addons/connected-environments/`, `addons/agency-control/`, and `includes/Dbvc/ConnectedProtocol/`. The earlier docs-only proposal `docs/implementation/proposed/agency-control-connected-environments/` (separate hub repository, source package dated 2026-09-13) is superseded by the in-repository architecture above where the two differ; keep it as historical context only.
+
 ## Documentation Maintenance
 
 Read:

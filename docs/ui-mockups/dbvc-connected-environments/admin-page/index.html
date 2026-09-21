@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connected Environments — admin page mockup (hub + connector)</title>
+<meta name="viewport" content="width=1280">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wp-shell">
+  <div class="wp-adminbar"><span>⌂ Example Landscaping</span><span>+ New</span><span style="margin-left:auto">Howdy, studio</span></div>
+  <nav class="wp-menu" aria-label="WordPress admin menu (stand-in)">
+    <a href="#">Dashboard</a><a href="#">Posts</a><a href="#">Media</a><a href="#">Pages</a><a href="#">Appearance</a><a href="#">Plugins</a>
+    <a href="#" class="is-current">DBVC Export</a>
+    <div class="sub"><a href="#">DBVC Export</a><a href="#">Entity Editor</a><a href="#">Tools</a><a href="#">Config Portability</a><a href="#">Visual Editor</a><a href="#" class="is-current-sub">Connected Environments</a></div>
+    <a href="#">Settings</a>
+  </nav>
+
+  <main class="wp-content">
+  <div class="dbvc-ce" id="app">
+
+    <!-- ===== Header ===== -->
+    <header class="dbvc-ce__header">
+      <div>
+        <h1 class="dbvc-ce__title">Connected Environments</h1>
+        <div class="dbvc-ce__meta">
+          <span class="dbvc-ce-role"><span class="dbvc-ce-role__dot"></span> Hub · <code>studio</code></span>
+          <span class="dbvc-ce-role"><span class="dbvc-ce-role__dot"></span> Connector · enrolled as <code>studio-site</code></span>
+          <span class="dbvc-ce-asof">Hub schema v8 · freshness window 24 h · as of 20 Sep 2026, 14:02</span>
+        </div>
+      </div>
+      <div class="dbvc-ce__actions">
+        <button class="btn btn--ghost" type="button">Refresh</button>
+        <button class="btn" type="button" aria-haspopup="menu">Run now ▾</button>
+      </div>
+    </header>
+
+    <nav class="dbvc-section-nav" aria-label="Sections" data-mock-nav>
+      <button type="button" aria-current="page" data-view="overview">Overview</button>
+      <button type="button" data-view="environments">Environments</button>
+      <button type="button" data-view="compare">Compare</button>
+      <button type="button" data-view="framework">Framework <span class="count">3</span></button>
+      <button type="button" data-view="releases">Releases <span class="count">2</span></button>
+      <button type="button" data-view="connector">Connector</button>
+      <button type="button" data-view="settings">Settings</button>
+    </nav>
+
+    <!-- ===== Overview (Fleet) ===== -->
+    <section data-view-panel="overview" aria-labelledby="h-overview">
+      <h2 id="h-overview" class="screen-reader-text" hidden>Overview</h2>
+      <div class="dbvc-ce-stats">
+        <div class="dbvc-tools-panel dbvc-ce-stat"><div class="dbvc-ce-stat__label">Environments</div><div class="dbvc-ce-stat__value">4</div><div class="dbvc-ce-stat__detail">3 enabled · 1 held · <span class="dbvc-badge dbvc-badge--caution">1 stale</span></div></div>
+        <div class="dbvc-tools-panel dbvc-ce-stat"><div class="dbvc-ce-stat__label">Framework</div><div class="dbvc-ce-stat__value">6</div><div class="dbvc-ce-stat__detail">subscriptions · 3 clean · 2 local drift · 1 behind</div></div>
+        <div class="dbvc-tools-panel dbvc-ce-stat"><div class="dbvc-ce-stat__label">Releases</div><div class="dbvc-ce-stat__value">2</div><div class="dbvc-ce-stat__detail">1 sealed · 1 collecting payloads</div></div>
+        <div class="dbvc-tools-panel dbvc-ce-stat"><div class="dbvc-ce-stat__label">Awaiting you</div><div class="dbvc-ce-stat__value">4</div><div class="dbvc-ce-stat__detail">1 receipt ready · 2 reviews · 1 approval expiring</div></div>
+      </div>
+
+      <div class="dbvc-ce-grid">
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Attention</h2><span class="dbvc-ce-asof">Built from receipts, reviews, approvals and environment state · nothing here runs by itself</span></div>
+          <ul class="dbvc-ce-attention">
+            <li class="dbvc-ce-attention__item">
+              <span class="dbvc-badge dbvc-badge--directional">ready</span>
+              <div class="dbvc-ce-attention__what"><strong>Prepare receipt for <code>rel-9bdba45b</code> on Client A staging</strong><span>2 objects ready · 0 blocked · agrees with hub projection · expires in 41 min</span></div>
+              <button class="btn btn--primary btn--small" type="button">Review &amp; approve</button>
+            </li>
+            <li class="dbvc-ce-attention__item">
+              <span class="dbvc-badge dbvc-badge--caution">expiring</span>
+              <div class="dbvc-ce-attention__what"><strong>Approval <code>apr-d22ddbc0</code> not yet executed on Client A staging</strong><span>Target has not polled since 13:20 · expires in 12 min</span></div>
+              <button class="btn btn--small" type="button">Revoke</button>
+            </li>
+            <li class="dbvc-ce-attention__item">
+              <span class="dbvc-badge dbvc-badge--caution">local drift</span>
+              <div class="dbvc-ce-attention__what"><strong>Review item · <code>btn-primary</code> on Client A production</strong><span>Classified 12 min ago · adopted 1.0 · desired 1.0 · no override</span></div>
+              <button class="btn btn--small" type="button">Open in Framework</button>
+            </li>
+            <li class="dbvc-ce-attention__item">
+              <span class="dbvc-badge dbvc-badge--caution">held</span>
+              <div class="dbvc-ce-attention__what"><strong>Client B production is held</strong><span>site_url_changed · last contact 3 h ago · deliveries keep accumulating</span></div>
+              <button class="btn btn--small" type="button">Release hold</button>
+            </li>
+          </ul>
+        </div>
+
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Framework status</h2><span class="dbvc-ce-asof">3 definitions</span></div>
+          <table class="widefat striped">
+            <thead><tr><th>Definition</th><th>Desired</th><th>Adopted</th><th>Drift</th></tr></thead>
+            <tbody>
+              <tr><td><code>btn-primary</code> <span class="subtle">stable</span></td><td>1.1</td><td class="muted">1.0 · 1.1</td><td><span class="dbvc-badge dbvc-badge--caution">2 local drift</span> <span class="dbvc-badge dbvc-badge--caution">1 behind</span></td></tr>
+              <tr><td><code>text-muted</code> <span class="subtle">stable</span></td><td>1.0</td><td class="muted">1.0</td><td><span class="dbvc-badge dbvc-badge--positive">2 clean</span></td></tr>
+              <tr><td><code>card</code> <span class="subtle">beta</span></td><td>2.0-beta</td><td class="muted">—</td><td><span class="dbvc-badge dbvc-badge--uncertain">1 unknown</span> <span class="subtle">no adopted version</span></td></tr>
+            </tbody>
+          </table>
+          <div class="dbvc-inline-notice dbvc-inline-notice--info" style="margin-top:12px"><p>Reporting only. Zero drift is shown against complete, fresh projections; anything stale or incomplete reads <em>unknown</em>, never clean.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Environments ===== -->
+    <section data-view-panel="environments" hidden>
+      <div class="dbvc-ce-grid">
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Environments</h2><span class="dbvc-ce-asof">last contact = last authenticated request from the site</span></div>
+          <table class="widefat striped">
+            <thead><tr><th>Environment</th><th>Client</th><th>Status</th><th>Last contact</th><th class="num">Received</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><span class="obj">Client A production</span><code>a-prod</code></td><td>client-a</td><td><span class="dbvc-badge dbvc-badge--positive">enabled</span></td><td>2 min ago <span class="subtle">fresh</span></td><td class="num">1,204</td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button" data-open-drawer>Details</button><button class="btn btn--small btn--ghost" type="button">Compare…</button></td></tr>
+              <tr><td><span class="obj">Client A staging</span><code>a-stage</code></td><td>client-a</td><td><span class="dbvc-badge dbvc-badge--positive">enabled</span> <span class="dbvc-badge dbvc-badge--directional">apply on</span></td><td>42 min ago <span class="subtle">fresh</span></td><td class="num">318</td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button">Details</button><button class="btn btn--small btn--ghost" type="button">Compare…</button></td></tr>
+              <tr><td><span class="obj">Client B production</span><code>b-prod</code></td><td>client-b</td><td><span class="dbvc-badge dbvc-badge--caution">held</span> <span class="subtle">site_url_changed</span></td><td>3 h ago <span class="subtle">fresh</span></td><td class="num">77</td><td class="row-actions"><button class="btn btn--small" type="button">Release hold</button><button class="btn btn--small btn--danger" type="button">Revoke</button></td></tr>
+              <tr><td><span class="obj">Client B staging</span><code>b-stage</code></td><td>client-b</td><td><span class="dbvc-badge dbvc-badge--positive">enabled</span></td><td>3 days ago <span class="dbvc-badge dbvc-badge--caution">stale</span></td><td class="num">40</td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button">Details</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="dbvc-tools-panel">
+            <div class="dbvc-ce-panel__head"><h2>Invite an environment</h2></div>
+            <p class="muted" style="margin:0 0 10px;color:var(--dbvc-ce-color-text-muted)">Creates a single-use, expiring invitation. The token is shown once, right here, and the hub keeps only its hash.</p>
+            <dl class="dbvc-ce-kv" style="row-gap:10px">
+              <dt><label for="inv-client">Client id</label></dt><dd><input id="inv-client" type="text" value="client-b" style="width:100%"></dd>
+              <dt><label for="inv-label">Label</label></dt><dd><input id="inv-label" type="text" placeholder="Client B staging" style="width:100%"></dd>
+              <dt><label for="inv-env">Fixed id</label></dt><dd><input id="inv-env" type="text" placeholder="optional" style="width:100%"></dd>
+              <dt><label for="inv-ttl">Valid for</label></dt><dd><input id="inv-ttl" type="number" value="3600" style="width:100px"> s</dd>
+            </dl>
+            <p style="margin:12px 0 0"><button class="btn btn--primary" type="button">Create invitation</button></p>
+          </div>
+          <div class="dbvc-tools-panel" style="margin-top:12px">
+            <div class="dbvc-ce-panel__head"><h2>Open invitations</h2></div>
+            <table class="widefat striped"><thead><tr><th>Id</th><th>Client</th><th>Expires</th></tr></thead><tbody><tr><td>3</td><td>client-b · Client B production (re-enroll)</td><td>in 58 min</td></tr></tbody></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Compare (Client view) ===== -->
+    <section data-view-panel="compare" hidden>
+      <div class="dbvc-tools-panel">
+        <div class="dbvc-ce-panel__head">
+          <h2>Compare <code>a-prod</code> → <code>a-stage</code></h2>
+          <span class="dbvc-ce-asof">both fresh · coverage: bricks.global_class complete · bricks.variable complete · wp.service complete</span>
+        </div>
+        <div class="dbvc-ce-chips" role="group" aria-label="Filter by state">
+          <button class="dbvc-status-badge" type="button" aria-pressed="false"><span class="n">5</span> synchronized</button>
+          <button class="dbvc-status-badge" type="button" aria-pressed="true"><span class="n">2</span> outgoing</button>
+          <button class="dbvc-status-badge" type="button" aria-pressed="false"><span class="n">1</span> incoming</button>
+          <button class="dbvc-status-badge" type="button" aria-pressed="false"><span class="n">0</span> converged</button>
+          <button class="dbvc-status-badge" type="button" aria-pressed="false"><span class="n">1</span> conflict</button>
+          <button class="dbvc-status-badge" type="button" aria-pressed="false"><span class="n">3</span> baseline required</button>
+          <button class="dbvc-status-badge is-uncertain" type="button" aria-pressed="false"><span class="n">0</span> unknown <span class="subtle">(coverage complete)</span></button>
+        </div>
+        <table class="widefat striped">
+          <thead><tr><th style="width:28px"><input type="checkbox" aria-label="Select all outgoing"></th><th>Object</th><th>Pairing</th><th>State</th><th>Source</th><th>Target</th><th>Baseline</th><th></th></tr></thead>
+          <tbody>
+            <tr aria-selected="true"><td><input type="checkbox" checked aria-label="Select --btn-primary"></td><td><span class="obj">--btn-primary</span><code>bricks-global-class-d157b6d2</code></td><td>link</td><td><span class="dbvc-badge dbvc-badge--directional">outgoing</span></td><td><code>fed93234…</code></td><td><code>90578f19…</code></td><td><code>90578f19…</code></td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button" data-open-drawer>Details</button></td></tr>
+            <tr aria-selected="true"><td><input type="checkbox" checked aria-label="Select Roof repair"></td><td><span class="obj">Roof repair</span><code>wp.service · shared-service-uid-0001</code></td><td>uid</td><td><span class="dbvc-badge dbvc-badge--directional">outgoing</span></td><td><code>665333ff…</code></td><td><code>ad9417e6…</code></td><td><code>ad9417e6…</code></td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button">Details</button></td></tr>
+            <tr><td></td><td><span class="obj">--text-muted</span><code>bricks-global-class-52e16fbf</code></td><td>link</td><td><span class="dbvc-badge dbvc-badge--directional">incoming</span></td><td><code>5f0a12c7…</code></td><td><code>b1e0aa03…</code></td><td><code>5f0a12c7…</code></td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button">Details</button></td></tr>
+            <tr><td></td><td><span class="obj">--card</span><code>bricks-global-class-8c6f205a</code></td><td>link</td><td><span class="dbvc-badge dbvc-badge--negative">conflict</span></td><td><code>0c4d9a11…</code></td><td><code>7e21bb60…</code></td><td><code>2ab77d0e…</code></td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button">Details</button></td></tr>
+            <tr><td></td><td><span class="obj">collection.order</span><code>bricks.global_class · bricks-collection-order-v1</code></td><td>uid</td><td><span class="dbvc-badge dbvc-badge--neutral">baseline required</span></td><td><code>b294fc68…</code></td><td><code>b294fc68…</code></td><td class="subtle">none</td><td class="row-actions"><button class="btn btn--small" type="button">Confirm baseline</button></td></tr>
+          </tbody>
+        </table>
+        <div class="dbvc-ce-composer" role="region" aria-label="Release composer">
+          <div><strong>2 objects selected</strong> from <code>a-prod</code> · both outgoing, complete and fresh</div>
+          <div class="dbvc-ce__actions"><input type="text" placeholder="Release note" style="width:220px"><button class="btn btn--primary" type="button">Create release</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Framework ===== -->
+    <section data-view-panel="framework" hidden>
+      <div class="dbvc-tools-panel">
+        <div class="dbvc-ce-panel__head"><h2>Framework status</h2><span class="dbvc-ce-asof">per enabled framework subscription · version distance by studio-supplied order, never by label</span></div>
+        <table class="widefat striped">
+          <thead><tr><th>Environment</th><th>Instance</th><th>Definition</th><th>Adopted</th><th>Desired</th><th>Drift</th><th>Version</th><th>Override</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><code>a-prod</code></td><td><span class="obj">--btn-primary</span><code>bricks-global-class-d157b6d2</code></td><td><code>btn-primary</code> <span class="subtle">stable</span></td><td>1.0</td><td>1.1</td><td><span class="dbvc-badge dbvc-badge--caution">local drift</span></td><td><span class="dbvc-badge dbvc-badge--caution">behind</span></td><td class="subtle">none</td><td class="row-actions"><button class="btn btn--small" type="button">Adopt 1.1</button><button class="btn btn--small btn--ghost" type="button">Approve override…</button></td></tr>
+            <tr><td><code>a-stage</code></td><td><span class="obj">--btn-primary</span><code>bricks-global-class-42bf25d8</code></td><td><code>btn-primary</code> <span class="subtle">stable</span></td><td>1.1</td><td>1.1</td><td><span class="dbvc-badge dbvc-badge--positive">clean</span></td><td><span class="dbvc-badge dbvc-badge--positive">current</span></td><td class="subtle">none</td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button" data-open-drawer>Details</button></td></tr>
+            <tr><td><code>b-prod</code></td><td><span class="obj">--btn-primary</span><code>bricks-global-class-9a0b11cd</code></td><td><code>btn-primary</code> <span class="subtle">stable</span></td><td>1.1</td><td>1.1</td><td><span class="dbvc-badge dbvc-badge--positive">approved override</span></td><td><span class="dbvc-badge dbvc-badge--positive">current</span></td><td><span class="dbvc-badge dbvc-badge--caution">needs rebase review</span></td><td class="row-actions"><button class="btn btn--small btn--ghost" type="button">Re-approve…</button><button class="btn btn--small btn--ghost" type="button">Detach</button></td></tr>
+            <tr><td><code>b-stage</code></td><td><span class="obj">--card</span><code>bricks-global-class-77e1f0aa</code></td><td><code>card</code> <span class="subtle">beta</span></td><td class="subtle">—</td><td>2.0-beta</td><td><span class="dbvc-badge dbvc-badge--uncertain">unknown</span></td><td><span class="dbvc-badge dbvc-badge--uncertain">unknown</span></td><td class="subtle">none</td><td class="subtle">stale · no adopted version</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="dbvc-ce-grid" style="margin-top:16px">
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Review items</h2><div class="dbvc-ce__actions"><button class="btn btn--small" type="button">Classify now</button></div></div>
+          <table class="widefat striped">
+            <thead><tr><th>Id</th><th>Environment · instance</th><th>Seq</th><th>State</th><th>Drift · version</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td><code>a-prod</code> · --btn-primary</td><td class="num">9</td><td><span class="dbvc-badge dbvc-badge--neutral">classified</span></td><td><span class="dbvc-badge dbvc-badge--caution">local drift</span> <span class="dbvc-badge dbvc-badge--caution">behind</span></td><td><button class="btn btn--small btn--ghost" type="button">Resolve…</button></td></tr>
+              <tr><td>2</td><td><code>a-stage</code> · --btn-primary</td><td class="num">9</td><td><span class="dbvc-badge dbvc-badge--neutral">observed</span></td><td class="subtle">not classified yet</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Definitions</h2><div class="dbvc-ce__actions"><button class="btn btn--small" type="button">Publish version…</button></div></div>
+          <table class="widefat striped">
+            <thead><tr><th>Definition</th><th>Version</th><th class="num">Order</th><th>Channel</th><th>Desired</th><th>Hash</th></tr></thead>
+            <tbody>
+              <tr><td><code>btn-primary</code></td><td>1.0</td><td class="num">1</td><td>stable</td><td class="subtle">no</td><td><code>90578f19…</code></td></tr>
+              <tr><td><code>btn-primary</code></td><td>1.1</td><td class="num">2</td><td>stable</td><td><span class="dbvc-badge dbvc-badge--positive">desired</span></td><td><code>e3c63921…</code></td></tr>
+              <tr><td><code>btn-primary</code></td><td>1.10</td><td class="num">3</td><td>stable</td><td class="subtle">no</td><td><code>e3c63921…</code></td></tr>
+              <tr><td><code>card</code></td><td>2.0-beta</td><td class="num">1</td><td>beta</td><td><span class="dbvc-badge dbvc-badge--positive">desired</span></td><td><code>0c4d9a11…</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Releases (pipeline) ===== -->
+    <section data-view-panel="releases" hidden>
+      <div class="dbvc-ce-grid" style="grid-template-columns: minmax(0,4fr) minmax(0,8fr)">
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Releases</h2></div>
+          <table class="widefat striped">
+            <thead><tr><th>Release</th><th>State</th><th class="num">Items</th></tr></thead>
+            <tbody>
+              <tr aria-selected="true"><td><code>rel-9bdba45b</code><span class="subtle" style="display:block">btn-primary padding + service copy · from a-prod</span></td><td><span class="dbvc-badge dbvc-badge--positive">sealed</span></td><td class="num">2</td></tr>
+              <tr><td><code>rel-fbd9b45f</code><span class="subtle" style="display:block">card radius · from a-prod</span></td><td><span class="dbvc-badge dbvc-badge--directional">open</span> <span class="subtle">1 payload requested</span></td><td class="num">1</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2><code>rel-9bdba45b</code> · btn-primary padding + service copy</h2><div class="dbvc-ce__actions"><button class="btn btn--small btn--danger" type="button">Withdraw</button></div></div>
+          <ol class="dbvc-ce-stepper">
+            <li class="dbvc-ce-step dbvc-ce-step--done">
+              <div class="dbvc-ce-step__head" role="button" aria-expanded="false" tabindex="0"><span class="dbvc-ce-step__n">1</span><div><span class="dbvc-ce-step__title">Manifest sealed</span><span class="dbvc-ce-step__summary">2 items · digest <code>c27e206f6149</code> · payloads verified by hash from a-prod · sealed 13:41</span></div><span class="dbvc-badge dbvc-badge--positive">sealed</span></div>
+            </li>
+            <li class="dbvc-ce-step dbvc-ce-step--active">
+              <div class="dbvc-ce-step__head" role="button" aria-expanded="true" tabindex="0"><span class="dbvc-ce-step__n">2</span><div><span class="dbvc-ce-step__title">Prepare on Client A staging</span><span class="dbvc-ce-step__summary">receipt <code>prep-affb46ee</code> · ready 2 · noop 0 · blocked 0 · expires in 41 min</span></div><span class="dbvc-badge dbvc-badge--directional">ready</span></div>
+              <div class="dbvc-ce-step__body">
+                <dl class="dbvc-ce-kv">
+                  <dt>Target</dt><dd><code>a-stage</code> · epoch <code>enrolled-20260919-bb71</code></dd>
+                  <dt>Hub notes</dt><dd>before-state agrees with the hub's last projection for 2 of 2 items · no baseline disagreement</dd>
+                  <dt>Compatibility</dt><dd>protocol 0.2 · canonicalizer v1 · plugin 2.0.0 · bricks.global_class available · wp.service available</dd>
+                </dl>
+                <div class="dbvc-ce-item">
+                  <div class="dbvc-ce-item__head"><div><span class="obj">--btn-primary</span> <code>bricks.global_class</code> · identity <code>btn001</code> via sidecar+link</div><span class="dbvc-badge dbvc-badge--directional">ready</span></div>
+                  <dl class="dbvc-ce-kv" style="margin-top:6px"><dt>Container</dt><dd><code>option:bricks_global_classes</code> · fingerprint <code>ddc1e494f53b</code></dd><dt>Before → after</dt><dd><code>90578f19…</code> → <code>fed93234…</code></dd><dt>Patch</dt><dd>replace object · changed paths <span class="dbvc-ce-paths"><code>settings</code></span></dd></dl>
+                  <ul class="dbvc-ce-ledger" aria-label="Dependency ledger"><li><span class="dbvc-badge dbvc-badge--positive">present</span> variable <code>--primary</code></li><li><span class="dbvc-badge dbvc-badge--positive">present</span> category <code>rgxlvq</code></li></ul>
+                </div>
+                <div class="dbvc-ce-item">
+                  <div class="dbvc-ce-item__head"><div><span class="obj">Roof repair</span> <code>wp.service</code> · identity post <code>#4</code> via vf_object_uid</div><span class="dbvc-badge dbvc-badge--directional">ready</span></div>
+                  <dl class="dbvc-ce-kv" style="margin-top:6px"><dt>Container</dt><dd><code>post_type:service#4</code> · fingerprint <code>5cbd17fd8e8e</code></dd><dt>Patch</dt><dd>replace object · changed paths <span class="dbvc-ce-paths"><code>post_content</code><code>post_title</code></span></dd></dl>
+                  <ul class="dbvc-ce-ledger" aria-label="Dependency ledger"><li><span class="dbvc-badge dbvc-badge--positive">present</span> term <code>service_area:north</code></li><li><span class="dbvc-badge dbvc-badge--uncertain">unsupported</span> media <code>attachment:77</code> <span class="subtle">not part of prepare</span></li></ul>
+                  <div class="dbvc-inline-notice dbvc-inline-notice--warning" style="margin:10px 0 0"><p>Apply for <code>wp.service</code> is not supported in this release: this item will report <em>unsupported</em> on execution and the class will apply on its own.</p></div>
+                </div>
+                <p style="margin:12px 0 0" class="dbvc-ce__actions"><button class="btn btn--primary" type="button">Approve for execution…</button><button class="btn btn--ghost" type="button">Request prepare again</button></p>
+              </div>
+            </li>
+            <li class="dbvc-ce-step">
+              <div class="dbvc-ce-step__head" role="button" aria-expanded="false" tabindex="0"><span class="dbvc-ce-step__n">3</span><div><span class="dbvc-ce-step__title">Approve</span><span class="dbvc-ce-step__summary">binds release digest · receipt digest · target epoch · policy revision · expires with the receipt</span></div><span class="dbvc-badge dbvc-badge--neutral">not yet</span></div>
+            </li>
+            <li class="dbvc-ce-step">
+              <div class="dbvc-ce-step__head" role="button" aria-expanded="false" tabindex="0"><span class="dbvc-ce-step__n">4</span><div><span class="dbvc-ce-step__title">Execute on the target</span><span class="dbvc-ce-step__summary">runs on the client's next poll, only while its apply gate is on · conditional write · verified · journalled</span></div><span class="dbvc-badge dbvc-badge--uncertain">waiting</span></div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Connector ===== -->
+    <section data-view-panel="connector" hidden>
+      <div class="dbvc-inline-notice dbvc-inline-notice--warning"><p><strong>Apply is off.</strong> Approved releases are not executed on this site. Turn it on under Settings only when this environment should accept studio releases.</p></div>
+      <div class="dbvc-ce-stats" style="grid-template-columns: repeat(3, minmax(0,1fr))">
+        <div class="dbvc-tools-panel"><div class="dbvc-ce-panel__head"><h2>Connection</h2><span class="dbvc-badge dbvc-badge--positive">enrolled</span></div>
+          <dl class="dbvc-ce-kv"><dt>Hub</dt><dd><code>https://studio.example/</code></dd><dt>Principal</dt><dd><code>dbvc-env-studio-site</code></dd><dt>Epoch</dt><dd><code>enrolled-20260919-1d8e</code></dd><dt>Last delivery</dt><dd>14:00 · sent 3 · delivered 3</dd><dt>Last poll</dt><dd>14:01 · stored 0 · acked 0</dd><dt>Next run</dt><dd class="subtle">WP-Cron disabled — external runner</dd></dl>
+        </div>
+        <div class="dbvc-tools-panel"><div class="dbvc-ce-panel__head"><h2>Coverage</h2></div>
+          <dl class="dbvc-ce-kv"><dt>bricks.global_class</dt><dd><span class="dbvc-badge dbvc-badge--positive">available</span> 3 present · 0 absent · 0 incomplete</dd><dt>bricks.variable</dt><dd><span class="dbvc-badge dbvc-badge--positive">available</span> 1 present</dd><dt>wp.service</dt><dd><span class="dbvc-badge dbvc-badge--positive">available</span> 2 present · identity via DBVC <code>vf_object_uid</code></dd></dl>
+        </div>
+        <div class="dbvc-tools-panel"><div class="dbvc-ce-panel__head"><h2>Pending work</h2></div>
+          <dl class="dbvc-ce-kv"><dt>Dirty markers</dt><dd>0 due · 0 leased · 0 errored</dd><dt>Outbox</dt><dd>0 pending · 12 delivered</dd><dt>Inbox</dt><dd>6 received · 0 awaiting ack</dd><dt>Receipts</dt><dd>1 produced · 0 unreported</dd></dl>
+          <p class="dbvc-ce__actions" style="margin:12px 0 0"><button class="btn btn--small" type="button">Observe now</button><button class="btn btn--small" type="button">Deliver now</button><button class="btn btn--small" type="button">Poll now</button><button class="btn btn--small" type="button">Run release work</button></p>
+        </div>
+      </div>
+      <div class="dbvc-tools-panel">
+        <div class="dbvc-ce-panel__head"><h2>Received observations</h2><span class="dbvc-ce-asof">stored before acknowledgement · never applied automatically</span></div>
+        <table class="widefat striped">
+          <thead><tr><th>Delivery</th><th>Source</th><th class="num">Seq</th><th>Object</th><th>Profile</th><th>Exists</th><th>Complete</th><th>Hash</th><th>Received</th></tr></thead>
+          <tbody>
+            <tr><td>6</td><td><code>a-prod</code></td><td class="num">6</td><td>collection.order</td><td>wp-service-inventory-v1</td><td>yes</td><td>yes</td><td><code>a55f29a5…</code></td><td>13:37</td></tr>
+            <tr><td>5</td><td><code>a-prod</code></td><td class="num">5</td><td>Roof repair</td><td>wp-service-v1</td><td>yes</td><td>yes</td><td><code>78774819…</code></td><td>13:37</td></tr>
+            <tr><td>2</td><td><code>a-prod</code></td><td class="num">2</td><td>--btn-primary</td><td>bricks-global-class-v1</td><td>yes</td><td>yes</td><td><code>90578f19…</code></td><td>13:37</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== Settings ===== -->
+    <section data-view-panel="settings" hidden>
+      <div class="dbvc-ce-grid">
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Connector</h2></div>
+          <p><label><input type="checkbox" checked> Enable Connected Environments (connector)</label></p>
+          <p><label><input type="checkbox"> Allow approved releases to be applied here</label><br><span class="subtle">Off by default. Executes only releases the hub approved for this environment, after this site's own prepare receipt, with a conditional write that refuses a container edited in the meantime.</span></p>
+          <h3 style="font-size:13px;margin:16px 0 6px">Enrollment</h3>
+          <dl class="dbvc-ce-kv" style="row-gap:8px"><dt><label for="hub-url">Hub URL</label></dt><dd><input id="hub-url" type="url" value="https://studio.example/" style="width:100%"></dd><dt><label for="hub-token">Invitation token</label></dt><dd><input id="hub-token" type="password" placeholder="pasted once, never shown again" style="width:100%"></dd></dl>
+          <p class="dbvc-ce__actions"><button class="btn btn--primary" type="button" disabled>Enroll</button><button class="btn btn--ghost" type="button">Resume</button></p>
+        </div>
+        <div class="dbvc-tools-panel">
+          <div class="dbvc-ce-panel__head"><h2>Hub</h2></div>
+          <p><label><input type="checkbox" checked> Enable Agency Control (studio hub)</label></p>
+          <dl class="dbvc-ce-kv"><dt>Freshness window</dt><dd>24 h <span class="subtle">(filter <code>dbvc_agency_control_freshness_seconds</code>)</span></dd><dt>Schema</dt><dd>v8</dd><dt>Emergency stop</dt><dd><code>DBVC_AGENCY_EMERGENCY_DISABLE</code> / <code>DBVC_CONNECTED_EMERGENCY_DISABLE</code> in wp-config.php</dd></dl>
+        </div>
+      </div>
+    </section>
+
+  </div>
+  </main>
+</div>
+
+<!-- ===== Object drawer (opens from any "Details") ===== -->
+<aside class="dbvc-ce dbvc-ce-drawer" role="complementary" aria-labelledby="drawer-title" id="drawer" hidden>
+  <div class="dbvc-ce-drawer__head">
+    <div><h2 id="drawer-title">--btn-primary</h2><code>bricks.global_class · bricks-global-class-d157b6d2dffeb7b3</code></div>
+    <button class="dbvc-ce-close" type="button" aria-label="Close" data-close-drawer>×</button>
+  </div>
+  <div class="dbvc-ce-drawer__body">
+    <h3>Identity</h3>
+    <dl class="dbvc-ce-kv"><dt>Environment</dt><dd><code>a-prod</code> · Client A production</dd><dt>Storage key</dt><dd><code>btn001</code> in <code>bricks_global_classes</code></dd><dt>Profile</dt><dd>bricks-global-class-v1</dd><dt>Lineage links</dt><dd>→ <code>a-stage</code> <code>bricks-global-class-42bf25d8</code> (operator link)</dd></dl>
+    <h3>Now</h3>
+    <dl class="dbvc-ce-kv"><dt>Hash</dt><dd><code>fed9323432690fe4…</code></dd><dt>Exists · complete</dt><dd>yes · yes</dd><dt>Observed</dt><dd>sequence 9 · 12 min ago · origin human</dd></dl>
+    <h3>Framework</h3>
+    <dl class="dbvc-ce-kv"><dt>Definition</dt><dd><code>btn-primary</code> · stable</dd><dt>Adopted · desired</dt><dd>1.0 · 1.1</dd><dt>Drift · version</dt><dd><span class="dbvc-badge dbvc-badge--caution">local drift</span> <span class="dbvc-badge dbvc-badge--caution">behind</span></dd><dt>Override</dt><dd class="subtle">none</dd></dl>
+    <h3>Baselines</h3>
+    <dl class="dbvc-ce-kv"><dt>a-prod → a-stage</dt><dd><code>90578f19…</code> · confirmed by studio · 19 Sep</dd></dl>
+    <h3>Releases</h3>
+    <dl class="dbvc-ce-kv"><dt><code>rel-9bdba45b</code></dt><dd>replace · payload received · prepared on a-stage: <span class="dbvc-badge dbvc-badge--directional">ready</span></dd></dl>
+    <h3>Recent events</h3>
+    <dl class="dbvc-ce-kv"><dt>seq 9</dt><dd>changed · human · 12 min ago</dd><dt>seq 7</dt><dd>changed · human · 13:20</dd><dt>seq 1</dt><dd>observed · reconciliation (enrollment)</dd></dl>
+  </div>
+  <div class="dbvc-ce-drawer__foot">
+    <button class="btn btn--small" type="button">Adopt 1.1</button><button class="btn btn--small btn--ghost" type="button">Approve override…</button><button class="btn btn--small btn--ghost" type="button">Confirm baseline</button><button class="btn btn--small btn--ghost" type="button">Add to release</button>
+  </div>
+</aside>
+
+<div class="mock-toolbar" aria-label="Mockup helpers"><button type="button" data-toggle-dark>Preview dark tokens</button></div>
+
+<script>
+// Mockup-only: section switching, drawer open/close, dark-token preview. No state, no network.
+(function () {
+  var nav = document.querySelector('[data-mock-nav]');
+  nav.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-view]'); if (!b) return;
+    nav.querySelectorAll('button').forEach(function (x) { x.removeAttribute('aria-current'); });
+    b.setAttribute('aria-current', 'page');
+    document.querySelectorAll('[data-view-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-view-panel') !== b.getAttribute('data-view'); });
+  });
+  var drawer = document.getElementById('drawer'), last = null;
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-open-drawer]')) { last = e.target; drawer.hidden = false; drawer.querySelector('[data-close-drawer]').focus(); }
+    if (e.target.closest('[data-close-drawer]')) { drawer.hidden = true; if (last) last.focus(); }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !drawer.hidden) { drawer.hidden = true; if (last) last.focus(); } });
+  document.querySelector('[data-toggle-dark]').addEventListener('click', function () {
+    document.querySelectorAll('.dbvc-ce').forEach(function (el) { el.classList.toggle('dbvc-ce--dark-preview'); });
+    document.body.style.background = document.getElementById('app').classList.contains('dbvc-ce--dark-preview') ? '#101418' : '';
+  });
+})();
+</script>
+</body>
+</html>

@@ -164,8 +164,9 @@ final class AcfFieldContextResolver
 
         $field_name = isset($candidate['field_name']) ? sanitize_key((string) $candidate['field_name']) : '';
         $field = $field_name !== '' ? $this->getFieldObject($field_name, $acf_object_id) : false;
+        $field_resolved_for_object = is_array($field);
 
-        if (! is_array($field)) {
+        if (! $field_resolved_for_object) {
             if (empty($repeater_context) && empty($flexible_context) && ! empty($tag_object['duplicate'])) {
                 return [
                     'ok' => false,
@@ -190,7 +191,12 @@ final class AcfFieldContextResolver
             $acf_object_id
         );
 
-        if (! empty($tag_object['field']) && is_array($tag_object['field'])) {
+        $container_field_rebound = ! empty($repeater_context['supported']) || ! empty($flexible_context['supported']);
+        if ($container_field_rebound && ! empty($tag_object['field']) && is_array($tag_object['field'])) {
+            $field = $tag_object['field'];
+        } elseif ($field_resolved_for_object) {
+            $provider_field = isset($tag_object['field']) && is_array($tag_object['field']) ? $tag_object['field'] : [];
+            $tag_object['field'] = array_merge($provider_field, $field);
             $field = $tag_object['field'];
         }
 

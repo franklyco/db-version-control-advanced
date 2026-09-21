@@ -135,6 +135,24 @@ function dbvc_render_export_page()
     $addon_visual_editor_field_meta = DBVC_Visual_Editor_Addon::get_field_meta();
   }
   $addon_visual_editor_enabled = $addon_visual_editor_settings[DBVC_Visual_Editor_Addon::OPTION_ENABLED] ?? get_option('dbvc_addon_visual_editor_enabled', '0');
+  $addon_connected_settings = [];
+  $addon_connected_groups = [];
+  $addon_connected_field_meta = [];
+  if (class_exists('DBVC_Connected_Environments_Addon')) {
+    DBVC_Connected_Environments_Addon::ensure_defaults();
+    $addon_connected_settings = DBVC_Connected_Environments_Addon::get_all_settings();
+    $addon_connected_groups = DBVC_Connected_Environments_Addon::get_settings_groups();
+    $addon_connected_field_meta = DBVC_Connected_Environments_Addon::get_field_meta();
+  }
+  $addon_agency_settings = [];
+  $addon_agency_groups = [];
+  $addon_agency_field_meta = [];
+  if (class_exists('DBVC_Agency_Control_Addon')) {
+    DBVC_Agency_Control_Addon::ensure_defaults();
+    $addon_agency_settings = DBVC_Agency_Control_Addon::get_all_settings();
+    $addon_agency_groups = DBVC_Agency_Control_Addon::get_settings_groups();
+    $addon_agency_field_meta = DBVC_Agency_Control_Addon::get_field_meta();
+  }
   $addons_subtabs = [
     'dbvc-addon-content-collector' => [
       'label' => esc_html__('Content Collector', 'dbvc'),
@@ -147,6 +165,10 @@ function dbvc_render_export_page()
     'dbvc-addon-visual-editor' => [
       'label' => esc_html__('Visual Editor', 'dbvc'),
       'description' => esc_html__('Control the frontend inspection and guarded edit runtime for supported Bricks pages.', 'dbvc'),
+    ],
+    'dbvc-addon-connected' => [
+      'label' => esc_html__('Connected Environments', 'dbvc'),
+      'description' => esc_html__('Independently gated connector (local observation of Bricks global classes and variables) and studio hub (inert scaffold in this release). Both are off by default and add nothing while disabled.', 'dbvc'),
     ],
   ];
   $ai_package_settings = [];
@@ -769,6 +791,26 @@ function dbvc_render_export_page()
         $addon_visual_editor_enabled = $addon_visual_editor_settings[DBVC_Visual_Editor_Addon::OPTION_ENABLED] ?? '0';
       } else {
         $config_feedback['addons']['error'][] = esc_html__('Visual Editor add-on module unavailable.', 'dbvc');
+      }
+
+      if (class_exists('DBVC_Connected_Environments_Addon')) {
+        $connected_save_result = DBVC_Connected_Environments_Addon::save_settings((array) $_POST);
+        foreach ((array) ($connected_save_result['errors'] ?? []) as $save_error) {
+          $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
+        }
+        $addon_connected_settings = DBVC_Connected_Environments_Addon::get_all_settings();
+      } else {
+        $config_feedback['addons']['error'][] = esc_html__('Connected Environments add-on module unavailable.', 'dbvc');
+      }
+
+      if (class_exists('DBVC_Agency_Control_Addon')) {
+        $agency_save_result = DBVC_Agency_Control_Addon::save_settings((array) $_POST);
+        foreach ((array) ($agency_save_result['errors'] ?? []) as $save_error) {
+          $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
+        }
+        $addon_agency_settings = DBVC_Agency_Control_Addon::get_all_settings();
+      } else {
+        $config_feedback['addons']['error'][] = esc_html__('Agency Control add-on module unavailable.', 'dbvc');
       }
 
       if (empty($config_feedback['addons']['error'])) {
@@ -4334,6 +4376,63 @@ document.addEventListener('DOMContentLoaded', function () {
                   <p><small class="description"><?php echo esc_html($addon_visual_editor_enabled === '1' ? __('Enabled. Authorized users can toggle frontend edit mode from the admin bar on supported singular Bricks pages.', 'dbvc') : __('Disabled. No frontend markers, overlay assets, or Visual Editor REST runtime will load.', 'dbvc')); ?></small></p>
                 <?php else : ?>
                   <p><?php esc_html_e('Visual Editor add-on settings metadata unavailable.', 'dbvc'); ?></p>
+                <?php endif; ?>
+              </div>
+            </section>
+
+            <section id="dbvc-addon-connected" class="dbvc-subtab-panel<?php echo $active_addons_subtab === 'dbvc-addon-connected' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-addon-connected" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-addon-connected" <?php echo $active_addons_subtab === 'dbvc-addon-connected' ? '' : 'hidden'; ?>>
+              <div class="dbvc-addon-panel">
+                <p class="description"><?php echo esc_html((string) ($addons_subtabs['dbvc-addon-connected']['description'] ?? '')); ?></p>
+                <?php if (! empty($addon_connected_groups) && ! empty($addon_connected_field_meta)) : ?>
+                  <article class="dbvc-addon-group">
+                    <h3><?php esc_html_e('Connector (client environments)', 'dbvc'); ?></h3>
+                    <?php foreach ($addon_connected_groups as $group) : ?>
+                      <?php $render_addon_fields_group((array) ($group['fields'] ?? []), $addon_connected_field_meta, $addon_connected_settings); ?>
+                    <?php endforeach; ?>
+                    <?php
+                    $connected_gate_state = class_exists('DBVC_Connected_Environments_Addon') ? DBVC_Connected_Environments_Addon::get_gate_state() : 'unavailable';
+                    $connected_report = ($connected_gate_state === 'ready' && class_exists('DBVC_Connected_Environments_Addon')) ? DBVC_Connected_Environments_Addon::get_status_report() : null;
+                    ?>
+                    <p><small class="description"><?php echo esc_html(sprintf(__('Gate state: %s', 'dbvc'), $connected_gate_state)); ?></small></p>
+                    <?php if (is_array($connected_report)) : ?>
+                      <table class="widefat striped" style="max-width: 720px;">
+                        <tbody>
+                          <tr><th scope="row"><?php esc_html_e('Environment', 'dbvc'); ?></th><td><code><?php echo esc_html((string) ($connected_report['identity']['environment_id'] ?? '')); ?></code> · <?php echo esc_html((string) ($connected_report['identity']['enrollment_state'] ?? '')); ?> · <?php esc_html_e('epoch', 'dbvc'); ?> <code><?php echo esc_html((string) ($connected_report['identity']['installation_epoch'] ?? '')); ?></code></td></tr>
+                          <tr><th scope="row"><?php esc_html_e('Dirty markers', 'dbvc'); ?></th><td><?php echo esc_html(sprintf(__('%1$d pending (%2$d due, %3$d leased, %4$d errored); oldest %5$s', 'dbvc'), (int) ($connected_report['jobs']['total'] ?? 0), (int) ($connected_report['jobs']['due'] ?? 0), (int) ($connected_report['jobs']['leased'] ?? 0), (int) ($connected_report['jobs']['errored'] ?? 0), isset($connected_report['jobs']['oldest_pending_age']) && $connected_report['jobs']['oldest_pending_age'] !== null ? human_time_diff(time() - (int) $connected_report['jobs']['oldest_pending_age']) : __('none', 'dbvc'))); ?></td></tr>
+                          <?php foreach ((array) ($connected_report['domains'] ?? []) as $connected_domain => $connected_domain_info) : ?>
+                            <tr><th scope="row"><code><?php echo esc_html((string) $connected_domain); ?></code></th><td><?php echo esc_html(sprintf(__('coverage %1$s%2$s · %3$d present, %4$d absent, %5$d incomplete', 'dbvc'), (string) ($connected_domain_info['coverage'] ?? ''), ! empty($connected_domain_info['reason']) ? ' (' . (string) $connected_domain_info['reason'] . ')' : '', (int) ($connected_domain_info['objects']['present'] ?? 0), (int) ($connected_domain_info['objects']['absent'] ?? 0), (int) ($connected_domain_info['objects']['incomplete'] ?? 0))); ?></td></tr>
+                          <?php endforeach; ?>
+                          <tr><th scope="row"><?php esc_html_e('Outbox', 'dbvc'); ?></th><td><?php echo esc_html(sprintf(__('%1$d events: %2$d pending, %3$d delivered, %4$d rejected, %5$d superseded', 'dbvc'), (int) ($connected_report['outbox']['total'] ?? 0), (int) ($connected_report['outbox']['pending'] ?? 0), (int) ($connected_report['outbox']['delivered'] ?? 0), (int) ($connected_report['outbox']['rejected'] ?? 0), (int) ($connected_report['outbox']['superseded'] ?? 0))); ?></td></tr>
+                          <?php $connected_connection = is_array($connected_report['connection'] ?? null) ? $connected_report['connection'] : []; ?>
+                          <tr><th scope="row"><?php esc_html_e('Hub connection', 'dbvc'); ?></th><td><?php echo esc_html(sprintf(__('%1$s%2$s · hub %3$s · principal %4$s · client %5$s', 'dbvc'), (string) ($connected_connection['state'] ?? 'disconnected'), ! empty($connected_connection['hold_reason']) ? ' (' . (string) $connected_connection['hold_reason'] . ')' : '', (string) ($connected_connection['hub_url'] ?: __('none', 'dbvc')), (string) ($connected_connection['principal'] ?: __('none', 'dbvc')), (string) ($connected_connection['client_id'] ?: __('none', 'dbvc')))); ?></td></tr>
+                          <tr><th scope="row"><?php esc_html_e('Last delivery', 'dbvc'); ?></th><td><?php echo esc_html(is_array($connected_connection['delivery'] ?? null) ? sprintf(__('%1$s · sent %2$d, delivered %3$d, rejected %4$d%5$s', 'dbvc'), (string) ($connected_connection['delivery']['finished_at'] ?? ''), (int) ($connected_connection['delivery']['sent'] ?? 0), (int) ($connected_connection['delivery']['delivered'] ?? 0), (int) ($connected_connection['delivery']['rejected'] ?? 0), ! empty($connected_connection['delivery']['blocked']) ? ' · blocked: ' . (string) $connected_connection['delivery']['blocked'] : (! empty($connected_connection['delivery']['error']) ? ' · error: ' . (string) $connected_connection['delivery']['error'] : '')) : __('never', 'dbvc')); ?></td></tr>
+                          <tr><th scope="row"><?php esc_html_e('Inbox', 'dbvc'); ?></th><td><?php echo esc_html(sprintf(__('%1$d received from %2$d source(s), %3$d awaiting acknowledgement · cursor %4$d · last poll %5$s · next poll %6$s · received observations are never applied automatically', 'dbvc'), (int) ($connected_connection['inbox']['total'] ?? 0), (int) ($connected_connection['inbox']['sources'] ?? 0), (int) ($connected_connection['inbox']['unacked'] ?? 0), (int) ($connected_connection['inbox_cursor'] ?? 0), (string) (($connected_connection['last_poll']['finished_at'] ?? '') ?: __('never', 'dbvc')), (string) (($connected_connection['next_inbox_poll'] ?? '') ?: __('none', 'dbvc')))); ?></td></tr>
+                          <tr><th scope="row"><?php esc_html_e('Scheduler', 'dbvc'); ?></th><td><?php echo esc_html(sprintf(__('next run %1$s · delay %2$ds · WP-Cron %3$s', 'dbvc'), (string) ($connected_report['scheduler']['next_run'] ?? __('none', 'dbvc')), (int) ($connected_report['scheduler']['processing_delay'] ?? 0), ! empty($connected_report['scheduler']['wp_cron_disabled']) ? __('disabled (external runner required)', 'dbvc') : __('page-triggered', 'dbvc'))); ?></td></tr>
+                          <tr><th scope="row"><?php esc_html_e('Last worker run', 'dbvc'); ?></th><td><?php echo esc_html(is_array($connected_report['worker'] ?? null) ? sprintf(__('%1$s · claimed %2$d, acknowledged %3$d, requeued %4$d, retried %5$d, events %6$d%7$s', 'dbvc'), (string) ($connected_report['worker']['finished_at'] ?? ''), (int) ($connected_report['worker']['claimed'] ?? 0), (int) ($connected_report['worker']['acknowledged'] ?? 0), (int) ($connected_report['worker']['requeued'] ?? 0), (int) ($connected_report['worker']['retried'] ?? 0), (int) ($connected_report['worker']['events'] ?? 0), ! empty($connected_report['worker']['blocked']) ? ' · blocked: ' . (string) $connected_report['worker']['blocked'] : '') : __('never', 'dbvc')); ?></td></tr>
+                        </tbody>
+                      </table>
+                      <?php if (method_exists('DBVC_Connected_Environments_Addon', 'render_admin_inbox')) { DBVC_Connected_Environments_Addon::render_admin_inbox(); } ?>
+                      <p><small class="description"><?php esc_html_e('Read-only inspection. Use `wp dbvc connected status|jobs|objects|outbox|inbox|inventory|reconcile|process|deliver|poll|enroll|resume` for detail; the hub is administered with `wp dbvc agency`.', 'dbvc'); ?></small></p>
+                    <?php endif; ?>
+                  </article>
+                <?php else : ?>
+                  <p><?php esc_html_e('Connected Environments add-on settings metadata unavailable.', 'dbvc'); ?></p>
+                <?php endif; ?>
+                <?php if (! empty($addon_agency_groups) && ! empty($addon_agency_field_meta)) : ?>
+                  <article class="dbvc-addon-group">
+                    <h3><?php esc_html_e('Agency Control (studio hub)', 'dbvc'); ?></h3>
+                    <?php foreach ($addon_agency_groups as $group) : ?>
+                      <?php $render_addon_fields_group((array) ($group['fields'] ?? []), $addon_agency_field_meta, $addon_agency_settings); ?>
+                    <?php endforeach; ?>
+                    <?php
+                    $agency_gate_state = class_exists('DBVC_Agency_Control_Addon') ? DBVC_Agency_Control_Addon::get_gate_state() : 'unavailable';
+                    $agency_runtime_state = class_exists('DBVC_Agency_Control_Addon') ? DBVC_Agency_Control_Addon::get_runtime_state() : null;
+                    ?>
+                    <p><small class="description"><?php echo esc_html(sprintf(__('Gate state: %1$s · runtime: %2$s', 'dbvc'), $agency_gate_state, is_array($agency_runtime_state) ? (string) ($agency_runtime_state['state'] ?? '') : __('not loaded', 'dbvc'))); ?></small></p>
+                    <?php if ($agency_gate_state === 'ready' && method_exists('DBVC_Agency_Control_Addon', 'render_admin_panel')) { DBVC_Agency_Control_Addon::render_admin_panel(); } ?>
+                  </article>
+                <?php else : ?>
+                  <p><?php esc_html_e('Agency Control add-on settings metadata unavailable.', 'dbvc'); ?></p>
                 <?php endif; ?>
               </div>
             </section>
