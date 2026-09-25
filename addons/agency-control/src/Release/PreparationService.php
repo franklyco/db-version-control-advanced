@@ -128,6 +128,13 @@ final class PreparationService
             $links = (new InstanceLinkStore())->map_for_pair($release['source_environment_id'], $target['environment_id'], null);
             $items = [];
             foreach ($this->releases->items($release['release_id'], true) as $item) {
+                $media = [];
+                if (isset($item['media']) && is_string($item['media']) && $item['media'] !== '') {
+                    $decoded = json_decode($item['media'], true);
+                    if (is_array($decoded) && isset($decoded['media']) && is_array($decoded['media'])) {
+                        $media = $decoded['media'];
+                    }
+                }
                 $items[] = [
                     'domain' => $item['domain'],
                     'instance_uid' => $item['instance_uid'],
@@ -137,6 +144,7 @@ final class PreparationService
                     'after_hash' => $item['after_hash'],
                     'source_sequence' => $item['source_sequence'],
                     'body' => (string) $item['payload'],
+                    'media' => $media,
                 ];
             }
             $out[] = [

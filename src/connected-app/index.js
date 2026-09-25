@@ -15,7 +15,7 @@ import {
 	useRef,
 	useState,
 } from '@wordpress/element';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, _n, sprintf } from '@wordpress/i18n';
 import apiFetch from '@wordpress/api-fetch';
 
 const CONFIG = window.DBVC_CONNECTED_APP || {};
@@ -56,8 +56,12 @@ const TONES = {
 		'enrolled',
 		'available',
 		'ready_gate',
+		'acked',
+		'released',
 		'resolved',
 		'published',
+		'succeeded',
+		'completed',
 	],
 	directional: [
 		'outgoing',
@@ -68,6 +72,9 @@ const TONES = {
 		'selected',
 		'provisional',
 		'approved',
+		'running',
+		'pending',
+		'preparing',
 	],
 	neutral: [
 		'converged',
@@ -76,6 +83,7 @@ const TONES = {
 		'observed',
 		'classified',
 		'disconnected',
+		'withdrawn',
 		'detached',
 		'version_differs',
 	],
@@ -91,6 +99,7 @@ const TONES = {
 		'held',
 		'expiring',
 		'migration_required',
+		'paused',
 	],
 	negative: [
 		'conflict',
@@ -1204,12 +1213,19 @@ function ObjectDrawer( { object, onClose, notify } ) {
  * baseline / link actions and the object drawer.
  *
  * @param {Object}   props
- * @param {Array}    props.environments Registry rows (for the pickers).
- * @param {Object}   props.preset       { source } chosen from the Environments table, if any.
+ * @param {Array}    props.environments     Registry rows (for the pickers).
+ * @param {Object}   props.preset           { source } chosen from the Environments table, if any.
  * @param {Function} props.notify
  * @param {Function} props.onChanged
+ * @param {Function} props.onCreatedRelease Open Releases with the new release selected.
  */
-function Compare( { environments, preset, notify, onChanged } ) {
+function Compare( {
+	environments,
+	preset,
+	notify,
+	onChanged,
+	onCreatedRelease,
+} ) {
 	const enabled = useMemo(
 		() => ( environments || [] ).filter( ( e ) => e.status !== 'revoked' ),
 		[ environments ]
@@ -1223,6 +1239,9 @@ function Compare( { environments, preset, notify, onChanged } ) {
 	const [ busy, setBusy ] = useState( '' );
 	const [ linking, setLinking ] = useState( null ); // { key, target_uid }
 	const [ drawer, setDrawer ] = useState( null );
+	const [ selection, setSelection ] = useState( {} ); // key → { domain, instance_uid }
+	const [ releaseNote, setReleaseNote ] = useState( '' );
+	const [ creating, setCreating ] = useState( false );
 
 	const targets = useMemo( () => {
 		const src = enabled.find( ( e ) => e.environment_id === source );
@@ -1259,6 +1278,7 @@ function Compare( { environments, preset, notify, onChanged } ) {
 		} catch ( err ) {
 			notify( 'error', errorMessage( err ) );
 		}
+		setSelection( {} );
 		setLoading( false );
 	}, [ source, target, domain, notify ] );
 
@@ -1272,6 +1292,39 @@ function Compare( { environments, preset, notify, onChanged } ) {
 			? result.rows.filter( ( r ) => r.state === filter )
 			: result.rows;
 	}, [ result, filter ] );
+
+	const createRelease = async () => {
+		const items = Object.values( selection )
+			.map( ( o ) => `${ o.domain }:${ o.instance_uid }` )
+			.join( ',' );
+		if ( ! items ) {
+			return;
+		}
+		setCreating( true );
+		try {
+			const res = await apiFetch( {
+				path: 'agency/release-create',
+				method: 'POST',
+				data: { source, items, note: releaseNote.trim() },
+			} );
+			notify(
+				'success',
+				sprintf(
+					/* translators: %s: release uid */
+					__( 'Release %s created.', 'dbvc' ),
+					res.release?.release_uid || ''
+				)
+			);
+			setSelection( {} );
+			setReleaseNote( '' );
+			if ( res.release?.release_uid ) {
+				onCreatedRelease( res.release.release_uid );
+			}
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setCreating( false );
+	};
 
 	const act = async ( key, path, data, success ) => {
 		setBusy( key );
@@ -1507,6 +1560,14 @@ function Compare( { environments, preset, notify, onChanged } ) {
 									<th>{ __( 'Baseline', 'dbvc' ) }</th>
 									<th>
 										<span className="screen-reader-text">
+											{ __(
+												'Select for release',
+												'dbvc'
+											) }
+										</span>
+									</th>
+									<th>
+										<span className="screen-reader-text">
 											{ __( 'Actions', 'dbvc' ) }
 										</span>
 									</th>
@@ -1515,6 +1576,10 @@ function Compare( { environments, preset, notify, onChanged } ) {
 							<tbody>
 								{ rows.map( ( row ) => {
 									const key = `${ row.domain }|${ row.profile }|${ row.source_instance_uid }`;
+									const releasable =
+										row.state === 'outgoing' &&
+										row.complete === 'yes' &&
+										row.fresh === 'yes';
 									return (
 										<tr key={ key }>
 											<td>
@@ -1622,6 +1687,56 @@ function Compare( { environments, preset, notify, onChanged } ) {
 											<td>
 												{ hashCell(
 													row.baseline_hash
+												) }
+											</td>
+											<td>
+												{ releasable ? (
+													<input
+														type="checkbox"
+														aria-label={ sprintf(
+															/* translators: %s: object instance UID */
+															__(
+																'Add %s to release',
+																'dbvc'
+															),
+															row.source_instance_uid
+														) }
+														checked={
+															selection[ key ] !==
+															undefined
+														}
+														onChange={ ( e ) =>
+															setSelection(
+																( sel ) => {
+																	const next =
+																		{
+																			...sel,
+																		};
+																	if (
+																		e.target
+																			.checked
+																	) {
+																		next[
+																			key
+																		] = {
+																			domain: row.domain,
+																			instance_uid:
+																				row.source_instance_uid,
+																		};
+																	} else {
+																		delete next[
+																			key
+																		];
+																	}
+																	return next;
+																}
+															)
+														}
+													/>
+												) : (
+													<span className="subtle">
+														—
+													</span>
 												) }
 											</td>
 											<td className="dbvc-ce-actions">
@@ -1807,6 +1922,63 @@ function Compare( { environments, preset, notify, onChanged } ) {
 					<p className="dbvc-ce-empty" style={ { paddingBottom: 0 } }>
 						{ result.note }
 					</p>
+					{ Object.keys( selection ).length > 0 && (
+						<div
+							className="dbvc-ce-composer"
+							role="region"
+							aria-label={ __( 'Release composer', 'dbvc' ) }
+						>
+							<div>
+								<strong>
+									{ sprintf(
+										/* translators: %d: number of selected objects */
+										_n(
+											'%d object selected',
+											'%d objects selected',
+											Object.keys( selection ).length,
+											'dbvc'
+										),
+										Object.keys( selection ).length
+									) }
+								</strong>{ ' ' }
+								<span className="subtle">
+									{ sprintf(
+										/* translators: %s: source environment id */
+										__(
+											'from %s · outgoing, complete and fresh',
+											'dbvc'
+										),
+										source
+									) }
+								</span>
+							</div>
+							<div className="dbvc-ce__actions">
+								<label
+									className="screen-reader-text"
+									htmlFor="dbvc-ce-release-note"
+								>
+									{ __( 'Release note', 'dbvc' ) }
+								</label>
+								<input
+									id="dbvc-ce-release-note"
+									type="text"
+									placeholder={ __( 'Release note', 'dbvc' ) }
+									value={ releaseNote }
+									onChange={ ( e ) =>
+										setReleaseNote( e.target.value )
+									}
+								/>
+								<button
+									type="button"
+									className="btn btn--primary"
+									disabled={ creating }
+									onClick={ createRelease }
+								>
+									{ __( 'Create release', 'dbvc' ) }
+								</button>
+							</div>
+						</div>
+					) }
 				</>
 			) }
 			{ drawer && (
@@ -3222,6 +3394,1831 @@ function Framework( { environments, notify, onChanged } ) {
 }
 
 /**
+ * Manifest payload state ("received" / "mismatch (reason)" / "requested (...)")
+ * to a badge tone.
+ *
+ * @param {string} payload The item's payload_state string.
+ * @return {string} Tone key.
+ */
+function payloadTone( payload ) {
+	if ( payload.startsWith( 'received' ) ) {
+		return 'received';
+	}
+	if ( payload.startsWith( 'mismatch' ) ) {
+		return 'mismatch';
+	}
+	return 'requested';
+}
+
+const STEPPER = [
+	{ key: 'manifest', label: __( 'Manifest', 'dbvc' ) },
+	{ key: 'prepare', label: __( 'Prepare', 'dbvc' ) },
+	{ key: 'approve', label: __( 'Approve', 'dbvc' ) },
+	{ key: 'execute', label: __( 'Execute', 'dbvc' ) },
+];
+
+function countdown( iso ) {
+	if ( ! iso ) {
+		return '';
+	}
+	const then = new Date(
+		iso.includes( 'T' ) ? iso : iso.replace( ' ', 'T' ) + 'Z'
+	).getTime();
+	if ( Number.isNaN( then ) ) {
+		return iso;
+	}
+	const seconds = Math.round( ( then - Date.now() ) / 1000 );
+	if ( seconds <= 0 ) {
+		return __( 'expired', 'dbvc' );
+	}
+	if ( seconds < 3600 ) {
+		return sprintf(
+			/* translators: %d: minutes until expiry */
+			__( 'expires in %d min', 'dbvc' ),
+			Math.max( 1, Math.round( seconds / 60 ) )
+		);
+	}
+	return sprintf(
+		/* translators: %d: hours until expiry */
+		__( 'expires in %d h', 'dbvc' ),
+		Math.round( seconds / 3600 )
+	);
+}
+
+/**
+ * Expanded prepare-receipt detail for one item: identity, container +
+ * fingerprint, the patch (changed paths), the dependency ledger and blockers.
+ *
+ * @param {Object} props
+ * @param {Object} props.item One receipt item from the connector.
+ */
+function ReceiptItem( { item } ) {
+	return (
+		<div className="dbvc-ce-receipt-item">
+			<div className="dbvc-ce-receipt-item__head">
+				<Badge state={ item.outcome } />
+				<code>
+					{ item.domain } · { item.instance_uid }
+				</code>
+				<span className="subtle">{ item.operation }</span>
+			</div>
+			<dl className="dbvc-ce-kv">
+				<dt>{ __( 'Identity', 'dbvc' ) }</dt>
+				<dd>
+					{ item.identity?.storage_key ? (
+						<>
+							<code>{ item.identity.storage_key }</code>{ ' ' }
+							<span className="subtle">
+								{ item.identity.source }
+							</span>
+						</>
+					) : (
+						<span className="subtle">
+							{ item.identity?.source ||
+								__( 'unresolved', 'dbvc' ) }
+						</span>
+					) }
+				</dd>
+				{ item.container && (
+					<>
+						<dt>{ __( 'Container', 'dbvc' ) }</dt>
+						<dd>
+							<code>{ item.container }</code>
+							{ item.storage_fingerprint && (
+								<span className="subtle">
+									{ ' ' }
+									· { hashCell( item.storage_fingerprint ) }
+								</span>
+							) }
+						</dd>
+					</>
+				) }
+				{ item.patch && (
+					<>
+						<dt>{ __( 'Patch', 'dbvc' ) }</dt>
+						<dd>
+							{ item.patch.strategy }
+							{ Array.isArray( item.patch.changed_paths ) &&
+								item.patch.changed_paths.length > 0 && (
+									<span className="subtle">
+										{ ' ' }
+										·{ ' ' }
+										{ item.patch.changed_paths
+											.slice( 0, 8 )
+											.map( ( p ) =>
+												typeof p === 'string'
+													? p
+													: `${ p.path }${
+															p.operation
+																? ` (${ p.operation })`
+																: ''
+													  }`
+											)
+											.join( ', ' ) }
+										{ item.patch.changed_paths.length > 8
+											? '…'
+											: '' }
+									</span>
+								) }
+						</dd>
+					</>
+				) }
+				{ Array.isArray( item.dependencies ) &&
+					item.dependencies.length > 0 && (
+						<>
+							<dt>{ __( 'Dependencies', 'dbvc' ) }</dt>
+							<dd>
+								{ item.dependencies.map( ( dep, i ) => (
+									<span
+										key={ i }
+										style={ { display: 'block' } }
+									>
+										<Badge state={ dep.status }>
+											{ dep.status }
+										</Badge>{ ' ' }
+										<code>
+											{ dep.kind }:{ dep.ref }
+										</code>
+										{ dep.detail && (
+											<span className="subtle">
+												{ ' ' }
+												· { dep.detail }
+											</span>
+										) }
+									</span>
+								) ) }
+							</dd>
+						</>
+					) }
+				{ Array.isArray( item.blockers ) &&
+					item.blockers.length > 0 && (
+						<>
+							<dt>{ __( 'Blockers', 'dbvc' ) }</dt>
+							<dd>
+								{ item.blockers.map( ( b, i ) => (
+									<Badge key={ i } state="blocked">
+										{ b }
+									</Badge>
+								) ) }
+							</dd>
+						</>
+					) }
+			</dl>
+		</div>
+	);
+}
+
+/**
+ * Hub Releases: a list of releases and, for the selected one, the
+ * manifest → prepare → approve → execute stepper. Reporting and orchestration
+ * only; execution happens on the target's own poll behind its apply gate.
+ *
+ * @param {Object}   props
+ * @param {Array}    props.environments Registry rows (for the prepare target picker).
+ * @param {string}   props.preset       release_uid to open on mount, if any.
+ * @param {Function} props.notify
+ * @param {Function} props.onChanged
+ * @param {Function} props.onRollout    Open Rollouts with this sealed release preset.
+ */
+function Releases( { environments, preset, notify, onChanged, onRollout } ) {
+	const [ releases, setReleases ] = useState( null );
+	const [ selected, setSelected ] = useState( preset || '' );
+	const [ detail, setDetail ] = useState( null ); // { release, items }
+	const [ preparations, setPreparations ] = useState( [] );
+	const [ approvals, setApprovals ] = useState( [] );
+	const [ step, setStep ] = useState( 'manifest' );
+	const [ busy, setBusy ] = useState( '' );
+	const [ expanded, setExpanded ] = useState( {} ); // operation_id → receipt|null
+	const [ execExpanded, setExecExpanded ] = useState( {} ); // approval_uid → receipt|null
+	const [ prepareTarget, setPrepareTarget ] = useState( '' );
+	const [ confirm, setConfirm ] = useState( null ); // approval preview
+	const [ rollbackOf, setRollbackOf ] = useState( null ); // approval to roll back
+	const enabled = useMemo(
+		() => ( environments || [] ).filter( ( e ) => e.status === 'enabled' ),
+		[ environments ]
+	);
+
+	const loadList = useCallback( async () => {
+		try {
+			setReleases(
+				( await apiFetch( { path: 'agency/releases?limit=200' } ) )
+					.releases || []
+			);
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	}, [ notify ] );
+
+	const loadDetail = useCallback(
+		async ( uid ) => {
+			if ( ! uid ) {
+				setDetail( null );
+				setPreparations( [] );
+				setApprovals( [] );
+				return;
+			}
+			try {
+				const [ rel, preps, apps ] = await Promise.all( [
+					apiFetch( {
+						path: `agency/releases?release=${ encodeURIComponent(
+							uid
+						) }`,
+					} ),
+					apiFetch( {
+						path: `agency/preparations?release=${ encodeURIComponent(
+							uid
+						) }&limit=200`,
+					} ),
+					apiFetch( { path: 'agency/approvals?limit=200' } ),
+				] );
+				setDetail( rel );
+				setPreparations( preps.preparations || [] );
+				setApprovals(
+					( apps.approvals || [] ).filter(
+						( a ) => a.release_uid === uid
+					)
+				);
+			} catch ( err ) {
+				notify( 'error', errorMessage( err ) );
+			}
+		},
+		[ notify ]
+	);
+
+	useEffect( () => {
+		loadList();
+	}, [ loadList ] );
+	useEffect( () => {
+		loadDetail( selected );
+	}, [ selected, loadDetail ] );
+
+	const refresh = async () => {
+		await loadList();
+		await loadDetail( selected );
+		onChanged();
+	};
+
+	const withdraw = () =>
+		run(
+			`withdraw:${ selected }`,
+			'agency/release-withdraw',
+			{ release: selected },
+			() => __( 'Release withdrawn.', 'dbvc' )
+		);
+
+	const requestPrepare = () => {
+		if ( ! prepareTarget ) {
+			return;
+		}
+		run(
+			`prepare:${ prepareTarget }`,
+			'agency/prepare-request',
+			{ release: selected, target: prepareTarget },
+			( res ) =>
+				sprintf(
+					/* translators: 1: target id, 2: operation id */
+					__( 'Prepare requested on %1$s (%2$s).', 'dbvc' ),
+					prepareTarget,
+					res.operation_id || ''
+				)
+		);
+	};
+
+	const run = async ( key, path, data, success ) => {
+		setBusy( key );
+		try {
+			const res = await apiFetch( { path, method: 'POST', data } );
+			notify( 'success', success( res ) );
+			setConfirm( null );
+			setRollbackOf( null );
+			await refresh();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const toggleReceipt = async ( operationId ) => {
+		if ( expanded[ operationId ] !== undefined ) {
+			setExpanded( ( e ) => ( { ...e, [ operationId ]: undefined } ) );
+			return;
+		}
+		try {
+			const full = await apiFetch( {
+				path: `agency/preparations?operation=${ encodeURIComponent(
+					operationId
+				) }`,
+			} );
+			setExpanded( ( e ) => ( { ...e, [ operationId ]: full } ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+
+	const toggleExecution = async ( approvalUid ) => {
+		if ( execExpanded[ approvalUid ] !== undefined ) {
+			setExecExpanded( ( e ) => ( {
+				...e,
+				[ approvalUid ]: undefined,
+			} ) );
+			return;
+		}
+		try {
+			const full = await apiFetch( {
+				path: `agency/approvals?approval=${ encodeURIComponent(
+					approvalUid
+				) }`,
+			} );
+			setExecExpanded( ( e ) => ( { ...e, [ approvalUid ]: full } ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+
+	const rolledBackOps = useMemo(
+		() =>
+			new Set(
+				approvals
+					.filter(
+						( a ) => a.kind === 'rollback' && a.state !== 'revoked'
+					)
+					.map( ( a ) => a.rolls_back_operation_id )
+			),
+		[ approvals ]
+	);
+	const canRollBack = ( approval ) =>
+		approval.kind !== 'rollback' &&
+		approval.state === 'consumed' &&
+		[ 'applied', 'partial', 'compensated' ].includes(
+			approval.execution_outcome
+		) &&
+		! rolledBackOps.has( approval.operation_id );
+
+	const approvalFor = ( operationId ) =>
+		approvals.find( ( a ) => a.operation_id === operationId );
+
+	if ( ! releases ) {
+		return <p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>;
+	}
+
+	return (
+		<div className="dbvc-ce-grid dbvc-ce-grid--wide">
+			<div className="dbvc-tools-panel">
+				<div className="dbvc-ce-panel__head">
+					<h2>{ __( 'Releases', 'dbvc' ) }</h2>
+				</div>
+				{ releases.length === 0 ? (
+					<p className="dbvc-ce-empty">
+						{ __(
+							'No releases yet. Select outgoing objects in Compare and create one, or use wp dbvc agency release-create.',
+							'dbvc'
+						) }
+					</p>
+				) : (
+					<table className="widefat striped">
+						<thead>
+							<tr>
+								<th>{ __( 'Release', 'dbvc' ) }</th>
+								<th>{ __( 'Source', 'dbvc' ) }</th>
+								<th>{ __( 'State', 'dbvc' ) }</th>
+								<th className="num">
+									{ __( 'Items', 'dbvc' ) }
+								</th>
+								<th>{ __( 'Created', 'dbvc' ) }</th>
+							</tr>
+						</thead>
+						<tbody>
+							{ releases.map( ( rel ) => (
+								<tr
+									key={ rel.release_uid }
+									aria-selected={
+										rel.release_uid === selected
+									}
+									className={
+										rel.release_uid === selected
+											? 'dbvc-ce-row--active'
+											: ''
+									}
+								>
+									<td>
+										<button
+											type="button"
+											className="dbvc-ce-linkbtn"
+											onClick={ () => {
+												setSelected( rel.release_uid );
+												setStep( 'manifest' );
+											} }
+										>
+											{ rel.release_uid }
+										</button>
+										{ rel.note && (
+											<span
+												className="subtle"
+												style={ { display: 'block' } }
+											>
+												{ rel.note }
+											</span>
+										) }
+									</td>
+									<td>
+										<code>{ rel.source }</code>
+									</td>
+									<td>
+										<Badge state={ rel.state } />
+									</td>
+									<td className="num">{ rel.items }</td>
+									<td>
+										<span
+											title={ absoluteTime(
+												rel.created_at
+											) }
+										>
+											{ relative( rel.created_at ) }
+										</span>
+									</td>
+								</tr>
+							) ) }
+						</tbody>
+					</table>
+				) }
+			</div>
+
+			<div className="dbvc-tools-panel">
+				{ ! detail ? (
+					<p className="dbvc-ce-empty">
+						{ __(
+							'Select a release to see its pipeline.',
+							'dbvc'
+						) }
+					</p>
+				) : (
+					<>
+						<div className="dbvc-ce-panel__head">
+							<h2>
+								<code>{ detail.release.release_uid }</code>
+							</h2>
+							<span className="dbvc-ce-asof">
+								<Badge state={ detail.release.state } /> ·{ ' ' }
+								{ detail.release.source } →{ ' ' }
+								{ hashCell( detail.release.digest ) }
+							</span>
+						</div>
+						<ol
+							className="dbvc-ce-steps"
+							aria-label={ __( 'Release pipeline', 'dbvc' ) }
+						>
+							{ STEPPER.map( ( s, i ) => (
+								<li key={ s.key }>
+									<button
+										type="button"
+										aria-current={
+											step === s.key ? 'step' : undefined
+										}
+										className={
+											step === s.key ? 'is-active' : ''
+										}
+										onClick={ () => setStep( s.key ) }
+									>
+										<span className="dbvc-ce-steps__n">
+											{ i + 1 }
+										</span>{ ' ' }
+										{ s.label }
+									</button>
+								</li>
+							) ) }
+						</ol>
+
+						{ step === 'manifest' && (
+							<>
+								<table className="widefat striped">
+									<thead>
+										<tr>
+											<th>{ __( 'Object', 'dbvc' ) }</th>
+											<th>
+												{ __( 'Operation', 'dbvc' ) }
+											</th>
+											<th>{ __( 'After', 'dbvc' ) }</th>
+											<th>{ __( 'Payload', 'dbvc' ) }</th>
+										</tr>
+									</thead>
+									<tbody>
+										{ ( detail.items || [] ).map(
+											( item ) => (
+												<tr
+													key={ `${ item.domain }|${ item.instance_uid }` }
+												>
+													<td>
+														<span className="obj">
+															{
+																item.instance_uid
+															}
+														</span>
+														<code>
+															{ item.domain } ·{ ' ' }
+															{ item.profile }
+														</code>
+													</td>
+													<td>
+														<Badge
+															state={
+																item.operation ===
+																'delete'
+																	? 'unresolved'
+																	: 'directional'
+															}
+														>
+															{ item.operation }
+														</Badge>
+													</td>
+													<td>
+														{ hashCell(
+															item.after_hash
+														) }
+													</td>
+													<td>
+														<Badge
+															state={ payloadTone(
+																item.payload
+															) }
+														>
+															{ item.payload }
+														</Badge>
+													</td>
+												</tr>
+											)
+										) }
+									</tbody>
+								</table>
+								<p className="dbvc-ce-empty">
+									{ detail.release.state === 'sealed'
+										? sprintf(
+												/* translators: %s: seal time */
+												__(
+													'Sealed %s — every payload was verified against the manifest.',
+													'dbvc'
+												),
+												detail.release.sealed_at
+													? relative(
+															detail.release
+																.sealed_at
+													  )
+													: ''
+										  )
+										: __(
+												'Collecting payloads: the source connector supplies the canonical bodies on its own poll. Only a sealed release can be prepared.',
+												'dbvc'
+										  ) }
+								</p>
+								{ detail.release.state === 'sealed' &&
+									onRollout && (
+										<button
+											type="button"
+											className="btn btn--small"
+											onClick={ () =>
+												onRollout( selected )
+											}
+										>
+											{ __( 'Roll out…', 'dbvc' ) }
+										</button>
+									) }
+								{ detail.release.state !== 'withdrawn' && (
+									<button
+										type="button"
+										className="btn btn--small btn--danger"
+										disabled={
+											busy === `withdraw:${ selected }`
+										}
+										onClick={ withdraw }
+									>
+										{ __( 'Withdraw release', 'dbvc' ) }
+									</button>
+								) }
+							</>
+						) }
+
+						{ step === 'prepare' && (
+							<>
+								{ preparations.length === 0 && (
+									<p className="dbvc-ce-empty">
+										{ __(
+											'No prepare requests yet.',
+											'dbvc'
+										) }
+									</p>
+								) }
+								{ preparations.map( ( prep ) => {
+									const receipt =
+										expanded[ prep.operation_id ];
+									return (
+										<div
+											key={ prep.operation_id }
+											className="dbvc-ce-prep"
+										>
+											<div className="dbvc-ce-prep__head">
+												<Badge state={ prep.outcome } />
+												<code>{ prep.target }</code>
+												<span className="subtle">
+													{ prep.ready } ready ·{ ' ' }
+													{ prep.noop } noop ·{ ' ' }
+													{ prep.blocked } blocked
+												</span>
+												{ prep.state === 'received' &&
+													prep.expires_at && (
+														<span className="subtle">
+															{ countdown(
+																prep.expires_at
+															) }
+														</span>
+													) }
+												{ prep.state === 'received' && (
+													<button
+														type="button"
+														className="btn btn--small btn--ghost"
+														aria-expanded={
+															receipt !==
+															undefined
+														}
+														onClick={ () =>
+															toggleReceipt(
+																prep.operation_id
+															)
+														}
+													>
+														{ receipt !== undefined
+															? __(
+																	'Hide receipt',
+																	'dbvc'
+															  )
+															: __(
+																	'Show receipt',
+																	'dbvc'
+															  ) }
+													</button>
+												) }
+											</div>
+											{ receipt && receipt.receipt && (
+												<div className="dbvc-ce-prep__body">
+													{ (
+														receipt.receipt.items ||
+														[]
+													).map( ( item, i ) => (
+														<ReceiptItem
+															key={ i }
+															item={ item }
+														/>
+													) ) }
+													{ receipt.hub_notes && (
+														<p
+															className="dbvc-ce-empty"
+															style={ {
+																paddingBottom: 0,
+															} }
+														>
+															{ sprintf(
+																/* translators: %d: number of items disagreeing with the hub projection */
+																__(
+																	"Hub notes: %d item(s) disagree with the hub's last projection.",
+																	'dbvc'
+																),
+																receipt
+																	.hub_notes
+																	.items_disagreeing_with_hub_projection ??
+																	0
+															) }
+														</p>
+													) }
+												</div>
+											) }
+										</div>
+									);
+								} ) }
+								{ detail.release.state === 'sealed' && (
+									<div
+										className="dbvc-ce-pair"
+										style={ { marginTop: 12 } }
+									>
+										<div className="dbvc-ce-field">
+											<label htmlFor="dbvc-ce-prep-target">
+												{ __(
+													'Request prepare on',
+													'dbvc'
+												) }
+											</label>
+											<select
+												id="dbvc-ce-prep-target"
+												value={ prepareTarget }
+												onChange={ ( e ) =>
+													setPrepareTarget(
+														e.target.value
+													)
+												}
+											>
+												<option value="">
+													{ __(
+														'— target —',
+														'dbvc'
+													) }
+												</option>
+												{ enabled
+													.filter(
+														( e ) =>
+															e.environment_id !==
+															detail.release
+																.source
+													)
+													.map( ( e ) => (
+														<option
+															key={
+																e.environment_id
+															}
+															value={
+																e.environment_id
+															}
+														>
+															{ e.environment_id }
+														</option>
+													) ) }
+											</select>
+										</div>
+										<button
+											type="button"
+											className="btn btn--primary"
+											disabled={
+												! prepareTarget ||
+												busy ===
+													`prepare:${ prepareTarget }`
+											}
+											onClick={ requestPrepare }
+										>
+											{ __( 'Request prepare', 'dbvc' ) }
+										</button>
+									</div>
+								) }
+							</>
+						) }
+
+						{ step === 'approve' && (
+							<>
+								{ preparations.filter(
+									( p ) => p.state === 'received'
+								).length === 0 && (
+									<p className="dbvc-ce-empty">
+										{ __(
+											'No received receipts to approve yet.',
+											'dbvc'
+										) }
+									</p>
+								) }
+								{ preparations
+									.filter( ( p ) => p.state === 'received' )
+									.map( ( prep ) => {
+										const approval = approvalFor(
+											prep.operation_id
+										);
+										const approvable =
+											( prep.outcome === 'ready' ||
+												prep.outcome === 'noop' ) &&
+											countdown( prep.expires_at ) !==
+												__( 'expired', 'dbvc' );
+										return (
+											<div
+												key={ prep.operation_id }
+												className="dbvc-ce-prep"
+											>
+												<div className="dbvc-ce-prep__head">
+													<Badge
+														state={ prep.outcome }
+													/>
+													<code>{ prep.target }</code>
+													{ approval ? (
+														<Badge
+															state={
+																approval.state
+															}
+														/>
+													) : (
+														<span className="subtle">
+															{ countdown(
+																prep.expires_at
+															) }
+														</span>
+													) }
+													{ ! approval &&
+														approvable && (
+															<button
+																type="button"
+																className="btn btn--small btn--primary"
+																onClick={ () =>
+																	setConfirm(
+																		{
+																			operation_id:
+																				prep.operation_id,
+																			target: prep.target,
+																			target_epoch:
+																				prep.target_epoch,
+																			receipt_digest:
+																				prep.receipt_digest,
+																			release_digest:
+																				detail
+																					.release
+																					.digest,
+																			expires_at:
+																				prep.expires_at,
+																		}
+																	)
+																}
+															>
+																{ __(
+																	'Approve…',
+																	'dbvc'
+																) }
+															</button>
+														) }
+													{ approval &&
+														approval.state ===
+															'approved' && (
+															<button
+																type="button"
+																className="btn btn--small btn--ghost"
+																disabled={
+																	busy ===
+																	`revoke:${ approval.approval_uid }`
+																}
+																onClick={ () =>
+																	run(
+																		`revoke:${ approval.approval_uid }`,
+																		'agency/revoke-approval',
+																		{
+																			approval:
+																				approval.approval_uid,
+																			reason: 'revoked from the page',
+																		},
+																		() =>
+																			__(
+																				'Approval revoked.',
+																				'dbvc'
+																			)
+																	)
+																}
+															>
+																{ __(
+																	'Revoke',
+																	'dbvc'
+																) }
+															</button>
+														) }
+												</div>
+												{ ! approvable &&
+													! approval && (
+														<p
+															className="dbvc-ce-empty"
+															style={ {
+																padding:
+																	'4px 0 0',
+															} }
+														>
+															{ __(
+																'Not approvable: the receipt is blocked or expired. Prepare again.',
+																'dbvc'
+															) }
+														</p>
+													) }
+											</div>
+										);
+									} ) }
+							</>
+						) }
+
+						{ step === 'execute' && (
+							<>
+								<p
+									className="dbvc-ce-empty"
+									style={ { paddingTop: 0 } }
+								>
+									{ __(
+										"Execution is not a button here: an approved operation runs on the target's next poll, behind its own apply gate. This shows the receipt once it has.",
+										'dbvc'
+									) }
+								</p>
+								{ approvals.length === 0 && (
+									<p className="dbvc-ce-empty">
+										{ __(
+											'No approvals for this release yet.',
+											'dbvc'
+										) }
+									</p>
+								) }
+								{ approvals.map( ( approval ) => {
+									const exec =
+										execExpanded[ approval.approval_uid ];
+									return (
+										<div
+											key={ approval.approval_uid }
+											className="dbvc-ce-prep"
+										>
+											<div className="dbvc-ce-prep__head">
+												<Badge
+													state={ approval.state }
+												/>
+												<code>{ approval.target }</code>
+												{ approval.execution_outcome ? (
+													<Badge
+														state={
+															approval.execution_outcome
+														}
+													/>
+												) : (
+													<span className="subtle">
+														{ __(
+															"awaiting the target's poll",
+															'dbvc'
+														) }
+													</span>
+												) }
+												{ approval.executed_at && (
+													<span
+														className="subtle"
+														title={ absoluteTime(
+															approval.executed_at
+														) }
+													>
+														{ relative(
+															approval.executed_at
+														) }
+													</span>
+												) }
+												{ approval.kind ===
+													'rollback' && (
+													<Badge state="withdrawn">
+														{ __(
+															'rollback',
+															'dbvc'
+														) }
+													</Badge>
+												) }
+												{ approval.execution_outcome && (
+													<button
+														type="button"
+														className="btn btn--small btn--ghost"
+														aria-expanded={
+															exec !== undefined
+														}
+														onClick={ () =>
+															toggleExecution(
+																approval.approval_uid
+															)
+														}
+													>
+														{ exec !== undefined
+															? __(
+																	'Hide receipt',
+																	'dbvc'
+															  )
+															: __(
+																	'Show receipt',
+																	'dbvc'
+															  ) }
+													</button>
+												) }
+												{ canRollBack( approval ) && (
+													<button
+														type="button"
+														className="btn btn--small btn--danger"
+														onClick={ () =>
+															setRollbackOf(
+																approval
+															)
+														}
+													>
+														{ __(
+															'Roll back…',
+															'dbvc'
+														) }
+													</button>
+												) }
+											</div>
+											{ exec &&
+												exec.execution_receipt && (
+													<div className="dbvc-ce-prep__body">
+														<dl className="dbvc-ce-kv">
+															<dt>
+																{ __(
+																	'Counts',
+																	'dbvc'
+																) }
+															</dt>
+															<dd>
+																{ Object.entries(
+																	exec
+																		.execution_receipt
+																		.counts ||
+																		{}
+																)
+																	.filter(
+																		( [
+																			,
+																			v,
+																		] ) =>
+																			v >
+																			0
+																	)
+																	.map(
+																		( [
+																			k,
+																			v,
+																		] ) =>
+																			`${ v } ${ k }`
+																	)
+																	.join(
+																		' · '
+																	) || '—' }
+															</dd>
+														</dl>
+														{ (
+															exec
+																.execution_receipt
+																.items || []
+														).map( ( item, i ) => (
+															<div
+																key={ i }
+																className="dbvc-ce-receipt-item"
+															>
+																<div className="dbvc-ce-receipt-item__head">
+																	<Badge
+																		state={
+																			item.outcome
+																		}
+																	/>
+																	<code>
+																		{
+																			item.instance_uid
+																		}
+																	</code>
+																	<span className="subtle">
+																		{ item.verified
+																			? __(
+																					'verified',
+																					'dbvc'
+																			  )
+																			: __(
+																					'not verified',
+																					'dbvc'
+																			  ) }
+																		{ item.error
+																			? ` · ${ item.error }`
+																			: '' }
+																	</span>
+																</div>
+															</div>
+														) ) }
+														{ Array.isArray(
+															exec
+																.execution_receipt
+																.warnings
+														) &&
+															exec.execution_receipt.warnings.map(
+																( w, i ) => (
+																	<p
+																		key={
+																			i
+																		}
+																		className="dbvc-inline-notice dbvc-inline-notice--warning"
+																	>
+																		<span>
+																			{
+																				w
+																			}
+																		</span>
+																	</p>
+																)
+															) }
+													</div>
+												) }
+										</div>
+									);
+								} ) }
+							</>
+						) }
+					</>
+				) }
+			</div>
+
+			{ confirm && (
+				<Modal
+					title={ __( 'Approve this operation?', 'dbvc' ) }
+					onClose={ () => setConfirm( null ) }
+				>
+					<p>
+						{ __(
+							'Approving binds the exact release and receipt to this target and epoch. The target executes it on its next poll only if its apply gate is on; nothing is written now.',
+							'dbvc'
+						) }
+					</p>
+					<dl className="dbvc-ce-kv">
+						<dt>{ __( 'Target · epoch', 'dbvc' ) }</dt>
+						<dd>
+							<code>{ confirm.target }</code> ·{ ' ' }
+							<code>{ epochShort( confirm.target_epoch ) }</code>
+						</dd>
+						<dt>{ __( 'Release digest', 'dbvc' ) }</dt>
+						<dd>{ hashCell( confirm.release_digest ) }</dd>
+						<dt>{ __( 'Receipt digest', 'dbvc' ) }</dt>
+						<dd>{ hashCell( confirm.receipt_digest ) }</dd>
+						<dt>{ __( 'Receipt', 'dbvc' ) }</dt>
+						<dd>{ countdown( confirm.expires_at ) }</dd>
+					</dl>
+					<div className="dbvc-ce-modal__foot">
+						<button
+							type="button"
+							className="btn"
+							onClick={ () => setConfirm( null ) }
+						>
+							{ __( 'Cancel', 'dbvc' ) }
+						</button>
+						<button
+							type="button"
+							className="btn btn--primary"
+							disabled={
+								busy === `approve:${ confirm.operation_id }`
+							}
+							onClick={ () =>
+								run(
+									`approve:${ confirm.operation_id }`,
+									'agency/approve',
+									{
+										operation: confirm.operation_id,
+										note: 'approved from the page',
+									},
+									() => __( 'Operation approved.', 'dbvc' )
+								)
+							}
+						>
+							{ __( 'Approve', 'dbvc' ) }
+						</button>
+					</div>
+				</Modal>
+			) }
+			{ rollbackOf && (
+				<Modal
+					title={ __( 'Roll back this operation?', 'dbvc' ) }
+					onClose={ () => setRollbackOf( null ) }
+				>
+					<p>
+						{ __(
+							"A reviewed rollback asks the target to restore the before image it journalled for this operation, guarded by the operation's after fingerprint. A container that changed since the apply is reported as a restore conflict and is never overwritten; nothing is written now.",
+							'dbvc'
+						) }
+					</p>
+					<dl className="dbvc-ce-kv">
+						<dt>{ __( 'Operation', 'dbvc' ) }</dt>
+						<dd>
+							<code>{ rollbackOf.operation_id }</code>
+						</dd>
+						<dt>{ __( 'Target', 'dbvc' ) }</dt>
+						<dd>
+							<code>{ rollbackOf.target }</code>
+						</dd>
+						<dt>{ __( 'Reverses', 'dbvc' ) }</dt>
+						<dd>
+							<Badge state={ rollbackOf.execution_outcome } />
+						</dd>
+					</dl>
+					<div className="dbvc-ce-modal__foot">
+						<button
+							type="button"
+							className="btn"
+							onClick={ () => setRollbackOf( null ) }
+						>
+							{ __( 'Cancel', 'dbvc' ) }
+						</button>
+						<button
+							type="button"
+							className="btn btn--danger"
+							disabled={
+								busy === `rollback:${ rollbackOf.operation_id }`
+							}
+							onClick={ () =>
+								run(
+									`rollback:${ rollbackOf.operation_id }`,
+									'agency/rollback',
+									{
+										operation: rollbackOf.operation_id,
+										note: 'rolled back from the page',
+									},
+									( res ) =>
+										sprintf(
+											/* translators: %s: rollback operation id */
+											__(
+												'Rollback %s created; the target restores on its next poll.',
+												'dbvc'
+											),
+											res.operation_id || ''
+										)
+								)
+							}
+						>
+							{ __( 'Roll back', 'dbvc' ) }
+						</button>
+					</div>
+				</Modal>
+			) }
+		</div>
+	);
+}
+
+const OUTBOX_STATES = [ 'pending', 'delivered', 'acked', 'released' ];
+
+/**
+ * Connector Activity: the site's own outbox (produced observations), the inbox
+ * of received observations (never applied), and the release receipts + execution
+ * journal it produced. Reads only; the apply-gate state is a banner on Releases.
+ *
+ * @param {Object}   props
+ * @param {Object}   props.connector Connector status report (apply gate, gate state).
+ * @param {Function} props.notify
+ * @param {Function} props.onRun     Runner dispatcher shared with the header.
+ * @param {string}   props.running   Key of the runner in flight, if any.
+ */
+function ConnectorActivity( { connector, notify, onRun, running } ) {
+	const [ panel, setPanel ] = useState( 'activity' );
+	const [ outbox, setOutbox ] = useState( null );
+	const [ inbox, setInbox ] = useState( null );
+	const [ preparations, setPreparations ] = useState( null );
+	const [ operations, setOperations ] = useState( null );
+	const [ outboxFilter, setOutboxFilter ] = useState( '' );
+	const [ domainFilter, setDomainFilter ] = useState( '' );
+	const [ expanded, setExpanded ] = useState( {} );
+	const [ journalExpanded, setJournalExpanded ] = useState( {} );
+	const applyEnabled = !! connector?.connection?.apply_enabled;
+
+	const load = useCallback( async () => {
+		try {
+			const [ ob, ib, prep, ops ] = await Promise.all( [
+				apiFetch( { path: 'connected/outbox?limit=200' } ),
+				apiFetch( { path: 'connected/inbox?limit=200' } ),
+				apiFetch( { path: 'connected/preparations?limit=200' } ),
+				apiFetch( { path: 'connected/operations?limit=200' } ),
+			] );
+			setOutbox( ob );
+			setInbox( ib );
+			setPreparations( prep );
+			setOperations( ops );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	}, [ notify ] );
+
+	useEffect( () => {
+		load();
+	}, [ load ] );
+
+	const outboxRows = useMemo( () => {
+		let rows = outbox?.events || [];
+		if ( outboxFilter ) {
+			rows = rows.filter( ( r ) => r.delivery_state === outboxFilter );
+		}
+		if ( domainFilter ) {
+			rows = rows.filter( ( r ) => r.domain === domainFilter );
+		}
+		return rows;
+	}, [ outbox, outboxFilter, domainFilter ] );
+
+	const inboxBySource = useMemo( () => {
+		const groups = {};
+		( inbox?.items || [] ).forEach( ( item ) => {
+			groups[ item.source_environment_id ] =
+				groups[ item.source_environment_id ] || [];
+			groups[ item.source_environment_id ].push( item );
+		} );
+		return Object.entries( groups );
+	}, [ inbox ] );
+
+	const toggleReceipt = async ( operationId ) => {
+		if ( expanded[ operationId ] !== undefined ) {
+			setExpanded( ( e ) => ( { ...e, [ operationId ]: undefined } ) );
+			return;
+		}
+		try {
+			const full = await apiFetch( {
+				path: `connected/preparations?operation=${ encodeURIComponent(
+					operationId
+				) }`,
+			} );
+			setExpanded( ( e ) => ( { ...e, [ operationId ]: full } ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+
+	const toggleJournal = async ( operationId ) => {
+		if ( journalExpanded[ operationId ] !== undefined ) {
+			setJournalExpanded( ( e ) => ( {
+				...e,
+				[ operationId ]: undefined,
+			} ) );
+			return;
+		}
+		try {
+			const full = await apiFetch( {
+				path: `connected/operations?operation=${ encodeURIComponent(
+					operationId
+				) }`,
+			} );
+			setJournalExpanded( ( e ) => ( { ...e, [ operationId ]: full } ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+
+	const panels = [
+		{ key: 'activity', label: __( 'Activity', 'dbvc' ) },
+		{ key: 'inbox', label: __( 'Inbox', 'dbvc' ) },
+		{ key: 'releases', label: __( 'Releases', 'dbvc' ) },
+	];
+
+	return (
+		<div className="dbvc-tools-panel">
+			<div className="dbvc-ce-panel__head">
+				<h2>{ __( 'Connector activity', 'dbvc' ) }</h2>
+				<span className="dbvc-ce-asof">
+					{ __(
+						"this site's own outbox, inbox and release receipts",
+						'dbvc'
+					) }
+				</span>
+			</div>
+			<nav
+				className="dbvc-section-nav"
+				aria-label={ __( 'Activity panels', 'dbvc' ) }
+				style={ { marginBottom: 12 } }
+			>
+				{ panels.map( ( p ) => (
+					<button
+						key={ p.key }
+						type="button"
+						aria-current={ panel === p.key ? 'page' : undefined }
+						onClick={ () => setPanel( p.key ) }
+					>
+						{ p.label }
+					</button>
+				) ) }
+			</nav>
+
+			{ panel === 'activity' && (
+				<>
+					<div
+						className="dbvc-ce-chips"
+						role="group"
+						aria-label={ __( 'Filter outbox', 'dbvc' ) }
+					>
+						{ OUTBOX_STATES.map( ( state ) => (
+							<button
+								key={ state }
+								type="button"
+								className="dbvc-status-badge"
+								aria-pressed={ outboxFilter === state }
+								onClick={ () =>
+									setOutboxFilter(
+										outboxFilter === state ? '' : state
+									)
+								}
+							>
+								<span className="n">
+									{ outbox?.counts?.[ state ] ?? 0 }
+								</span>{ ' ' }
+								{ state }
+							</button>
+						) ) }
+						{ DOMAINS.map( ( d ) => (
+							<button
+								key={ d }
+								type="button"
+								className="dbvc-status-badge"
+								aria-pressed={ domainFilter === d }
+								onClick={ () =>
+									setDomainFilter(
+										domainFilter === d ? '' : d
+									)
+								}
+							>
+								{ d }
+							</button>
+						) ) }
+						<button
+							type="button"
+							className="btn btn--small btn--ghost"
+							disabled={ running === 'reconcile' }
+							onClick={ () =>
+								onRun( {
+									key: 'reconcile',
+									label: __( 'Reconcile', 'dbvc' ),
+									role: 'connector',
+									path: 'connected/reconcile',
+									data: domainFilter
+										? { domain: domainFilter }
+										: {},
+									after: load,
+								} )
+							}
+						>
+							{ domainFilter
+								? sprintf(
+										/* translators: %s: domain */
+										__( 'Reconcile %s', 'dbvc' ),
+										domainFilter
+								  )
+								: __( 'Reconcile all', 'dbvc' ) }
+						</button>
+					</div>
+					{ ! outbox && (
+						<p className="dbvc-ce-loading">
+							{ __( 'Loading…', 'dbvc' ) }
+						</p>
+					) }
+					{ outbox && outboxRows.length === 0 && (
+						<p className="dbvc-ce-empty">
+							{ __(
+								'No outbox events for this filter.',
+								'dbvc'
+							) }
+						</p>
+					) }
+					{ outbox && outboxRows.length > 0 && (
+						<table className="widefat striped">
+							<thead>
+								<tr>
+									<th className="num">
+										{ __( 'Seq', 'dbvc' ) }
+									</th>
+									<th>{ __( 'Object', 'dbvc' ) }</th>
+									<th>{ __( 'Origin', 'dbvc' ) }</th>
+									<th>{ __( 'Hash', 'dbvc' ) }</th>
+									<th>{ __( 'Delivery', 'dbvc' ) }</th>
+									<th>{ __( 'Observed', 'dbvc' ) }</th>
+								</tr>
+							</thead>
+							<tbody>
+								{ outboxRows.map( ( row ) => (
+									<tr key={ row.event_id }>
+										<td className="num">
+											{ row.sequence }
+										</td>
+										<td>
+											<span className="obj">
+												{ row.instance_uid }
+											</span>
+											<code>
+												{ row.domain }
+												{ row.exists === 'no'
+													? ' · absent'
+													: '' }
+											</code>
+										</td>
+										<td>
+											{ row.origin ? (
+												<Badge state="directional">
+													{ row.origin }
+												</Badge>
+											) : (
+												<span className="subtle">
+													—
+												</span>
+											) }
+										</td>
+										<td>{ hashCell( row.hash ) }</td>
+										<td>
+											<Badge
+												state={ row.delivery_state }
+											/>
+										</td>
+										<td>
+											<span
+												title={ absoluteTime(
+													row.created_at
+												) }
+											>
+												{ relative( row.created_at ) }
+											</span>
+										</td>
+									</tr>
+								) ) }
+							</tbody>
+						</table>
+					) }
+				</>
+			) }
+
+			{ panel === 'inbox' && (
+				<>
+					<div className="dbvc-inline-notice dbvc-inline-notice--info">
+						<p>
+							{ __(
+								'Received observations are stored for comparison and never applied to this site. Delivery is acknowledged only after the row is stored.',
+								'dbvc'
+							) }
+						</p>
+					</div>
+					{ ! inbox && (
+						<p className="dbvc-ce-loading">
+							{ __( 'Loading…', 'dbvc' ) }
+						</p>
+					) }
+					{ inbox && inboxBySource.length === 0 && (
+						<p className="dbvc-ce-empty">
+							{ __( 'No received observations.', 'dbvc' ) }
+						</p>
+					) }
+					{ inboxBySource.map( ( [ sourceId, items ] ) => (
+						<div key={ sourceId } style={ { marginBottom: 12 } }>
+							<h3 style={ { margin: '0 0 6px', fontSize: 13 } }>
+								<code>{ sourceId }</code>{ ' ' }
+								<span className="subtle">
+									{ sprintf(
+										/* translators: %d: number of received observations */
+										_n(
+											'%d observation',
+											'%d observations',
+											items.length,
+											'dbvc'
+										),
+										items.length
+									) }
+								</span>
+							</h3>
+							<table className="widefat striped">
+								<thead>
+									<tr>
+										<th className="num">
+											{ __( 'Seq', 'dbvc' ) }
+										</th>
+										<th>{ __( 'Object', 'dbvc' ) }</th>
+										<th>{ __( 'Hash', 'dbvc' ) }</th>
+										<th>{ __( 'Received', 'dbvc' ) }</th>
+										<th>{ __( 'Acked', 'dbvc' ) }</th>
+									</tr>
+								</thead>
+								<tbody>
+									{ items.map( ( item ) => (
+										<tr key={ item.delivery_id }>
+											<td className="num">
+												{ item.sequence }
+											</td>
+											<td>
+												<span className="obj">
+													{ item.instance_uid }
+												</span>
+												<code>
+													{ item.domain } ·{ ' ' }
+													{ item.profile }
+												</code>
+											</td>
+											<td>
+												{ hashCell( item.hash ) }
+												{ item.exists === 'no' && (
+													<span className="subtle">
+														{ ' ' }
+														{ __(
+															'absent',
+															'dbvc'
+														) }
+													</span>
+												) }
+											</td>
+											<td>
+												<span
+													title={ absoluteTime(
+														item.received_at
+													) }
+												>
+													{ relative(
+														item.received_at
+													) }
+												</span>
+											</td>
+											<td>
+												{ item.acked_at ? (
+													<Badge state="acked">
+														{ __(
+															'acked',
+															'dbvc'
+														) }
+													</Badge>
+												) : (
+													<span className="subtle">
+														{ __(
+															'pending',
+															'dbvc'
+														) }
+													</span>
+												) }
+											</td>
+										</tr>
+									) ) }
+								</tbody>
+							</table>
+						</div>
+					) ) }
+				</>
+			) }
+
+			{ panel === 'releases' && (
+				<>
+					{ applyEnabled ? (
+						<div className="dbvc-inline-notice dbvc-inline-notice--warning">
+							<p>
+								<strong>
+									{ __( 'Apply is on.', 'dbvc' ) }
+								</strong>{ ' ' }
+								{ __(
+									'Approved releases are executed here on the next poll with a conditional, journalled, verified write.',
+									'dbvc'
+								) }
+							</p>
+						</div>
+					) : (
+						<div className="dbvc-inline-notice dbvc-inline-notice--info">
+							<p>
+								<strong>
+									{ __(
+										'Apply is off — approved releases are not executed here.',
+										'dbvc'
+									) }
+								</strong>{ ' ' }
+								{ __(
+									'Prepare receipts are still produced as dry runs.',
+									'dbvc'
+								) }
+							</p>
+						</div>
+					) }
+
+					<h3 style={ { fontSize: 13, margin: '12px 0 6px' } }>
+						{ __( 'Prepare receipts', 'dbvc' ) }
+					</h3>
+					{ ! preparations && (
+						<p className="dbvc-ce-loading">
+							{ __( 'Loading…', 'dbvc' ) }
+						</p>
+					) }
+					{ preparations &&
+						( preparations.preparations || [] ).length === 0 && (
+							<p className="dbvc-ce-empty">
+								{ __(
+									'No prepare receipts produced yet.',
+									'dbvc'
+								) }
+							</p>
+						) }
+					{ ( preparations?.preparations || [] ).map( ( prep ) => {
+						const full = expanded[ prep.operation_id ];
+						return (
+							<div
+								key={ prep.operation_id }
+								className="dbvc-ce-prep"
+							>
+								<div className="dbvc-ce-prep__head">
+									<Badge state={ prep.outcome } />
+									<code>{ prep.release_uid }</code>
+									<span className="subtle">
+										{ prep.ready } ready · { prep.noop }{ ' ' }
+										noop · { prep.blocked } blocked
+									</span>
+									<span className="subtle">
+										{ countdown( prep.expires_at ) }
+									</span>
+									{ prep.reported_at ? (
+										<Badge state="received">
+											{ __( 'reported', 'dbvc' ) }
+										</Badge>
+									) : (
+										<span className="subtle">
+											{ prep.report_error ||
+												__( 'unreported', 'dbvc' ) }
+										</span>
+									) }
+									<button
+										type="button"
+										className="btn btn--small btn--ghost"
+										aria-expanded={ full !== undefined }
+										onClick={ () =>
+											toggleReceipt( prep.operation_id )
+										}
+									>
+										{ full !== undefined
+											? __( 'Hide items', 'dbvc' )
+											: __( 'Show items', 'dbvc' ) }
+									</button>
+								</div>
+								{ full && full.receipt && (
+									<div className="dbvc-ce-prep__body">
+										{ ( full.receipt.items || [] ).map(
+											( item, i ) => (
+												<ReceiptItem
+													key={ i }
+													item={ item }
+												/>
+											)
+										) }
+									</div>
+								) }
+							</div>
+						);
+					} ) }
+
+					<h3 style={ { fontSize: 13, margin: '16px 0 6px' } }>
+						{ __( 'Execution journal', 'dbvc' ) }
+					</h3>
+					{ operations &&
+						( operations.operations || [] ).length === 0 && (
+							<p className="dbvc-ce-empty">
+								{ __(
+									'Nothing has executed on this site.',
+									'dbvc'
+								) }
+							</p>
+						) }
+					{ ( operations?.operations || [] ).map( ( op ) => {
+						const full = journalExpanded[ op.operation_id ];
+						return (
+							<div
+								key={ op.operation_id }
+								className="dbvc-ce-prep"
+							>
+								<div className="dbvc-ce-prep__head">
+									<Badge state={ op.state } />
+									<Badge state={ op.outcome } />
+									<code>{ op.release_uid }</code>
+									<span className="subtle">
+										{ op.applied } applied · { op.stale }{ ' ' }
+										stale · { op.failed } failed
+									</span>
+									{ op.finished_at && (
+										<span
+											className="subtle"
+											title={ absoluteTime(
+												op.finished_at
+											) }
+										>
+											{ relative( op.finished_at ) }
+										</span>
+									) }
+									{ ! op.reported_at && op.report_error && (
+										<Badge state="failed">
+											{ op.report_error }
+										</Badge>
+									) }
+									<button
+										type="button"
+										className="btn btn--small btn--ghost"
+										aria-expanded={ full !== undefined }
+										onClick={ () =>
+											toggleJournal( op.operation_id )
+										}
+									>
+										{ full !== undefined
+											? __( 'Hide steps', 'dbvc' )
+											: __( 'Show steps', 'dbvc' ) }
+									</button>
+								</div>
+								{ full &&
+									Array.isArray(
+										full.execution_receipt?.journal
+									) && (
+										<div className="dbvc-ce-prep__body">
+											<ol className="dbvc-ce-journal">
+												{ full.execution_receipt.journal.map(
+													( entry, i ) => (
+														<li key={ i }>
+															{ entry.container && (
+																<code>
+																	{
+																		entry.container
+																	}
+																</code>
+															) }{ ' ' }
+															{ entry.step }
+															{ entry.result
+																? ` → ${ entry.result }`
+																: '' }
+															{ entry.storage_key
+																? ` (${ entry.storage_key })`
+																: '' }
+														</li>
+													)
+												) }
+											</ol>
+										</div>
+									) }
+							</div>
+						);
+					} ) }
+				</>
+			) }
+		</div>
+	);
+}
+
+/**
  * Per-target delivery queues as "astage 7 pending · 0 acked", oldest age when pending.
  *
  * @param {Object} deliveries Map of target id to counters.
@@ -4274,6 +6271,961 @@ function Settings( { overview, onSaved, notify } ) {
 	);
 }
 
+/* ---------- Rollouts ---------- */
+
+function cohortLabel( index ) {
+	return index === 0
+		? __( 'Canary', 'dbvc' )
+		: sprintf(
+				/* translators: %d: cohort number (2, 3, …) */
+				__( 'Cohort %d', 'dbvc' ),
+				index + 1
+		  );
+}
+
+function Rollouts( { environments, preset, notify, onChanged } ) {
+	const [ rollouts, setRollouts ] = useState( null );
+	const [ releasesList, setReleasesList ] = useState( [] );
+	const [ selected, setSelected ] = useState( '' );
+	const [ detail, setDetail ] = useState( null ); // { rollout, targets }
+	const [ busy, setBusy ] = useState( '' );
+	const [ composing, setComposing ] = useState( false );
+	const [ composeRelease, setComposeRelease ] = useState( preset || '' );
+	const [ plan, setPlan ] = useState( {} ); // environment_id → cohort index (string)
+	const [ note, setNote ] = useState( '' );
+	const [ confirmWithdraw, setConfirmWithdraw ] = useState( false );
+	const [ evidence, setEvidence ] = useState( {} ); // approval_uid → inspector payload|undefined
+	const [ pruning, setPruning ] = useState( false );
+	const [ pruneDays, setPruneDays ] = useState( 30 );
+	const [ pruneInfo, setPruneInfo ] = useState( null ); // dry-run result
+
+	const enabled = useMemo(
+		() => ( environments || [] ).filter( ( e ) => e.status === 'enabled' ),
+		[ environments ]
+	);
+	const sealed = useMemo(
+		() => releasesList.filter( ( r ) => r.state === 'sealed' ),
+		[ releasesList ]
+	);
+	const composeSource = useMemo(
+		() =>
+			sealed.find( ( r ) => r.release_uid === composeRelease )?.source ||
+			'',
+		[ sealed, composeRelease ]
+	);
+	const assignable = useMemo(
+		() => enabled.filter( ( e ) => e.environment_id !== composeSource ),
+		[ enabled, composeSource ]
+	);
+
+	const loadList = useCallback( async () => {
+		try {
+			const [ list, rels ] = await Promise.all( [
+				apiFetch( { path: 'agency/rollouts?limit=200' } ),
+				apiFetch( { path: 'agency/releases?limit=200' } ),
+			] );
+			setRollouts( list.rollouts || [] );
+			setReleasesList( rels.releases || [] );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	}, [ notify ] );
+
+	const loadDetail = useCallback(
+		async ( uid ) => {
+			if ( ! uid ) {
+				setDetail( null );
+				return;
+			}
+			try {
+				setDetail(
+					await apiFetch( {
+						path: `agency/rollouts?rollout=${ encodeURIComponent(
+							uid
+						) }`,
+					} )
+				);
+			} catch ( err ) {
+				notify( 'error', errorMessage( err ) );
+			}
+		},
+		[ notify ]
+	);
+
+	useEffect( () => {
+		loadList();
+	}, [ loadList ] );
+	useEffect( () => {
+		loadDetail( selected );
+	}, [ selected, loadDetail ] );
+	useEffect( () => {
+		if ( preset ) {
+			setComposing( true );
+			setComposeRelease( preset );
+		}
+	}, [ preset ] );
+
+	const refresh = async () => {
+		await loadList();
+		await loadDetail( selected );
+		onChanged();
+	};
+
+	const run = async ( key, path, data, success, after ) => {
+		setBusy( key );
+		try {
+			const res = await apiFetch( { path, method: 'POST', data } );
+			notify( 'success', success( res ) );
+			if ( after ) {
+				after( res );
+			}
+			await refresh();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const cohortsFromPlan = () => {
+		const byIndex = {};
+		Object.keys( plan ).forEach( ( env ) => {
+			const idx = plan[ env ];
+			if ( idx === '' || idx === undefined || idx === null ) {
+				return;
+			}
+			const i = Number( idx );
+			byIndex[ i ] = byIndex[ i ] || [];
+			byIndex[ i ].push( env );
+		} );
+		return Object.keys( byIndex )
+			.map( Number )
+			.sort( ( a, b ) => a - b )
+			.map( ( i ) => byIndex[ i ] );
+	};
+
+	const cohorts = cohortsFromPlan();
+	const canCreate = !! composeRelease && cohorts.length > 0;
+
+	const create = () =>
+		run(
+			'create',
+			'agency/rollout-create',
+			{ release: composeRelease, cohorts, note },
+			( res ) =>
+				sprintf(
+					/* translators: %s: rollout id */
+					__( 'Rollout %s created.', 'dbvc' ),
+					res.rollout?.rollout_uid || ''
+				),
+			( res ) => {
+				setComposing( false );
+				setPlan( {} );
+				setNote( '' );
+				setComposeRelease( '' );
+				setSelected( res.rollout?.rollout_uid || '' );
+			}
+		);
+
+	const advance = () =>
+		run(
+			`advance:${ selected }`,
+			'agency/rollout-advance',
+			{ rollout: selected },
+			() => __( 'Rollout advanced.', 'dbvc' )
+		);
+	const pause = () =>
+		run(
+			`pause:${ selected }`,
+			'agency/rollout-pause',
+			{ rollout: selected },
+			() => __( 'Rollout paused; later cohorts will not start.', 'dbvc' )
+		);
+	const resume = () =>
+		run(
+			`resume:${ selected }`,
+			'agency/rollout-resume',
+			{ rollout: selected },
+			() => __( 'Rollout resumed.', 'dbvc' )
+		);
+	const withdraw = () =>
+		run(
+			`withdraw:${ selected }`,
+			'agency/rollout-withdraw',
+			{ rollout: selected },
+			() => __( 'Rollout withdrawn.', 'dbvc' ),
+			() => setConfirmWithdraw( false )
+		);
+	const retry = ( target ) =>
+		run(
+			`retry:${ target }`,
+			'agency/rollout-retry',
+			{ rollout: selected, target },
+			() =>
+				sprintf(
+					/* translators: %s: target environment id */
+					__(
+						'Target %s reset to pending; resume to re-drive it.',
+						'dbvc'
+					),
+					target
+				)
+		);
+
+	const toggleEvidence = async ( approvalUid ) => {
+		if ( ! approvalUid ) {
+			return;
+		}
+		if ( evidence[ approvalUid ] !== undefined ) {
+			setEvidence( ( e ) => ( { ...e, [ approvalUid ]: undefined } ) );
+			return;
+		}
+		try {
+			const full = await apiFetch( {
+				path: `agency/approvals?approval=${ encodeURIComponent(
+					approvalUid
+				) }`,
+			} );
+			setEvidence( ( e ) => ( { ...e, [ approvalUid ]: full } ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+
+	const previewPrune = async ( days ) => {
+		try {
+			setPruneInfo(
+				await apiFetch( {
+					path: 'agency/rollout-prune',
+					method: 'POST',
+					data: { days: Number( days ), dry_run: true },
+				} )
+			);
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+	const openPrune = () => {
+		setPruning( true );
+		setPruneInfo( null );
+		previewPrune( pruneDays );
+	};
+	const doPrune = async () => {
+		setBusy( 'prune' );
+		try {
+			const res = await apiFetch( {
+				path: 'agency/rollout-prune',
+				method: 'POST',
+				data: { days: Number( pruneDays ), dry_run: false },
+			} );
+			notify(
+				'success',
+				sprintf(
+					/* translators: %d: number of rollouts removed */
+					__( 'Pruned %d finished rollout(s).', 'dbvc' ),
+					res.pruned || 0
+				)
+			);
+			setPruning( false );
+			setPruneInfo( null );
+			setSelected( '' );
+			setDetail( null );
+			await loadList();
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	if ( ! rollouts ) {
+		return <p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>;
+	}
+
+	const rollout = detail?.rollout || null;
+	const targets = detail?.targets || [];
+	const byCohort = {};
+	targets.forEach( ( t ) => {
+		byCohort[ t.cohort ] = byCohort[ t.cohort ] || [];
+		byCohort[ t.cohort ].push( t );
+	} );
+	const cohortIndexes = Object.keys( byCohort )
+		.map( Number )
+		.sort( ( a, b ) => a - b );
+
+	return (
+		<div className="dbvc-ce-grid dbvc-ce-grid--wide">
+			<div className="dbvc-tools-panel">
+				<div className="dbvc-ce-panel__head">
+					<h2>{ __( 'Rollouts', 'dbvc' ) }</h2>
+					<div className="dbvc-ce-actions">
+						<button
+							type="button"
+							className="button"
+							onClick={ openPrune }
+						>
+							{ __( 'Prune finished…', 'dbvc' ) }
+						</button>
+						<button
+							type="button"
+							className="button"
+							onClick={ () => setComposing( ( c ) => ! c ) }
+							aria-expanded={ composing }
+						>
+							{ composing
+								? __( 'Close', 'dbvc' )
+								: __( 'New rollout…', 'dbvc' ) }
+						</button>
+					</div>
+				</div>
+				<p className="dbvc-ce-hint">
+					{ __(
+						'A fleet rollout stages one sealed release across ordered cohorts of targets — the canary first. Each target is an ordinary single-environment operation; a cohort opens the next only once every target verifies, and one failure pauses the rest. It is not one distributed transaction.',
+						'dbvc'
+					) }
+				</p>
+				{ composing && (
+					<div className="dbvc-ce-rollout-composer">
+						<div className="dbvc-ce-field">
+							<label htmlFor="dbvc-ce-rollout-release">
+								{ __( 'Sealed release', 'dbvc' ) }
+							</label>
+							<select
+								id="dbvc-ce-rollout-release"
+								value={ composeRelease }
+								onChange={ ( e ) =>
+									setComposeRelease( e.target.value )
+								}
+							>
+								<option value="">
+									{ __( 'Select a release…', 'dbvc' ) }
+								</option>
+								{ sealed.map( ( r ) => (
+									<option
+										key={ r.release_uid }
+										value={ r.release_uid }
+									>
+										{ `${ r.release_uid } · ${ r.source } · ${ r.items } item(s)` }
+									</option>
+								) ) }
+							</select>
+						</div>
+						{ sealed.length === 0 && (
+							<p className="dbvc-ce-empty">
+								{ __(
+									'No sealed releases. Seal a release in Releases first.',
+									'dbvc'
+								) }
+							</p>
+						) }
+						{ !! composeRelease && (
+							<>
+								<p className="dbvc-ce-hint">
+									{ __(
+										'Assign each target to a cohort. Canary runs first; higher cohorts run in order, each gated on the previous. Leave a target Excluded to omit it.',
+										'dbvc'
+									) }
+								</p>
+								<table className="widefat striped">
+									<thead>
+										<tr>
+											<th>{ __( 'Target', 'dbvc' ) }</th>
+											<th>{ __( 'Cohort', 'dbvc' ) }</th>
+										</tr>
+									</thead>
+									<tbody>
+										{ assignable.length === 0 && (
+											<tr>
+												<td colSpan={ 2 }>
+													<span className="dbvc-ce-empty">
+														{ __(
+															'No enabled targets other than the release source.',
+															'dbvc'
+														) }
+													</span>
+												</td>
+											</tr>
+										) }
+										{ assignable.map( ( env ) => (
+											<tr key={ env.environment_id }>
+												<td>
+													<code>
+														{ env.environment_id }
+													</code>
+													{ env.label ? (
+														<span className="dbvc-ce-muted">
+															{ ' ' }
+															{ env.label }
+														</span>
+													) : null }
+												</td>
+												<td>
+													<select
+														value={
+															plan[
+																env
+																	.environment_id
+															] ?? ''
+														}
+														onChange={ ( e ) =>
+															setPlan(
+																( p ) => ( {
+																	...p,
+																	[ env.environment_id ]:
+																		e.target
+																			.value,
+																} )
+															)
+														}
+													>
+														<option value="">
+															{ __(
+																'Excluded',
+																'dbvc'
+															) }
+														</option>
+														{ [ 0, 1, 2, 3, 4 ].map(
+															( i ) => (
+																<option
+																	key={ i }
+																	value={ i }
+																>
+																	{ cohortLabel(
+																		i
+																	) }
+																</option>
+															)
+														) }
+													</select>
+												</td>
+											</tr>
+										) ) }
+									</tbody>
+								</table>
+								<div className="dbvc-ce-field">
+									<label htmlFor="dbvc-ce-rollout-note">
+										{ __( 'Note (optional)', 'dbvc' ) }
+									</label>
+									<input
+										id="dbvc-ce-rollout-note"
+										type="text"
+										value={ note }
+										maxLength={ 191 }
+										onChange={ ( e ) =>
+											setNote( e.target.value )
+										}
+									/>
+								</div>
+								<div className="dbvc-ce-plan-summary">
+									{ cohorts.length === 0 ? (
+										<span className="dbvc-ce-empty">
+											{ __(
+												'Assign at least one target (the canary) to a cohort.',
+												'dbvc'
+											) }
+										</span>
+									) : (
+										<span>
+											{ sprintf(
+												/* translators: 1: cohort count, 2: target count */
+												__(
+													'%1$d cohort(s), %2$d target(s).',
+													'dbvc'
+												),
+												cohorts.length,
+												cohorts.reduce(
+													( n, c ) => n + c.length,
+													0
+												)
+											) }
+										</span>
+									) }
+									<button
+										type="button"
+										className="button button-primary"
+										disabled={
+											! canCreate || busy === 'create'
+										}
+										onClick={ create }
+									>
+										{ busy === 'create'
+											? __( 'Creating…', 'dbvc' )
+											: __( 'Create rollout', 'dbvc' ) }
+									</button>
+								</div>
+							</>
+						) }
+					</div>
+				) }
+				{ rollouts.length === 0 ? (
+					<p className="dbvc-ce-empty">
+						{ __(
+							'No rollouts yet. Create one from a sealed release, or use wp dbvc agency rollout-create.',
+							'dbvc'
+						) }
+					</p>
+				) : (
+					<table className="widefat striped">
+						<thead>
+							<tr>
+								<th>{ __( 'Rollout', 'dbvc' ) }</th>
+								<th>{ __( 'State', 'dbvc' ) }</th>
+								<th>{ __( 'Progress', 'dbvc' ) }</th>
+								<th className="num">
+									{ __( 'Targets', 'dbvc' ) }
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{ rollouts.map( ( r ) => (
+								<tr
+									key={ r.rollout_uid }
+									className={
+										r.rollout_uid === selected
+											? 'dbvc-ce-row--active'
+											: undefined
+									}
+								>
+									<td>
+										<button
+											type="button"
+											className="dbvc-ce-linkbtn"
+											onClick={ () =>
+												setSelected( r.rollout_uid )
+											}
+										>
+											{ r.rollout_uid }
+										</button>
+										<span className="dbvc-ce-muted">
+											{ r.release_uid }
+										</span>
+									</td>
+									<td>
+										<Badge state={ r.state }>
+											{ r.state }
+										</Badge>
+									</td>
+									<td>
+										{ sprintf(
+											/* translators: 1: current cohort (1-based), 2: cohort count */
+											__( 'Cohort %1$d of %2$d', 'dbvc' ),
+											Math.min( r.cohort + 1, r.cohorts ),
+											r.cohorts
+										) }
+									</td>
+									<td className="num">{ r.targets }</td>
+								</tr>
+							) ) }
+						</tbody>
+					</table>
+				) }
+			</div>
+			<div className="dbvc-tools-panel">
+				{ ! rollout ? (
+					<p className="dbvc-ce-empty">
+						{ __(
+							'Select a rollout to review its cohorts and outcomes.',
+							'dbvc'
+						) }
+					</p>
+				) : (
+					<>
+						<div className="dbvc-ce-panel__head">
+							<h2>{ rollout.rollout_uid }</h2>
+							<Badge state={ rollout.state }>
+								{ rollout.state }
+							</Badge>
+						</div>
+						<dl className="dbvc-ce-kv">
+							<div>
+								<dt>{ __( 'Release', 'dbvc' ) }</dt>
+								<dd>
+									<code>{ rollout.release_uid }</code>
+								</dd>
+							</div>
+							<div>
+								<dt>{ __( 'Source', 'dbvc' ) }</dt>
+								<dd>
+									<code>{ rollout.source }</code>
+								</dd>
+							</div>
+							{ !! rollout.note && (
+								<div>
+									<dt>{ __( 'Note', 'dbvc' ) }</dt>
+									<dd>{ rollout.note }</dd>
+								</div>
+							) }
+							{ !! rollout.paused_reason && (
+								<div>
+									<dt>{ __( 'Paused', 'dbvc' ) }</dt>
+									<dd>{ rollout.paused_reason }</dd>
+								</div>
+							) }
+						</dl>
+						<div className="dbvc-ce-actions">
+							{ rollout.state === 'running' && (
+								<button
+									type="button"
+									className="button button-primary"
+									disabled={
+										busy === `advance:${ selected }`
+									}
+									onClick={ advance }
+								>
+									{ __( 'Advance', 'dbvc' ) }
+								</button>
+							) }
+							{ rollout.state === 'running' && (
+								<button
+									type="button"
+									className="button"
+									disabled={ busy === `pause:${ selected }` }
+									onClick={ pause }
+								>
+									{ __( 'Pause', 'dbvc' ) }
+								</button>
+							) }
+							{ rollout.state === 'paused' && (
+								<button
+									type="button"
+									className="button button-primary"
+									disabled={ busy === `resume:${ selected }` }
+									onClick={ resume }
+								>
+									{ __( 'Resume', 'dbvc' ) }
+								</button>
+							) }
+							{ [ 'running', 'paused', 'failed' ].includes(
+								rollout.state
+							) && (
+								<button
+									type="button"
+									className="button button-link-delete"
+									onClick={ () => setConfirmWithdraw( true ) }
+								>
+									{ __( 'Withdraw…', 'dbvc' ) }
+								</button>
+							) }
+						</div>
+						{ rollout.state === 'running' && (
+							<p className="dbvc-ce-hint">
+								{ __(
+									'Advance is idempotent: it requests prepares, approves received receipts and reads outcomes. Targets execute on their own poll, so re-Advance as they report until the cohort verifies.',
+									'dbvc'
+								) }
+							</p>
+						) }
+						{ cohortIndexes.map( ( ci ) => (
+							<div key={ ci } className="dbvc-ce-cohort">
+								<h3>
+									{ cohortLabel( ci ) }
+									{ ci === rollout.cohort &&
+										rollout.state === 'running' && (
+											<span className="dbvc-ce-muted">
+												{ ' ' }
+												{ __( '· current', 'dbvc' ) }
+											</span>
+										) }
+								</h3>
+								<table className="widefat striped">
+									<thead>
+										<tr>
+											<th>{ __( 'Target', 'dbvc' ) }</th>
+											<th>{ __( 'State', 'dbvc' ) }</th>
+											<th>{ __( 'Outcome', 'dbvc' ) }</th>
+											<th>
+												{ __( 'Evidence', 'dbvc' ) }
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{ byCohort[ ci ].map( ( t ) => {
+											const open =
+												evidence[ t.approval_uid ] !==
+												undefined;
+											return (
+												<Fragment
+													key={
+														t.target_environment_id
+													}
+												>
+													<tr>
+														<td>
+															<code>
+																{
+																	t.target_environment_id
+																}
+															</code>
+															{ t.detail ? (
+																<span className="dbvc-ce-muted">
+																	{ ' ' }
+																	{ t.detail }
+																</span>
+															) : null }
+														</td>
+														<td>
+															<Badge
+																state={
+																	t.state
+																}
+															>
+																{ t.state }
+															</Badge>
+														</td>
+														<td>
+															{ t.outcome ? (
+																<Badge
+																	state={
+																		t.outcome
+																	}
+																>
+																	{
+																		t.outcome
+																	}
+																</Badge>
+															) : (
+																<span className="dbvc-ce-muted">
+																	—
+																</span>
+															) }
+														</td>
+														<td className="dbvc-ce-actions">
+															{ t.approval_uid ? (
+																<button
+																	type="button"
+																	className="button-link"
+																	aria-expanded={
+																		open
+																	}
+																	onClick={ () =>
+																		toggleEvidence(
+																			t.approval_uid
+																		)
+																	}
+																>
+																	{ open
+																		? __(
+																				'Hide receipt',
+																				'dbvc'
+																		  )
+																		: __(
+																				'Receipt',
+																				'dbvc'
+																		  ) }
+																</button>
+															) : (
+																<span className="dbvc-ce-muted">
+																	—
+																</span>
+															) }
+															{ t.state ===
+																'failed' &&
+																[
+																	'running',
+																	'paused',
+																].includes(
+																	rollout.state
+																) && (
+																	<button
+																		type="button"
+																		className="button-link"
+																		disabled={
+																			busy ===
+																			`retry:${ t.target_environment_id }`
+																		}
+																		onClick={ () =>
+																			retry(
+																				t.target_environment_id
+																			)
+																		}
+																	>
+																		{ __(
+																			'Retry',
+																			'dbvc'
+																		) }
+																	</button>
+																) }
+														</td>
+													</tr>
+													{ open && (
+														<tr className="dbvc-ce-evidence">
+															<td colSpan={ 4 }>
+																<RolloutEvidence
+																	payload={
+																		evidence[
+																			t
+																				.approval_uid
+																		]
+																	}
+																/>
+															</td>
+														</tr>
+													) }
+												</Fragment>
+											);
+										} ) }
+									</tbody>
+								</table>
+							</div>
+						) ) }
+					</>
+				) }
+			</div>
+			{ confirmWithdraw && rollout && (
+				<Modal
+					title={ __( 'Withdraw rollout', 'dbvc' ) }
+					onClose={ () => setConfirmWithdraw( false ) }
+				>
+					<p>
+						{ __(
+							'Withdrawing closes this rollout. Targets already applied are not reverted — use a rollback for that.',
+							'dbvc'
+						) }
+					</p>
+					<div className="dbvc-ce-actions">
+						<button
+							type="button"
+							className="button"
+							onClick={ () => setConfirmWithdraw( false ) }
+						>
+							{ __( 'Cancel', 'dbvc' ) }
+						</button>
+						<button
+							type="button"
+							className="button button-primary"
+							disabled={ busy === `withdraw:${ selected }` }
+							onClick={ withdraw }
+						>
+							{ __( 'Withdraw rollout', 'dbvc' ) }
+						</button>
+					</div>
+				</Modal>
+			) }
+			{ pruning && (
+				<Modal
+					title={ __( 'Prune finished rollouts', 'dbvc' ) }
+					onClose={ () => setPruning( false ) }
+				>
+					<p>
+						{ __(
+							'Delete finished rollouts (completed, withdrawn or failed) and their target rows once they are older than the window. Running and paused rollouts are never removed; applied targets are unaffected.',
+							'dbvc'
+						) }
+					</p>
+					<div className="dbvc-ce-field">
+						<label htmlFor="dbvc-ce-rollout-prune-days">
+							{ __( 'Older than (days)', 'dbvc' ) }
+						</label>
+						<input
+							id="dbvc-ce-rollout-prune-days"
+							type="number"
+							min="0"
+							value={ pruneDays }
+							onChange={ ( e ) => {
+								setPruneDays( e.target.value );
+								setPruneInfo( null );
+							} }
+						/>
+					</div>
+					<p className="dbvc-ce-hint" aria-live="polite">
+						{ pruneInfo
+							? sprintf(
+									/* translators: 1: count, 2: days */
+									__(
+										'%1$d finished rollout(s) older than %2$d day(s) would be removed.',
+										'dbvc'
+									),
+									pruneInfo.prunable || 0,
+									pruneInfo.older_than_days || 0
+							  )
+							: __(
+									'Preview to see how many would be removed.',
+									'dbvc'
+							  ) }
+					</p>
+					<div className="dbvc-ce-actions">
+						<button
+							type="button"
+							className="button"
+							onClick={ () => previewPrune( pruneDays ) }
+						>
+							{ __( 'Preview', 'dbvc' ) }
+						</button>
+						<button
+							type="button"
+							className="button button-primary"
+							disabled={
+								busy === 'prune' ||
+								! pruneInfo ||
+								( pruneInfo.prunable || 0 ) === 0
+							}
+							onClick={ doPrune }
+						>
+							{ busy === 'prune'
+								? __( 'Pruning…', 'dbvc' )
+								: __( 'Prune', 'dbvc' ) }
+						</button>
+					</div>
+				</Modal>
+			) }
+		</div>
+	);
+}
+
+function RolloutEvidence( { payload } ) {
+	if ( payload === null ) {
+		return <p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>;
+	}
+	const receipt = payload.execution_receipt || null;
+	const warnings = ( receipt && receipt.warnings ) || [];
+	return (
+		<div className="dbvc-ce-evidence__body">
+			<dl className="dbvc-ce-kv">
+				<div>
+					<dt>{ __( 'Execution outcome', 'dbvc' ) }</dt>
+					<dd>
+						<Badge state={ payload.execution_outcome || 'unknown' }>
+							{ payload.execution_outcome ||
+								__( 'pending', 'dbvc' ) }
+						</Badge>
+					</dd>
+				</div>
+				<div>
+					<dt>{ __( 'Operation', 'dbvc' ) }</dt>
+					<dd>
+						<code>{ payload.operation_id }</code>
+					</dd>
+				</div>
+				<div>
+					<dt>{ __( 'Executed', 'dbvc' ) }</dt>
+					<dd>{ payload.executed_at || '—' }</dd>
+				</div>
+			</dl>
+			<div className="dbvc-ce-evidence__renders">
+				<h4>{ __( 'Rendering evidence', 'dbvc' ) }</h4>
+				{ warnings.length === 0 ? (
+					<p className="dbvc-ce-muted">
+						{ receipt
+							? __(
+									'No render warnings reported for this target.',
+									'dbvc'
+							  )
+							: __(
+									'No execution receipt yet — the target has not reported.',
+									'dbvc'
+							  ) }
+					</p>
+				) : (
+					<ul className="dbvc-ce-warnings">
+						{ warnings.map( ( w, i ) => (
+							<li key={ i }>{ w }</li>
+						) ) }
+					</ul>
+				) }
+			</div>
+		</div>
+	);
+}
+
 /* ---------- App ---------- */
 
 function App() {
@@ -4282,6 +7234,8 @@ function App() {
 	const [ error, setError ] = useState( null );
 	const [ view, setView ] = useState( 'overview' );
 	const [ comparePreset, setComparePreset ] = useState( null );
+	const [ releasePreset, setReleasePreset ] = useState( null );
+	const [ rolloutPreset, setRolloutPreset ] = useState( '' );
 	const [ toasts, setToasts ] = useState( [] );
 	const [ live, setLive ] = useState( '' );
 	const [ running, setRunning ] = useState( '' );
@@ -4360,13 +7314,14 @@ function App() {
 			setRunning( runner.label );
 			try {
 				const path =
-					runner.role === 'hub'
+					runner.path ||
+					( runner.role === 'hub'
 						? `agency/${ runner.key.replace( '_', '-' ) }`
-						: `connected/run/${ runner.key }`;
+						: `connected/run/${ runner.key }` );
 				const result = await apiFetch( {
 					path,
 					method: 'POST',
-					data: {},
+					data: runner.data || {},
 				} );
 				const summary = Object.entries( result || {} )
 					.filter(
@@ -4396,6 +7351,9 @@ function App() {
 							: ''
 					}`
 				);
+				if ( typeof runner.after === 'function' ) {
+					await runner.after();
+				}
 				load();
 			} catch ( err ) {
 				notify( 'error', errorMessage( err ) );
@@ -4415,7 +7373,12 @@ function App() {
 					},
 					{ key: 'compare', label: __( 'Compare', 'dbvc' ) },
 					{ key: 'framework', label: __( 'Framework', 'dbvc' ) },
+					{ key: 'releases', label: __( 'Releases', 'dbvc' ) },
+					{ key: 'rollouts', label: __( 'Rollouts', 'dbvc' ) },
 			  ]
+			: [] ),
+		...( overview?.roles?.connector
+			? [ { key: 'activity', label: __( 'Activity', 'dbvc' ) } ]
 			: [] ),
 		{ key: 'settings', label: __( 'Settings', 'dbvc' ) },
 	];
@@ -4496,6 +7459,10 @@ function App() {
 					preset={ comparePreset }
 					notify={ notify }
 					onChanged={ load }
+					onCreatedRelease={ ( uid ) => {
+						setReleasePreset( uid );
+						setView( 'releases' );
+					} }
 				/>
 			) }
 			{ overview && overview.roles.hub && view === 'framework' && (
@@ -4503,6 +7470,34 @@ function App() {
 					environments={ overview.hub?.environments || [] }
 					notify={ notify }
 					onChanged={ load }
+				/>
+			) }
+			{ overview && overview.roles.hub && view === 'releases' && (
+				<Releases
+					environments={ overview.hub?.environments || [] }
+					preset={ releasePreset }
+					notify={ notify }
+					onChanged={ load }
+					onRollout={ ( uid ) => {
+						setRolloutPreset( uid );
+						setView( 'rollouts' );
+					} }
+				/>
+			) }
+			{ overview && overview.roles.hub && view === 'rollouts' && (
+				<Rollouts
+					environments={ overview.hub?.environments || [] }
+					preset={ rolloutPreset }
+					notify={ notify }
+					onChanged={ load }
+				/>
+			) }
+			{ overview && overview.roles.connector && view === 'activity' && (
+				<ConnectorActivity
+					connector={ overview.connector }
+					notify={ notify }
+					onRun={ run }
+					running={ running }
 				/>
 			) }
 			{ overview && view === 'settings' && (

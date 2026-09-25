@@ -167,18 +167,18 @@ final class ReleaseStore
      * @param string      $reason
      * @return bool
      */
-    public function record_payload($release_item_id, $payload, $reason = '')
+    public function record_payload($release_item_id, $payload, $reason = '', $media = null)
     {
         global $wpdb;
 
         $fields = $payload !== null
-            ? ['payload_state' => self::PAYLOAD_RECEIVED, 'payload' => (string) $payload, 'payload_reason' => '', 'payload_received_at' => current_time('mysql', true)]
-            : ['payload_state' => self::PAYLOAD_MISMATCH, 'payload' => null, 'payload_reason' => (string) $reason, 'payload_received_at' => current_time('mysql', true)];
+            ? ['payload_state' => self::PAYLOAD_RECEIVED, 'payload' => (string) $payload, 'payload_reason' => '', 'payload_received_at' => current_time('mysql', true), 'media' => $media !== null ? (string) $media : null]
+            : ['payload_state' => self::PAYLOAD_MISMATCH, 'payload' => null, 'payload_reason' => (string) $reason, 'payload_received_at' => current_time('mysql', true), 'media' => null];
         $updated = $wpdb->update(
             Schema::table('release_items'),
             $fields,
             ['release_item_id' => (int) $release_item_id, 'payload_state' => self::PAYLOAD_REQUESTED],
-            ['%s', '%s', '%s', '%s'],
+            ['%s', '%s', '%s', '%s', '%s'],
             ['%d', '%s']
         );
 

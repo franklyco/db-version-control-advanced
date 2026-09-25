@@ -20,6 +20,17 @@ final class Protocol
     public const MAX_PAYLOAD_BYTES = 1048576;
     public const MAX_PAYLOAD_ITEMS = 25;
     public const MAX_RELEASE_ITEMS = 200;
+    /**
+     * Media (attachment) bytes travel as a sibling channel to a release item's
+     * body (never inside it — the body is hash-locked to after_hash). Step 2
+     * carries them inline (base64) under conservative caps; a file over the
+     * per-file cap, or media past the per-item total or count, is `deferred`
+     * (its descriptor is kept, its bytes are not) rather than silently dropped
+     * — a later fetch-by-hash channel lifts these caps.
+     */
+    public const MAX_MEDIA_ITEMS = 25;
+    public const MAX_MEDIA_FILE_BYTES = 2097152;
+    public const MAX_MEDIA_TOTAL_BYTES = 4194304;
     /** A prepare receipt describes target state at one moment; it expires and is never permission to write. */
     public const PREPARE_RECEIPT_TTL_SECONDS = 3600;
 
@@ -47,6 +58,9 @@ final class Protocol
                 'max_payload_bytes' => self::MAX_PAYLOAD_BYTES,
                 'max_payload_items' => self::MAX_PAYLOAD_ITEMS,
                 'max_release_items' => self::MAX_RELEASE_ITEMS,
+                'max_media_items' => self::MAX_MEDIA_ITEMS,
+                'max_media_file_bytes' => self::MAX_MEDIA_FILE_BYTES,
+                'max_media_total_bytes' => self::MAX_MEDIA_TOTAL_BYTES,
                 'prepare_receipt_ttl_seconds' => self::PREPARE_RECEIPT_TTL_SECONDS,
             ],
             'domains' => ObservationEvent::DOMAINS,

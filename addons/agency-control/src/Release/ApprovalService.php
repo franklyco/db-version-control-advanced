@@ -9,6 +9,7 @@ use Dbvc\AgencyControl\Storage\PreparationStore;
 use Dbvc\AgencyControl\Storage\ReleaseStore;
 use Dbvc\AgencyControl\Storage\SubscriptionStore;
 use Dbvc\ConnectedProtocol\Canonicalizer;
+use Dbvc\ConnectedProtocol\Protocol;
 
 /**
  * Reviewed execution, hub side. An approval is an explicit studio action on
@@ -113,6 +114,63 @@ final class ApprovalService
     }
 
     /**
+     * Reviewed rollback: an approval-like record that reverses a completed
+     * execution. It carries no payload — the target restores the before image
+     * it journalled, guarded by the operation's after fingerprint, so a
+     * container that moved on since apply yields a restore conflict, never an
+     * overwrite.
+     *
+     * @param string $operation_id The original (apply) operation id to reverse.
+     * @param string $note
+     * @return array<string, mixed>|\WP_Error
+     */
+    public function rollback($operation_id, $note = '')
+    {
+        $original = $this->approvals->find_by_operation((string) $operation_id);
+        if ($original === null || $original['kind'] !== 'apply') {
+            return new \WP_Error('dbvc_agency_operation_not_found', 'No applied operation with that id.', ['status' => 404]);
+        }
+        if ($original['state'] !== ApprovalStore::STATE_CONSUMED) {
+            return new \WP_Error('dbvc_agency_operation_not_executed', 'Only a consumed (executed) operation can be rolled back.', ['status' => 409]);
+        }
+        if (! in_array((string) $original['execution_outcome'], ['applied', 'partial', 'compensated'], true)) {
+            return new \WP_Error('dbvc_agency_nothing_to_roll_back', 'The operation wrote nothing to reverse (outcome ' . (string) $original['execution_outcome'] . ').', ['status' => 409]);
+        }
+        if ($this->approvals->find_rollback_of($original['operation_id']) !== null) {
+            return new \WP_Error('dbvc_agency_already_rolled_back', 'A rollback for this operation is already open or applied.', ['status' => 409]);
+        }
+        $target = $this->environments->find($original['target_environment_id']);
+        if ($target === null || $target['status'] !== EnvironmentRegistry::STATUS_ENABLED) {
+            return new \WP_Error('dbvc_agency_environment_not_enabled', 'The target environment is not enabled.', ['status' => 409]);
+        }
+        if ($target['current_epoch'] !== $original['target_epoch']) {
+            return new \WP_Error('dbvc_agency_target_epoch_changed', 'The target re-enrolled since the operation ran; its before image is no longer restorable.', ['status' => 409]);
+        }
+
+        $approval = $this->approvals->create([
+            'approval_uid' => 'apr-' . bin2hex(random_bytes(8)),
+            'operation_id' => 'roll-' . bin2hex(random_bytes(8)),
+            'kind' => 'rollback',
+            'rolls_back_operation_id' => $original['operation_id'],
+            'release_id' => $original['release_id'],
+            'release_uid' => $original['release_uid'],
+            'release_digest' => $original['release_digest'],
+            'receipt_digest' => $original['execution_digest'],
+            'target_environment_id' => $target['environment_id'],
+            'target_epoch' => $target['current_epoch'],
+            'policy_revision' => $original['policy_revision'],
+            'note' => (string) $note,
+            'approved_by' => get_current_user_id(),
+            'expires_at' => gmdate('Y-m-d H:i:s', time() + Protocol::PREPARE_RECEIPT_TTL_SECONDS),
+        ]);
+        if ($approval === null) {
+            return new \WP_Error('dbvc_agency_approval_error', 'The rollback could not be recorded.', ['status' => 500]);
+        }
+
+        return $approval;
+    }
+
+    /**
      * @param string $approval_uid
      * @param string $reason
      * @return array<string, mixed>|\WP_Error
@@ -145,6 +203,21 @@ final class ApprovalService
                 $this->approvals->revoke($approval['approval_id'], 'target_epoch_changed');
                 continue;
             }
+            if ($approval['kind'] === 'rollback') {
+                // A rollback carries no payload: the target restores the before image it journalled.
+                $out[] = [
+                    'approval_uid' => $approval['approval_uid'],
+                    'operation_id' => $approval['operation_id'],
+                    'kind' => 'rollback',
+                    'rolls_back_operation_id' => $approval['rolls_back_operation_id'],
+                    'approved_at' => $approval['approved_at'],
+                    'expires_at' => $approval['expires_at'],
+                    'policy_revision' => $approval['policy_revision'],
+                    'release' => ['release_uid' => $approval['release_uid'], 'digest' => $approval['release_digest']],
+                    'receipt_digest' => $approval['receipt_digest'],
+                ];
+                continue;
+            }
             $release = $this->releases->get($approval['release_id']);
             $preparation = $this->preparations->find($approval['operation_id']);
             if ($release === null || $release['state'] !== ReleaseStore::STATE_SEALED || $release['digest'] !== $approval['release_digest'] || $preparation === null || ! is_array($preparation['receipt'])) {
@@ -153,6 +226,13 @@ final class ApprovalService
             }
             $items = [];
             foreach ($this->releases->items($release['release_id'], true) as $item) {
+                $media = [];
+                if (isset($item['media']) && is_string($item['media']) && $item['media'] !== '') {
+                    $decoded = json_decode($item['media'], true);
+                    if (is_array($decoded) && isset($decoded['media']) && is_array($decoded['media'])) {
+                        $media = $decoded['media'];
+                    }
+                }
                 $items[] = [
                     'domain' => $item['domain'],
                     'instance_uid' => $item['instance_uid'],
@@ -160,6 +240,7 @@ final class ApprovalService
                     'operation' => $item['operation'],
                     'after_hash' => $item['after_hash'],
                     'body' => (string) $item['payload'],
+                    'media' => $media,
                 ];
             }
             $out[] = [
@@ -212,7 +293,7 @@ final class ApprovalService
         if (($env['environment_id'] ?? null) !== $target['environment_id'] || ($env['epoch'] ?? null) !== $target['current_epoch']) {
             $errors[] = 'target';
         }
-        if (! in_array($receipt['outcome'] ?? null, ['applied', 'noop', 'stale', 'failed', 'compensated', 'partial', 'unsupported'], true)) {
+        if (! in_array($receipt['outcome'] ?? null, ['applied', 'noop', 'stale', 'failed', 'compensated', 'partial', 'unsupported', 'restored', 'restore_conflict'], true)) {
             $errors[] = 'outcome';
         }
         if (! is_array($receipt['items'] ?? null)) {
@@ -228,12 +309,28 @@ final class ApprovalService
         }
 
         $release = $this->releases->get($approval['release_id']);
+        $rollback = $approval['kind'] === 'rollback';
         $advanced = 0;
         if ($release !== null) {
             $baselines = new BaselineStore();
             foreach ((array) $receipt['items'] as $item) {
-                if (! is_array($item) || ($item['outcome'] ?? '') !== 'applied' || empty($item['verified'])) {
+                if (! is_array($item) || empty($item['verified'])) {
                     continue;
+                }
+                // Apply advances the pair baseline to the released hash; a verified rollback
+                // regresses it to the restored (pre-apply) hash so Compare reads synchronized again.
+                if ($rollback) {
+                    if (($item['outcome'] ?? '') !== 'restored' || ! isset($item['restored_hash'])) {
+                        continue;
+                    }
+                    $baseline_hash = (string) $item['restored_hash'];
+                    $note = 'rolled_back:' . (string) $approval['rolls_back_operation_id'];
+                } else {
+                    if (($item['outcome'] ?? '') !== 'applied') {
+                        continue;
+                    }
+                    $baseline_hash = (string) $item['after_hash'];
+                    $note = 'applied:' . $approval['operation_id'];
                 }
                 $baselines->upsert([
                     'source_environment_id' => $release['source_environment_id'],
@@ -242,13 +339,13 @@ final class ApprovalService
                     'source_instance_uid' => (string) $item['instance_uid'],
                     'target_instance_uid' => (string) ($item['target_instance_uid'] ?? $item['instance_uid']),
                     'profile' => (string) $item['profile'],
-                    'baseline_hash' => (string) $item['after_hash'],
+                    'baseline_hash' => $baseline_hash,
                     'source_sequence' => 0,
                     'target_sequence' => (int) $target['max_received_sequence'],
                     'source_epoch' => $release['source_epoch'],
                     'target_epoch' => $target['current_epoch'],
                     'confirmed_by' => 0,
-                    'note' => 'applied:' . $approval['operation_id'],
+                    'note' => $note,
                 ]);
                 $advanced++;
             }

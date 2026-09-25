@@ -2,6 +2,7 @@
 
 namespace Dbvc\Connected\Adapters;
 
+use Dbvc\Connected\Preparation\MediaReferences;
 use Dbvc\ConnectedProtocol\Canonicalizer;
 use Dbvc\ConnectedProtocol\DomainObserver;
 
@@ -38,6 +39,8 @@ final class ServicePostObserver implements DomainObserver
     private const DEFAULT_IGNORED_META = [
         'vf_object_uid', '_edit_lock', '_edit_last', '_wp_old_slug', '_wp_old_date', '_wp_desired_post_slug',
         '_wp_trash_meta_status', '_wp_trash_meta_time', '_wp_trash_meta_comments_status', '_pingme', '_encloseme',
+        // DBVC's own sync bookkeeping: rewritten on every save/import, never portable content.
+        'dbvc_post_history', '_dbvc_import_hash',
     ];
 
     /**
@@ -91,8 +94,8 @@ final class ServicePostObserver implements DomainObserver
             'canonicalizer_version' => Canonicalizer::VERSION,
             'source_option' => 'post_type:' . $this->post_type(),
             'report' => $available,
-            'prepare' => false,
-            'apply' => false,
+            'prepare' => $available && $dbvc_supported,
+            'apply' => $available && $dbvc_supported,
             'reason' => $available ? ($dbvc_supported ? '' : 'identity_requires_dbvc_post_type') : 'post_type_not_registered',
             // DBVC assigns vf_object_uid on save only for its configured post types; without it members report identity_missing.
             'identity_source' => 'dbvc_post_types',
@@ -336,6 +339,11 @@ final class ServicePostObserver implements DomainObserver
             $data = $masked_data;
         }
 
+        // Portable media: replace resolvable local attachment references (ids/URLs)
+        // with content-hash tokens so the projection hash is site-independent
+        // (M7). Apply reverses this to local references before writing.
+        $data = MediaReferences::tokenize($data);
+
         $projection = Canonicalizer::project($data);
         $complete = $projection['ok'] && $problems === [];
         if (! $projection['ok']) {
@@ -351,7 +359,9 @@ final class ServicePostObserver implements DomainObserver
             'complete' => $complete,
             'hash' => $projection['ok'] ? $projection['hash'] : BricksOptionCollectionObserver::incomplete_hash(),
             'canonical' => $projection['ok'] ? $projection['canonical'] : null,
-            'storage_fingerprint' => hash('sha256', (string) $post->post_modified_gmt . '|' . wp_json_encode($raw_meta)),
+            // post_modified for a cheap change signal, plus the projection hash so a same-second
+            // edit that changes content (but not post_modified's second) still moves the fingerprint.
+            'storage_fingerprint' => hash('sha256', (string) $post->post_modified_gmt . '|' . wp_json_encode($raw_meta) . '|' . ($projection['ok'] ? (string) $projection['hash'] : 'incomplete')),
             'problems' => array_values(array_unique($problems)),
         ];
     }
@@ -360,6 +370,162 @@ final class ServicePostObserver implements DomainObserver
      * @param string $reason
      * @return array<string, mixed>
      */
+    /**
+     * Apply a received canonical body to a local post: post fields, managed meta
+     * (converged to the body — keys the body omits are removed) and portable
+     * terms in dependency order. Media (attachments) are not created here. The
+     * caller guards the write with the storage fingerprint and verifies the
+     * result by re-snapshotting; this method performs no verification of its own.
+     *
+     * @param int                  $post_id
+     * @param array<string, mixed> $body Canonical service body (post fields, meta, tax_input).
+     * @return true|string true on write, or an error slug.
+     */
+    public function apply_body($post_id, array $body)
+    {
+        $post_id = (int) $post_id;
+        $post = get_post($post_id);
+        if (! $post instanceof \WP_Post || $post->post_type !== $this->post_type()) {
+            return 'target_post_missing';
+        }
+        if (! in_array((string) ($body['post_status'] ?? ''), self::OBSERVED_STATUSES, true)) {
+            return 'unsupported_post_status';
+        }
+
+        // Reverse the portable media tokens to this site's own attachment ids/URLs
+        // (by content hash) before writing; a token this site cannot resolve is
+        // left as-is so the guarded re-snapshot fails rather than storing a broken
+        // reference. Attachments are materialized before this point (M7 step 3b).
+        $body = MediaReferences::detokenize($body);
+
+        $parent_id = 0;
+        $parent_uid = (string) ($body['post_parent_uid'] ?? '');
+        if ($parent_uid !== '') {
+            $parent = get_posts(['post_type' => $this->post_type(), 'post_status' => 'any', 'fields' => 'ids', 'meta_key' => 'vf_object_uid', 'meta_value' => $parent_uid, 'posts_per_page' => 1, 'suppress_filters' => true, 'no_found_rows' => true]); // phpcs:ignore WordPress.DB.SlowDBQuery
+            if ($parent === []) {
+                return 'parent_unresolved';
+            }
+            $parent_id = (int) $parent[0];
+        }
+
+        // Fields this environment masks (privacy) are out of the sync contract: apply must
+        // never write or delete them, and the release payload cannot carry their real value.
+        // Skipping them here mirrors the projection, which excludes the same masked fields.
+        $masked_fields = function_exists('dbvc_get_export_mask_post_fields') ? array_map('strval', (array) dbvc_get_export_mask_post_fields()) : [];
+        $is_masked = static function ($field) use ($masked_fields) {
+            return in_array((string) $field, $masked_fields, true);
+        };
+
+        $update = ['ID' => $post_id, 'post_status' => (string) $body['post_status'], 'post_parent' => $parent_id];
+        foreach (['post_title', 'post_name', 'post_content', 'post_excerpt'] as $field) {
+            if (! $is_masked($field)) {
+                $update[$field] = (string) ($body[$field] ?? '');
+            }
+        }
+        if (! $is_masked('menu_order')) {
+            $update['menu_order'] = (int) ($body['menu_order'] ?? 0);
+        }
+        if (! $is_masked('post_date_gmt') && isset($body['post_date_gmt']) && (string) $body['post_date_gmt'] !== '' && (string) $body['post_date_gmt'] !== '0000-00-00 00:00:00') {
+            $update['post_date_gmt'] = (string) $body['post_date_gmt'];
+            $update['post_date'] = get_date_from_gmt((string) $body['post_date_gmt']);
+        }
+        $result = wp_update_post($update, true);
+        if (is_wp_error($result)) {
+            return 'post_update_failed:' . $result->get_error_code();
+        }
+
+        // Managed meta converges to the body: set the body's keys, remove managed keys it omits.
+        $target_meta = is_array($body['meta'] ?? null) ? $body['meta'] : [];
+        $ignored = $this->ignored_meta_keys();
+        $current = get_post_meta($post_id);
+        $current = is_array($current) ? $current : [];
+        // Masked meta is out of the sync contract too: never write it and never delete it,
+        // exactly like the projection, which excludes the same masked keys.
+        if (function_exists('dbvc_mask_apply_to_meta')) {
+            $masked_current = dbvc_mask_apply_to_meta($current);
+            foreach ($current as $key => $value) {
+                if (! array_key_exists($key, $masked_current) || $masked_current[$key] !== $value) {
+                    $ignored[] = (string) $key;
+                }
+            }
+            $ignored = array_values(array_unique($ignored));
+        }
+        foreach (array_keys($current) as $key) {
+            if (in_array($key, $ignored, true) || array_key_exists($key, $target_meta)) {
+                continue;
+            }
+            delete_post_meta($post_id, $key);
+        }
+        foreach ($target_meta as $key => $values) {
+            if (in_array($key, $ignored, true)) {
+                continue;
+            }
+            delete_post_meta($post_id, (string) $key);
+            foreach ((is_array($values) ? $values : [$values]) as $value) {
+                add_post_meta($post_id, (string) $key, wp_slash($value));
+            }
+        }
+
+        $tax_input = is_array($body['tax_input'] ?? null) ? $body['tax_input'] : [];
+        if (class_exists('DBVC_Sync_Posts')) {
+            \DBVC_Sync_Posts::import_tax_input_for_post($post_id, $this->post_type(), $tax_input, true);
+        }
+
+        clean_post_cache($post_id);
+
+        return true;
+    }
+
+    /**
+     * Meta keys the projection (and therefore apply) never manage.
+     *
+     * @return array<int, string>
+     */
+    public function ignored_meta_keys()
+    {
+        $ignored = array_merge(self::DEFAULT_IGNORED_META, (array) apply_filters('dbvc_skip_meta_keys', ['_edit_lock', '_edit_last']));
+
+        return array_values(array_unique(array_map('strval', (array) apply_filters('dbvc_connected_service_ignored_meta_keys', $ignored))));
+    }
+
+    /**
+     * Reversible removal for a reviewed delete: trash the post (never hard-delete
+     * via sync — that would be an unrecoverable content write). It leaves observed
+     * coverage, so re-snapshot reads `missing`; a reviewed rollback restores it by
+     * re-applying the journalled before body (status back to an observed value),
+     * with the same post id and portable identity intact.
+     *
+     * @param int $post_id
+     * @return true|string true, or an error slug.
+     */
+    public function trash($post_id)
+    {
+        $post = get_post((int) $post_id);
+        if (! $post instanceof \WP_Post || $post->post_type !== $this->post_type()) {
+            return 'target_post_missing';
+        }
+        $result = wp_trash_post((int) $post_id);
+        clean_post_cache((int) $post_id);
+
+        return $result ? true : 'post_trash_failed';
+    }
+
+    /**
+     * Compensation for a delete whose verification missed: bring a just-trashed
+     * post back to its pre-trash status so a failed delete never leaves the post
+     * removed.
+     *
+     * @param int $post_id
+     * @return true|string
+     */
+    public function untrash($post_id)
+    {
+        $result = wp_untrash_post((int) $post_id);
+        clean_post_cache((int) $post_id);
+
+        return $result ? true : 'post_untrash_failed';
+    }
+
     private function unavailable($reason)
     {
         return [

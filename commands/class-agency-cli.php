@@ -43,6 +43,7 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			$report['releases'] = (new \Dbvc\AgencyControl\Storage\ReleaseStore())->counts();
 			$report['preparations'] = (new \Dbvc\AgencyControl\Storage\PreparationStore())->counts();
 			$report['approvals'] = (new \Dbvc\AgencyControl\Storage\ApprovalStore())->counts();
+			$report['rollouts'] = (new \Dbvc\AgencyControl\Storage\RolloutStore())->counts();
 			$report['freshness_seconds'] = \Dbvc\AgencyControl\Comparison\ComparisonService::freshness_seconds();
 
 			return $report;
@@ -869,6 +870,16 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			return is_wp_error($result) ? $result : self::approval_row($result, false);
 		}
 
+		public static function rollback(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$result = (new \Dbvc\AgencyControl\Release\ApprovalService())->rollback((string) ($assoc_args['operation'] ?? ''), (string) ($assoc_args['note'] ?? ''));
+
+			return is_wp_error($result) ? $result : self::approval_row($result, false);
+		}
+
 		/**
 		 * @param array $assoc_args
 		 * @return array|WP_Error
@@ -913,6 +924,8 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			$out = [
 				'approval_uid' => (string) $row['approval_uid'],
 				'operation_id' => (string) $row['operation_id'],
+				'kind' => (string) ($row['kind'] ?? 'apply'),
+				'rolls_back_operation_id' => (string) ($row['rolls_back_operation_id'] ?? ''),
 				'release_uid' => (string) $row['release_uid'],
 				'target' => (string) $row['target_environment_id'],
 				'state' => (string) $row['state'],
@@ -1010,6 +1023,204 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			}
 
 			return ['returned' => count($invitations), 'invitations' => $invitations];
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollout_create(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$cohorts = self::parse_cohorts($assoc_args['cohorts'] ?? '');
+			if ($cohorts === []) {
+				return new WP_Error('dbvc_agency_rollout_no_cohorts', 'Provide --cohorts as semicolon-separated cohorts of comma-separated environment ids, canary first (e.g. env-canary;env-a,env-b).');
+			}
+
+			return self::rollout_status((new \Dbvc\AgencyControl\Release\RolloutService())->create((string) ($assoc_args['release'] ?? ''), $cohorts, (string) ($assoc_args['note'] ?? '')));
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollout_advance(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return self::rollout_status((new \Dbvc\AgencyControl\Release\RolloutService())->advance((string) ($assoc_args['rollout'] ?? '')));
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollout_pause(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return self::rollout_status((new \Dbvc\AgencyControl\Release\RolloutService())->pause((string) ($assoc_args['rollout'] ?? ''), (string) ($assoc_args['reason'] ?? 'operator')));
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollout_resume(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return self::rollout_status((new \Dbvc\AgencyControl\Release\RolloutService())->resume((string) ($assoc_args['rollout'] ?? '')));
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollout_retry(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return self::rollout_status((new \Dbvc\AgencyControl\Release\RolloutService())->retry((string) ($assoc_args['rollout'] ?? ''), (string) ($assoc_args['target'] ?? '')));
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollout_withdraw(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return self::rollout_status((new \Dbvc\AgencyControl\Release\RolloutService())->withdraw((string) ($assoc_args['rollout'] ?? '')));
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollouts(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$store = new \Dbvc\AgencyControl\Storage\RolloutStore();
+			if (! empty($assoc_args['rollout'])) {
+				$row = $store->find((string) $assoc_args['rollout']);
+
+				return $row === null ? new WP_Error('dbvc_agency_rollout_not_found', 'Rollout not found.') : self::rollout_status(['rollout' => $row, 'targets' => $store->targets($row['rollout_id'])]);
+			}
+			$rows = $store->all(isset($assoc_args['release']) ? (string) $assoc_args['release'] : null, self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT));
+
+			return ['counts' => $store->counts(), 'returned' => count($rows), 'rollouts' => array_map([self::class, 'rollout_row'], $rows)];
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function rollout_prune(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$days = isset($assoc_args['days']) ? (int) $assoc_args['days'] : \Dbvc\AgencyControl\Release\RolloutService::RETENTION_DAYS_DEFAULT;
+
+			return (new \Dbvc\AgencyControl\Release\RolloutService())->prune($days, ! empty($assoc_args['dry-run']) || ! empty($assoc_args['dry_run']));
+		}
+
+		/**
+		 * Accept cohorts as a nested array (REST) or a "canary;a,b;c" string (CLI).
+		 *
+		 * @param mixed $raw
+		 * @return array<int, array<int, string>>
+		 */
+		private static function parse_cohorts($raw) {
+			$cohorts = [];
+			if (is_array($raw)) {
+				foreach ($raw as $entry) {
+					$ids = is_array($entry) ? array_map('strval', $entry) : explode(',', (string) $entry);
+					$cohorts[] = array_values(array_filter(array_map('trim', $ids), static function ($id) {
+						return $id !== '';
+					}));
+				}
+			} else {
+				foreach (explode(';', (string) $raw) as $group) {
+					$cohorts[] = array_values(array_filter(array_map('trim', explode(',', $group)), static function ($id) {
+						return $id !== '';
+					}));
+				}
+			}
+
+			return array_values(array_filter($cohorts, static function ($cohort) {
+				return $cohort !== [];
+			}));
+		}
+
+		/**
+		 * @param array|WP_Error $result Service status payload {rollout, targets}.
+		 * @return array|WP_Error
+		 */
+		private static function rollout_status($result) {
+			if (is_wp_error($result)) {
+				return $result;
+			}
+
+			return [
+				'rollout' => self::rollout_row($result['rollout']),
+				'targets' => array_map([self::class, 'rollout_target_row'], $result['targets']),
+			];
+		}
+
+		/**
+		 * @param array $row
+		 * @return array
+		 */
+		private static function rollout_row(array $row) {
+			return [
+				'rollout_uid' => (string) $row['rollout_uid'],
+				'client_id' => (string) $row['client_id'],
+				'release_uid' => (string) $row['release_uid'],
+				'source' => (string) $row['source_environment_id'],
+				'state' => (string) $row['state'],
+				'cohort' => (int) $row['current_cohort'],
+				'cohorts' => (int) $row['cohort_count'],
+				'targets' => (int) $row['target_count'],
+				'paused_reason' => (string) $row['paused_reason'],
+				'note' => (string) $row['note'],
+				'created_at' => (string) $row['created_at'],
+				'updated_at' => (string) $row['updated_at'],
+			];
+		}
+
+		/**
+		 * @param array $row
+		 * @return array
+		 */
+		private static function rollout_target_row(array $row) {
+			return [
+				'cohort' => (int) $row['cohort'],
+				'position' => (int) $row['position'],
+				'target' => (string) $row['target_environment_id'],
+				'state' => (string) $row['state'],
+				'operation_id' => (string) $row['operation_id'],
+				'approval_uid' => (string) $row['approval_uid'],
+				'outcome' => (string) $row['outcome'],
+				'detail' => (string) $row['detail'],
+				'updated_at' => (string) $row['updated_at'],
+			];
 		}
 
 		/**
@@ -1986,6 +2197,200 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function approve($args, $assoc_args) {
 			unset($args);
 			$this->emit_json(DBVC_Agency_CLI_Inspector::approve($assoc_args));
+		}
+
+		/**
+		 * Roll back a consumed (executed) operation: creates a reviewed rollback the target restores on its next poll (its journalled before image, guarded by the operation's after fingerprint; a container that moved on yields a restore conflict, never an overwrite).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --operation=<id>
+		 * : The applied operation id to reverse.
+		 *
+		 * [--note=<text>]
+		 * : Short note.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function rollback($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollback($assoc_args));
+		}
+
+		/**
+		 * Plan a fleet rollout: stage a sealed release across ordered cohorts of targets, canary first. No target is written yet — advance drives the per-target prepare/approve steps and gates each cohort on the prior one verifying.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --release=<uid>
+		 * : Sealed release identifier.
+		 *
+		 * --cohorts=<spec>
+		 * : Semicolon-separated cohorts of comma-separated environment ids, canary first (e.g. env-canary;env-a,env-b).
+		 *
+		 * [--note=<text>]
+		 * : Short note.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand rollout-create
+		 */
+		public function rollout_create($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollout_create($assoc_args));
+		}
+
+		/**
+		 * Drive a rollout one step: request prepares, approve received receipts, read execution outcomes, and open the next cohort once the current one has fully verified. A single target failure pauses the rollout. Safe to call repeatedly.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --rollout=<uid>
+		 * : Rollout identifier.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand rollout-advance
+		 */
+		public function rollout_advance($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollout_advance($assoc_args));
+		}
+
+		/**
+		 * Pause a running rollout so later cohorts do not start.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --rollout=<uid>
+		 * : Rollout identifier.
+		 *
+		 * [--reason=<text>]
+		 * : Short reason. Default: operator.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand rollout-pause
+		 */
+		public function rollout_pause($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollout_pause($assoc_args));
+		}
+
+		/**
+		 * Resume a paused rollout and advance it. A failed target in the current cohort re-pauses it until retried or withdrawn.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --rollout=<uid>
+		 * : Rollout identifier.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand rollout-resume
+		 */
+		public function rollout_resume($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollout_resume($assoc_args));
+		}
+
+		/**
+		 * Reset one failed target back to pending so the next advance re-prepares it. The rollout stays paused until resumed.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --rollout=<uid>
+		 * : Rollout identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier to retry.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand rollout-retry
+		 */
+		public function rollout_retry($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollout_retry($assoc_args));
+		}
+
+		/**
+		 * Withdraw a rollout. Targets already applied are not reverted; use rollback for that.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --rollout=<uid>
+		 * : Rollout identifier.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand rollout-withdraw
+		 */
+		public function rollout_withdraw($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollout_withdraw($assoc_args));
+		}
+
+		/**
+		 * List rollouts, or show one with its per-target progress via --rollout.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--rollout=<uid>]
+		 * : Show one rollout with its per-target rows.
+		 *
+		 * [--release=<uid>]
+		 * : Filter by release.
+		 *
+		 * [--limit=<number>]
+		 * : Maximum rows. Default: 50; maximum: 500.
+		 *
+		 * [--fields=<fields>]
+		 * : Comma-separated fields for table output.
+		 *
+		 * [--format=<format>]
+		 * : table or json. Default: table.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function rollouts($args, $assoc_args) {
+			unset($args);
+			if (! empty($assoc_args['rollout'])) {
+				$this->emit_json(DBVC_Agency_CLI_Inspector::rollouts($assoc_args));
+				return;
+			}
+			$this->emit_rows(DBVC_Agency_CLI_Inspector::rollouts($assoc_args), 'rollouts', ['rollout_uid', 'client_id', 'release_uid', 'source', 'state', 'cohort', 'cohorts', 'targets', 'paused_reason', 'created_at'], $assoc_args);
+		}
+
+		/**
+		 * Retention: delete finished rollouts (completed, withdrawn or failed) older than the window, with their target rows. Running and paused rollouts are never removed.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--days=<number>]
+		 * : Age threshold in days. Default: 30. 0 prunes every finished rollout.
+		 *
+		 * [--dry-run]
+		 * : Report how many would be pruned without deleting.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand rollout-prune
+		 */
+		public function rollout_prune($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::rollout_prune($assoc_args));
 		}
 
 		/**

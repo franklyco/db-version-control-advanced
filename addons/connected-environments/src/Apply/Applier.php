@@ -4,6 +4,7 @@ namespace Dbvc\Connected\Apply;
 
 use Dbvc\Connected\Adapters\BricksOptionCollectionObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
+use Dbvc\Connected\Adapters\ServicePostObserver;
 use Dbvc\Connected\Capture\DirtyCapture;
 use Dbvc\Connected\Storage\JobStore;
 use Dbvc\Connected\Storage\OperationStore;
@@ -12,8 +13,9 @@ use Dbvc\ConnectedProtocol\Canonicalizer;
 use Dbvc\ConnectedProtocol\Protocol;
 
 /**
- * Approved execution on the target, one supported domain family in this
- * step: Bricks option collections (global classes, global variables).
+ * Approved execution on the target, two domain families in this
+ * step: Bricks option collections (global classes, global variables) and
+ * wp.service posts (per-post row writes).
  *
  * The approval binds the prepare receipt this environment produced; the
  * applier re-reads every container immediately before writing and writes
@@ -23,9 +25,7 @@ use Dbvc\ConnectedProtocol\Protocol;
  * meantime makes the operation `stale` instead of being overwritten. A
  * verified before image is journalled before the write; the after-state is
  * verified through the read-only observer, and a failed verification is
- * compensated by the same conditional write back to the before image. Every
- * item of one container succeeds or fails together; containers are written
- * in manifest order. Service posts are `unsupported` here.
+ * compensated by the same conditional write back to the before image. Bricks items of one container succeed or fail together; wp.service items write one post row each, guarded by the post fingerprint (post_modified + meta), verified by re-snapshot and compensated on a miss. Media (attachments) and service deletions are not written here.
  */
 final class Applier
 {
@@ -86,6 +86,7 @@ final class Applier
             }
         }
         $plan = [];
+        $service_plan = [];
         $results = [];
         foreach ((array) ($release['items'] ?? []) as $manifest) {
             if (! is_array($manifest)) {
@@ -124,19 +125,43 @@ final class Applier
                 continue;
             }
             $observer = DomainRegistry::observer_for($result['domain']);
-            if (! $observer instanceof BricksOptionCollectionObserver) {
-                $result['outcome'] = 'unsupported';
-                $result['error'] = 'domain_apply_not_supported_in_this_step';
+            if ($observer instanceof BricksOptionCollectionObserver) {
+                $plan[$observer->option_name()][] = ['key' => $key, 'observer' => $observer, 'manifest' => $manifest, 'prepared' => $prepared];
                 $results[$key] = $result;
                 continue;
             }
-            $plan[$observer->option_name()][] = ['key' => $key, 'observer' => $observer, 'manifest' => $manifest, 'prepared' => $prepared];
+            if ($observer instanceof ServicePostObserver) {
+                $service_plan[$key] = ['key' => $key, 'observer' => $observer, 'manifest' => $manifest, 'prepared' => $prepared];
+                $results[$key] = $result;
+                continue;
+            }
+            $result['outcome'] = 'unsupported';
+            $result['error'] = 'domain_apply_not_supported_in_this_step';
             $results[$key] = $result;
         }
 
         // Journal the verified before image of every container before the first write.
         $before_images = [];
         $stale_containers = [];
+        // Per-post before images for wp.service: the current canonical snapshot, guarded by the post fingerprint.
+        foreach ($service_plan as $key => $entry) {
+            $post_id = (string) ($entry['prepared']['identity']['storage_key'] ?? '');
+            $snapshot = $post_id !== '' ? $entry['observer']->snapshot(['storage_key' => $post_id]) : ['status' => 'missing'];
+            $expected = (string) ($entry['prepared']['storage_fingerprint'] ?? '');
+            if ($post_id === '' || ($snapshot['status'] ?? '') !== 'available' || (string) ($snapshot['storage_fingerprint'] ?? '') !== $expected) {
+                $stale_containers['service:' . $key] = (string) ($snapshot['storage_fingerprint'] ?? '');
+                continue;
+            }
+            $before_images['service:' . $key] = [
+                'kind' => 'service',
+                'domain' => (string) $entry['manifest']['domain'],
+                'container' => (string) $entry['prepared']['container'],
+                'post_id' => (int) $post_id,
+                'fingerprint' => (string) $snapshot['storage_fingerprint'],
+                'before_hash' => (string) $snapshot['semantic_hash'],
+                'canonical' => (string) ($snapshot['canonical'] ?? ''),
+            ];
+        }
         foreach ($plan as $option => $entries) {
             $container = $entries[0]['observer']->read_container();
             $expected = (string) ($entries[0]['prepared']['storage_fingerprint'] ?? '');
@@ -198,10 +223,393 @@ final class Applier
             }
         }
 
+        // wp.service: one conditional per-post write per item, guarded by the post fingerprint.
+        foreach ($service_plan as $key => $entry) {
+            if (array_key_exists('service:' . $key, $stale_containers)) {
+                $results[$key]['outcome'] = 'stale';
+                $results[$key]['error'] = 'post_changed_since_receipt';
+                $journal[] = ['container' => (string) $entry['prepared']['container'], 'step' => 'precheck', 'result' => 'stale', 'fingerprint_now' => $stale_containers['service:' . $key]];
+                continue;
+            }
+            $before = $before_images['service:' . $key];
+            $outcome = $this->apply_service_item($entry, $before, $journal);
+            $results[$key]['outcome'] = $outcome['outcome'];
+            $results[$key]['verified'] = $outcome['verified'];
+            $results[$key]['error'] = $outcome['error'];
+            $results[$key]['storage_fingerprint_before'] = $before['fingerprint'];
+            $results[$key]['storage_fingerprint_after'] = $outcome['fingerprint_after'];
+        }
+
         $receipt_out = $this->build_receipt($base, array_values($results), $journal, $started);
         $this->operations->finish($base['operation_id'], $receipt_out, $journal);
 
         return $receipt_out;
+    }
+
+    /**
+     * One wp.service post: guard already checked, write the received body, verify
+     * by re-snapshot, and compensate by restoring the journalled before body on a
+     * verification miss. Media (attachments) are never created here.
+     *
+     * @param array<string, mixed>             $entry
+     * @param array<string, mixed>             $before
+     * @param array<int, array<string, mixed>> $journal
+     * @return array{outcome: string, verified: bool, error: string, fingerprint_after: string}
+     */
+    private function apply_service_item(array $entry, array $before, array &$journal)
+    {
+        $observer = $entry['observer'];
+        $post_id = (int) $before['post_id'];
+        $container = (string) $entry['prepared']['container'];
+        $manifest = $entry['manifest'];
+        $operation = (string) ($manifest['operation'] ?? 'replace');
+
+        if ($operation === 'delete') {
+            // Reversible removal: trash the post (the fingerprint guard already passed).
+            // The journalled before image lets a reviewed rollback restore it.
+            $trashed = $observer->trash($post_id);
+            if ($trashed !== true) {
+                $journal[] = ['container' => $container, 'step' => 'delete', 'result' => 'refused', 'error' => (string) $trashed];
+                return ['outcome' => 'failed', 'verified' => false, 'error' => (string) $trashed, 'fingerprint_after' => (string) ($observer->snapshot(['storage_key' => (string) $post_id])['storage_fingerprint'] ?? '')];
+            }
+            $after = $observer->snapshot(['storage_key' => (string) $post_id]);
+            $gone = ($after['status'] ?? '') === 'missing';
+            $journal[] = ['container' => $container, 'step' => 'delete', 'result' => 'trashed', 'fingerprint_before' => $before['fingerprint'], 'fingerprint_after' => (string) ($after['storage_fingerprint'] ?? '')];
+            $journal[] = ['container' => $container, 'step' => 'verify', 'result' => $gone ? 'verified' : 'failed'];
+            if ($gone) {
+                return ['outcome' => 'applied', 'verified' => true, 'error' => '', 'fingerprint_after' => (string) ($after['storage_fingerprint'] ?? '')];
+            }
+            // Compensate: untrash so a failed verify never leaves the post removed.
+            $observer->untrash($post_id);
+            $now = $observer->snapshot(['storage_key' => (string) $post_id]);
+            return ['outcome' => 'failed', 'verified' => false, 'error' => 'delete_unverified', 'fingerprint_after' => (string) ($now['storage_fingerprint'] ?? '')];
+        }
+        $body = json_decode((string) ($manifest['body'] ?? ''), true);
+        if (! is_array($body)) {
+            $journal[] = ['container' => $container, 'step' => 'build', 'result' => 'payload_invalid'];
+            return ['outcome' => 'failed', 'verified' => false, 'error' => 'payload_invalid', 'fingerprint_after' => $before['fingerprint']];
+        }
+
+        // Materialize the carried media (M7 step 3b) so apply_body's detokenize can
+        // resolve every referenced attachment to a local id/URL: content the target
+        // lacks is sideloaded from the carried bytes, content it already holds is
+        // reused. Ids created here are journalled (for a reviewed rollback) and
+        // discarded if the guarded write does not verify.
+        $created_media = [];
+        $carried_media = is_array($manifest['media'] ?? null) ? $manifest['media'] : [];
+        if ($carried_media !== []) {
+            $materialized = MediaMaterializer::materialize($carried_media);
+            $created_media = array_values($materialized['created']);
+            $journal[] = ['container' => $container, 'step' => 'media', 'result' => $materialized['errors'] === [] ? 'materialized' : 'failed', 'created' => count($created_media), 'reused' => count($materialized['reused']), 'created_ids' => $created_media, 'errors' => $materialized['errors']];
+            if ($materialized['errors'] !== []) {
+                MediaMaterializer::discard($created_media);
+                return ['outcome' => 'failed', 'verified' => false, 'error' => 'media_materialize_failed', 'fingerprint_after' => $before['fingerprint']];
+            }
+        }
+
+        $written = $observer->apply_body($post_id, $body);
+        if ($written !== true) {
+            MediaMaterializer::discard($created_media);
+            $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'refused', 'error' => (string) $written];
+            return ['outcome' => 'failed', 'verified' => false, 'error' => (string) $written, 'fingerprint_after' => (string) ($observer->snapshot(['storage_key' => (string) $post_id])['storage_fingerprint'] ?? '')];
+        }
+        $after = $observer->snapshot(['storage_key' => (string) $post_id]);
+        $ok = ($after['status'] ?? '') === 'available' && (string) ($after['semantic_hash'] ?? '') === (string) $manifest['after_hash'];
+        $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'written', 'fingerprint_before' => $before['fingerprint'], 'fingerprint_after' => (string) ($after['storage_fingerprint'] ?? '')];
+        $journal[] = ['container' => $container, 'step' => 'verify', 'result' => $ok ? 'verified' : 'failed'];
+        if ($ok) {
+            return ['outcome' => 'applied', 'verified' => true, 'error' => '', 'fingerprint_after' => (string) $after['storage_fingerprint']];
+        }
+
+        // Compensate: restore the before body so a failed verify never leaves partial
+        // state, and discard any attachments this run created (now orphaned).
+        MediaMaterializer::discard($created_media);
+        $before_body = json_decode((string) $before['canonical'], true);
+        $restored = is_array($before_body) ? $observer->apply_body($post_id, $before_body) : 'before_body_unreadable';
+        $now = $observer->snapshot(['storage_key' => (string) $post_id]);
+        $restored_ok = $restored === true && (string) ($now['semantic_hash'] ?? '') === (string) $before['before_hash'];
+        $journal[] = ['container' => $container, 'step' => 'compensate', 'result' => $restored_ok ? 'restored_verified' : 'restore_unverified'];
+
+        return [
+            'outcome' => $restored_ok ? 'compensated' : 'failed',
+            'verified' => false,
+            'error' => $restored_ok ? 'verification_failed_restored' : 'verification_failed_restore_unverified',
+            'fingerprint_after' => (string) ($now['storage_fingerprint'] ?? ''),
+        ];
+    }
+
+    /**
+     * Reviewed rollback: restore the before image journalled for the reversed
+     * operation, one conditional write per container guarded by that operation's
+     * after fingerprint. A container that changed since the apply yields a
+     * restore conflict (never an overwrite). Bricks option collections restore by conditional option write; wp.service posts restore by re-applying the journalled before body, guarded the same way.
+     *
+     * @param array<string, mixed> $approval hub apply-request with kind=rollback + rolls_back_operation_id
+     * @param array<string, mixed> $state    connector state (environment_id, installation_epoch)
+     * @param string               $hub_url
+     * @return array<string, mixed> execution receipt
+     */
+    public function rollback(array $approval, array $state, $hub_url)
+    {
+        global $wpdb;
+
+        $started = time();
+        $release = is_array($approval['release'] ?? null) ? $approval['release'] : [];
+        $base = [
+            'approval_uid' => (string) ($approval['approval_uid'] ?? ''),
+            'operation_id' => (string) ($approval['operation_id'] ?? ''),
+            'rolls_back_operation_id' => (string) ($approval['rolls_back_operation_id'] ?? ''),
+            'release_uid' => (string) ($release['release_uid'] ?? ''),
+            'release_digest' => (string) ($release['digest'] ?? ''),
+            'receipt_digest' => (string) ($approval['receipt_digest'] ?? ''),
+            'target' => ['environment_id' => (string) $state['environment_id'], 'epoch' => (string) $state['installation_epoch']],
+            'started_at' => gmdate('c', $started),
+        ];
+        if (strtotime((string) ($approval['expires_at'] ?? '') . ' UTC') <= time()) {
+            return $this->finish_rollback($base, 'stale', 'approval_expired', [], [], $hub_url);
+        }
+
+        $original = $this->operations->find($base['rolls_back_operation_id']);
+        if ($original === null || $original['state'] !== OperationStore::STATE_FINISHED || ! is_array($original['before_image']) || $original['before_image'] === []) {
+            return $this->finish_rollback($base, 'failed', 'original_operation_not_restorable', [], [], $hub_url);
+        }
+        if ((string) $original['installation_epoch'] !== $base['target']['epoch']) {
+            return $this->finish_rollback($base, 'failed', 'epoch_changed_since_operation', [], [], $hub_url);
+        }
+        $original_receipt = is_array($original['execution_receipt']) ? $original['execution_receipt'] : [];
+
+        // Which containers the reversed apply wrote, and the after fingerprint it produced for each (keyed by the full container).
+        $after_fp = [];
+        foreach ((array) ($original['journal'] ?? []) as $entry) {
+            // The operation's after fingerprint per container: a member write ('write'/'written')
+            // or a reversible delete ('delete'/'trashed'); both record fingerprint_after.
+            $records_after = ($entry['step'] ?? '') === 'write' && ($entry['result'] ?? '') === 'written';
+            $records_after = $records_after || (($entry['step'] ?? '') === 'delete' && ($entry['result'] ?? '') === 'trashed');
+            if (is_array($entry) && $records_after && isset($entry['container'], $entry['fingerprint_after'])) {
+                $after_fp[(string) $entry['container']] = (string) $entry['fingerprint_after'];
+            }
+        }
+        // Attachments the reversed apply sideloaded, per container. A reviewed rollback
+        // deletes only these once the before image is restored (the restored post no
+        // longer references them); a pre-existing or reused attachment is never touched.
+        $created_media = [];
+        foreach ((array) ($original['journal'] ?? []) as $entry) {
+            if (is_array($entry) && ($entry['step'] ?? '') === 'media' && isset($entry['container']) && is_array($entry['created_ids'] ?? null)) {
+                foreach ($entry['created_ids'] as $mid) {
+                    $created_media[(string) $entry['container']][] = (int) $mid;
+                }
+            }
+        }
+        // Group the reversed operation's receipt items by their storage container (option:<name> or post_type:<pt>#<id>).
+        $items_by_container = [];
+        foreach ((array) ($original_receipt['items'] ?? []) as $item) {
+            if (! is_array($item) || empty($item['container'])) {
+                continue;
+            }
+            $items_by_container[(string) $item['container']][] = $item;
+        }
+
+        // Capture the current container state as this restore's before image (so a rollback can itself be rolled back).
+        $restore_before = [];
+        foreach ((array) $original['before_image'] as $key => $target_image) {
+            if (($target_image['kind'] ?? '') === 'service') {
+                $observer = DomainRegistry::observer_for((string) ($target_image['domain'] ?? 'wp.service'));
+                if (! $observer instanceof ServicePostObserver) {
+                    continue;
+                }
+                $snapshot = $observer->snapshot(['storage_key' => (string) ($target_image['post_id'] ?? '')]);
+                $restore_before[$key] = ['kind' => 'service', 'domain' => (string) ($target_image['domain'] ?? 'wp.service'), 'container' => (string) ($target_image['container'] ?? ''), 'post_id' => (int) ($target_image['post_id'] ?? 0), 'fingerprint' => (string) ($snapshot['storage_fingerprint'] ?? ''), 'before_hash' => (string) ($snapshot['semantic_hash'] ?? ''), 'canonical' => (string) ($snapshot['canonical'] ?? '')];
+                continue;
+            }
+            $container = 'option:' . $key;
+            $items = $items_by_container[$container] ?? [];
+            $observer = $items === [] ? null : DomainRegistry::observer_for((string) $items[0]['domain']);
+            if (! $observer instanceof BricksOptionCollectionObserver) {
+                continue; // Only Bricks option collections restore this way.
+            }
+            $now = $observer->read_container();
+            $restore_before[$key] = ['fingerprint' => $now['fingerprint'], 'raw' => $now['raw'], 'present' => $now['present']];
+        }
+
+        $started_row = $this->operations->start([
+            'operation_id' => $base['operation_id'],
+            'approval_uid' => $base['approval_uid'],
+            'release_uid' => $base['release_uid'],
+            'release_digest' => $base['release_digest'],
+            'receipt_digest' => $base['receipt_digest'],
+            'installation_epoch' => $base['target']['epoch'],
+            'before_image' => $restore_before,
+        ], $hub_url);
+        if ($started_row === 'exists') {
+            $existing = $this->operations->find($base['operation_id']);
+            if ($existing !== null && is_array($existing['execution_receipt'])) {
+                return $existing['execution_receipt'];
+            }
+            return $this->finish_rollback($base, 'failed', 'operation_in_progress_recovery_required', [], [], $hub_url, false);
+        }
+        if ($started_row !== 'created') {
+            return $this->finish_rollback($base, 'failed', 'journal_unavailable', [], [], $hub_url, false);
+        }
+
+        $journal = [];
+        $results = [];
+        $capture = new DirtyCapture(new JobStore(), DomainRegistry::domains());
+        foreach ((array) $original['before_image'] as $key => $target_image) {
+            $is_service = ($target_image['kind'] ?? '') === 'service';
+            $container = $is_service ? (string) ($target_image['container'] ?? '') : 'option:' . $key;
+            $items = $items_by_container[$container] ?? [];
+            $target_fp = (string) ($target_image['fingerprint'] ?? '');
+            $item_result = function ($outcome, $verified, $error) use ($items) {
+                $rows = [];
+                foreach ($items as $item) {
+                    $rows[] = [
+                        'domain' => (string) $item['domain'],
+                        'instance_uid' => (string) $item['instance_uid'],
+                        'target_instance_uid' => (string) ($item['target_instance_uid'] ?? $item['instance_uid']),
+                        'profile' => (string) $item['profile'],
+                        'operation' => 'rollback',
+                        'outcome' => $outcome,
+                        'verified' => $verified,
+                        'error' => $error,
+                        'restored_hash' => (string) ($item['before_hash'] ?? ''),
+                        'before_hash' => (string) ($item['before_hash'] ?? ''),
+                        'after_hash' => (string) ($item['after_hash'] ?? ''),
+                    ];
+                }
+                return $rows;
+            };
+            $observer = $items === [] ? null : DomainRegistry::observer_for((string) $items[0]['domain']);
+            if ($observer === null || ($is_service && ! $observer instanceof ServicePostObserver) || (! $is_service && ! $observer instanceof BricksOptionCollectionObserver)) {
+                $journal[] = ['container' => $container, 'step' => 'precheck', 'result' => 'unsupported'];
+                foreach ($item_result('unsupported', false, 'domain_rollback_not_supported_in_this_step') as $r) {
+                    $results[] = $r;
+                }
+                continue;
+            }
+            $now_fp = $is_service
+                ? (string) ($observer->snapshot(['storage_key' => (string) ($target_image['post_id'] ?? '')])['storage_fingerprint'] ?? '')
+                : (string) $observer->read_container()['fingerprint'];
+            if ($now_fp === $target_fp) {
+                $journal[] = ['container' => $container, 'step' => 'precheck', 'result' => 'already_before'];
+                foreach ($item_result('noop', true, '') as $r) {
+                    $results[] = $r;
+                }
+                continue;
+            }
+            $afp = $after_fp[$container] ?? null;
+            if ($afp === null || $now_fp !== $afp) {
+                $journal[] = ['container' => $container, 'step' => 'precheck', 'result' => 'restore_conflict', 'fingerprint_now' => $now_fp, 'fingerprint_after' => (string) $afp];
+                foreach ($item_result('restore_conflict', false, 'container_changed_since_operation') as $r) {
+                    $results[] = $r;
+                }
+                continue;
+            }
+
+            if ($is_service) {
+                $before_body = json_decode((string) ($target_image['canonical'] ?? ''), true);
+                $written = is_array($before_body) ? $observer->apply_body((int) $target_image['post_id'], $before_body) : 'before_body_unreadable';
+                if ($written !== true) {
+                    $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'refused', 'error' => (string) $written];
+                    foreach ($item_result('failed', false, (string) $written) as $r) {
+                        $results[] = $r;
+                    }
+                    continue;
+                }
+                $verify = $observer->snapshot(['storage_key' => (string) $target_image['post_id']]);
+                $ok = (string) ($verify['semantic_hash'] ?? '') === (string) ($target_image['before_hash'] ?? '');
+                $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'restored', 'fingerprint_before' => $afp, 'fingerprint_after' => (string) ($verify['storage_fingerprint'] ?? '')];
+                $journal[] = ['container' => $container, 'step' => 'verify', 'result' => $ok ? 'verified' : 'failed'];
+                // The restored before image no longer references the attachments the reversed
+                // apply sideloaded, so delete exactly those (never a reused/pre-existing one).
+                if ($ok && ($created_media[$container] ?? []) !== []) {
+                    MediaMaterializer::discard($created_media[$container]);
+                    $journal[] = ['container' => $container, 'step' => 'media', 'result' => 'discarded', 'discarded_ids' => $created_media[$container]];
+                }
+                foreach ($item_result($ok ? 'restored' : 'failed', $ok, $ok ? '' : 'restore_verification_failed') as $r) {
+                    $results[] = $r;
+                }
+                continue;
+            }
+
+            $option = $key;
+            $affected = $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND SHA2(option_value, 256) = %s",
+                (string) $target_image['raw'],
+                $option,
+                $afp
+            ));
+            self::flush_option_cache($option);
+            if ($affected !== 1) {
+                $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'rejected', 'affected' => (int) $affected];
+                foreach ($item_result('stale', false, 'conditional_write_rejected') as $r) {
+                    $results[] = $r;
+                }
+                continue;
+            }
+            $verify = $observer->read_container();
+            $ok = $verify['fingerprint'] === $target_fp;
+            $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'restored', 'fingerprint_before' => $afp, 'fingerprint_after' => $verify['fingerprint']];
+            $journal[] = ['container' => $container, 'step' => 'verify', 'result' => $ok ? 'verified' : 'failed'];
+            foreach ($item_result($ok ? 'restored' : 'failed', $ok, $ok ? '' : 'restore_verification_failed') as $r) {
+                $results[] = $r;
+            }
+            $capture->signal($observer->domain(), DomainRegistry::COLLECTION_KEY, ['origin' => 'rollback', 'causation_id' => $base['operation_id'], 'source_hook' => 'rollback']);
+        }
+
+        return $this->finish_rollback($base, null, '', $results, $journal, $hub_url);
+    }
+
+    /**
+     * Build, journal and return a rollback execution receipt.
+     *
+     * @param array<string, mixed>             $base
+     * @param string|null                      $forced_outcome When set, a pre-write refusal outcome.
+     * @param string                           $error
+     * @param array<int, array<string, mixed>> $items
+     * @param array<int, array<string, mixed>> $journal
+     * @param string                           $hub_url
+     * @param bool                             $journal_row
+     * @return array<string, mixed>
+     */
+    private function finish_rollback(array $base, $forced_outcome, $error, array $items, array $journal, $hub_url, $journal_row = true)
+    {
+        $counts = ['restored' => 0, 'noop' => 0, 'stale' => 0, 'restore_conflict' => 0, 'failed' => 0, 'unsupported' => 0];
+        foreach ($items as $item) {
+            $counts[$item['outcome']] = ($counts[$item['outcome']] ?? 0) + 1;
+        }
+        if ($forced_outcome !== null) {
+            $outcome = $forced_outcome;
+        } elseif ($counts['failed'] > 0) {
+            $outcome = 'failed';
+        } elseif ($counts['restore_conflict'] > 0 || $counts['stale'] > 0) {
+            $outcome = $counts['restored'] > 0 ? 'partial' : 'restore_conflict';
+        } elseif ($counts['restored'] > 0) {
+            $outcome = ($counts['unsupported'] > 0) ? 'partial' : 'restored';
+        } elseif ($counts['unsupported'] > 0) {
+            $outcome = 'unsupported';
+        } else {
+            $outcome = 'noop';
+        }
+        $receipt = array_merge($base, [
+            'kind' => 'rollback',
+            'outcome' => $outcome,
+            'counts' => $counts,
+            'items' => $items,
+            'journal' => $journal !== [] ? $journal : [['step' => 'precheck', 'result' => $error]],
+            'warnings' => array_values(array_filter([$this->bricks_css_warning($items, ['restored'], 'rollback')])),
+            'error' => (string) $error,
+            'finished_at' => gmdate('c'),
+            'note' => 'Reviewed rollback: conditional restore of the journalled before image, guarded by the operation\'s after fingerprint; a moved container is a restore conflict, never an overwrite.',
+        ]);
+        if ($journal_row) {
+            $started = $this->operations->find($base['operation_id']);
+            if ($started === null) {
+                $this->operations->start(['operation_id' => $base['operation_id'], 'approval_uid' => $base['approval_uid'], 'release_uid' => $base['release_uid'], 'release_digest' => $base['release_digest'], 'receipt_digest' => $base['receipt_digest'], 'installation_epoch' => $base['target']['epoch'], 'before_image' => []], $hub_url);
+            }
+            $this->operations->finish($base['operation_id'], $receipt, $receipt['journal']);
+        }
+
+        return $receipt;
     }
 
     /**
@@ -353,6 +761,43 @@ final class Applier
      * @param int                               $started
      * @return array<string, mixed>
      */
+    /**
+     * Regenerate Bricks' cached CSS files after a write that touched Bricks
+     * option collections, when Bricks is present and using external CSS files.
+     * A no-op (and no warning) in inline mode, which needs no rebuild. Returns a
+     * receipt-warning string, or '' when nothing needs saying.
+     *
+     * @param array<int, array<string, mixed>> $items    Receipt items.
+     * @param array<int, string>               $outcomes Outcomes that count as a write.
+     * @param string                           $context  'apply' or 'rollback', for the warning copy.
+     * @return string
+     */
+    private function bricks_css_warning(array $items, array $outcomes, $context)
+    {
+        $wrote_bricks = false;
+        foreach ($items as $item) {
+            if (strpos((string) ($item['domain'] ?? ''), 'bricks.') === 0 && in_array((string) ($item['outcome'] ?? ''), $outcomes, true)) {
+                $wrote_bricks = true;
+                break;
+            }
+        }
+        if (! $wrote_bricks) {
+            return '';
+        }
+        // Bricks in inline CSS mode regenerates per request: no files to rebuild.
+        $file_mode = class_exists('\\Bricks\\Database') && \Bricks\Database::get_setting('cssLoading') === 'file';
+        if (! $file_mode) {
+            return '';
+        }
+        if (! class_exists('\\Bricks\\Assets_Files') || ! method_exists('\\Bricks\\Assets_Files', 'regenerate_css_files')) {
+            return 'generated_css_not_rebuilt: Bricks CSS is in external-file mode but no supported regeneration call is available; a builder save or cache rebuild is required for rendered output.';
+        }
+        $files = \Bricks\Assets_Files::regenerate_css_files();
+        $count = is_array($files) ? count($files) : 0;
+
+        return sprintf('generated_css_rebuilt: %d Bricks CSS file(s) regenerated after %s via Bricks\\Assets_Files::regenerate_css_files().', $count, $context);
+    }
+
     private function build_receipt(array $base, array $items, array $journal, $started)
     {
         $counts = ['applied' => 0, 'noop' => 0, 'stale' => 0, 'failed' => 0, 'compensated' => 0, 'unsupported' => 0];
@@ -380,7 +825,7 @@ final class Applier
             'counts' => $counts,
             'items' => $items,
             'journal' => $journal,
-            'warnings' => $counts['applied'] > 0 ? ['generated_css_not_rebuilt: Bricks CSS/cache regeneration is not performed by apply; a builder save or cache rebuild is required for rendered output.'] : [],
+            'warnings' => array_values(array_filter([$this->bricks_css_warning($items, ['applied', 'compensated'], 'apply')])),
             'finished_at' => gmdate('c'),
             'note' => 'Conditional writes against the receipt\'s storage fingerprints; verified through the read-only observer; a lost response must be resolved by asking for this operation, never by executing again.',
         ]);

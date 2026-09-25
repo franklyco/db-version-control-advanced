@@ -191,8 +191,23 @@ final class Preparer
             return $result;
         }
         if (! $result['complete']) {
-            $result['blockers'][] = 'target_projection_incomplete:' . implode(',', (array) ($snapshot['problems'] ?? []));
-            return $result;
+            $problems = array_values((array) ($snapshot['problems'] ?? []));
+            $blocking = array_values(array_filter($problems, static function ($problem) {
+                return strpos((string) $problem, 'masked:') !== 0;
+            }));
+            if ($blocking !== []) {
+                $result['blockers'][] = 'target_projection_incomplete:' . implode(',', $problems);
+                return $result;
+            }
+            // Masking-only incompleteness is a deliberate, deterministic exclusion (the
+            // operator masks these fields for privacy), not missing data: the projection
+            // hash over the managed (unmasked) set is authoritative on both sides, and
+            // apply never writes or deletes a masked field. So the object stays appliable
+            // over its unmasked fields; record which fields are excluded for transparency.
+            $result['masked_fields'] = array_values(array_map(static function ($problem) {
+                return substr((string) $problem, strlen('masked:'));
+            }, $problems));
+            $result['complete'] = true;
         }
         if ($result['before_hash'] === $after_hash) {
             $result['outcome'] = self::OUTCOME_NOOP;
@@ -205,7 +220,15 @@ final class Preparer
             return $result;
         }
         $result['patch'] = self::patch($before, $after);
-        $ledger = DependencyLedger::build($domain, $after, $manifest_items, $observer);
+        // Content hashes the release carries bytes for (M7): a referenced attachment the
+        // target lacks is still resolvable at apply because these bytes will be sideloaded.
+        $carried_media_hashes = [];
+        foreach (is_array($item['media'] ?? null) ? $item['media'] : [] as $media_entry) {
+            if (is_array($media_entry) && isset($media_entry['hash']) && is_string($media_entry['hash'])) {
+                $carried_media_hashes[] = $media_entry['hash'];
+            }
+        }
+        $ledger = DependencyLedger::build($domain, $after, $manifest_items, $observer, $carried_media_hashes);
         $result['dependencies'] = $ledger;
         if ($ledger['blocking'] !== [] || ! $ledger['complete']) {
             $result['blockers'] = array_merge($result['blockers'], $ledger['blocking'] !== [] ? $ledger['blocking'] : ['dependency_discovery_incomplete']);

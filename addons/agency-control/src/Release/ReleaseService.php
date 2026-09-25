@@ -186,8 +186,12 @@ final class ReleaseService
                 $outcomes[] = $outcome;
                 continue;
             }
-            $this->releases->record_payload($item['release_item_id'], $body);
+            $media = $this->sanitize_media($payload['media'] ?? null, $payload['media_deferred'] ?? null);
+            $this->releases->record_payload($item['release_item_id'], $body, '', $media['stored']);
             $outcome['outcome'] = 'stored';
+            if ($media['count'] > 0 || $media['deferred'] > 0) {
+                $outcome['media'] = ['stored' => $media['count'], 'deferred' => $media['deferred']];
+            }
             $outcomes[] = $outcome;
         }
 
@@ -201,6 +205,93 @@ final class ReleaseService
             'sealed' => $digest !== null,
             'outcomes' => $outcomes,
         ];
+    }
+
+    /**
+     * Validate a source's media bundle before it is stored on the item. The
+     * hub trusts nothing the source claims: each entry's base64 bytes are
+     * decoded, size-capped and re-hashed against its declared content hash,
+     * and the per-item total and count caps are enforced here. Anything that
+     * fails is recorded as `deferred` (descriptor kept, bytes dropped),
+     * alongside the source's own deferred entries. Returns the JSON to store
+     * (null when there is nothing) and the stored/deferred counts.
+     *
+     * @param mixed $media           Source-supplied media entries.
+     * @param mixed $source_deferred Source-supplied deferred entries.
+     * @return array{stored: string|null, count: int, deferred: int}
+     */
+    private function sanitize_media($media, $source_deferred)
+    {
+        $stored = [];
+        $deferred = [];
+        foreach (is_array($source_deferred) ? $source_deferred : [] as $entry) {
+            if (is_array($entry) && isset($entry['ref'])) {
+                $deferred[] = [
+                    'ref' => (string) $entry['ref'],
+                    'hash' => isset($entry['hash']) && is_string($entry['hash']) ? $entry['hash'] : null,
+                    'reason' => isset($entry['reason']) ? (string) $entry['reason'] : 'deferred',
+                ];
+            }
+        }
+        $total = 0;
+        foreach (is_array($media) ? $media : [] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $hash = isset($entry['hash']) && is_string($entry['hash']) ? $entry['hash'] : '';
+            $refs = [];
+            foreach (is_array($entry['refs'] ?? null) ? $entry['refs'] : [] as $ref) {
+                if (is_string($ref) && $ref !== '') {
+                    $refs[] = $ref;
+                }
+            }
+            $primary_ref = $refs !== [] ? $refs[0] : ('hash:' . substr($hash, 0, 20));
+            if (! preg_match('/^sha256:[a-f0-9]{64}$/', $hash) || ! is_string($entry['bytes'] ?? null)) {
+                $deferred[] = ['ref' => $primary_ref, 'hash' => $hash !== '' ? $hash : null, 'reason' => 'invalid'];
+                continue;
+            }
+            $bytes = base64_decode((string) $entry['bytes'], true);
+            if ($bytes === false || $bytes === '') {
+                $deferred[] = ['ref' => $primary_ref, 'hash' => $hash, 'reason' => 'invalid'];
+                continue;
+            }
+            if (strlen($bytes) > Protocol::MAX_MEDIA_FILE_BYTES) {
+                $deferred[] = ['ref' => $primary_ref, 'hash' => $hash, 'reason' => 'too_large'];
+                continue;
+            }
+            if ('sha256:' . hash('sha256', $bytes) !== $hash) {
+                $deferred[] = ['ref' => $primary_ref, 'hash' => $hash, 'reason' => 'hash_mismatch'];
+                continue;
+            }
+            if (count($stored) >= Protocol::MAX_MEDIA_ITEMS) {
+                $deferred[] = ['ref' => $primary_ref, 'hash' => $hash, 'reason' => 'too_many'];
+                continue;
+            }
+            if ($total + strlen($bytes) > Protocol::MAX_MEDIA_TOTAL_BYTES) {
+                $deferred[] = ['ref' => $primary_ref, 'hash' => $hash, 'reason' => 'total_exceeded'];
+                continue;
+            }
+            $total += strlen($bytes);
+            $stored[] = [
+                'source_id' => (int) ($entry['source_id'] ?? 0),
+                'hash' => $hash,
+                'mime' => isset($entry['mime']) ? (string) $entry['mime'] : '',
+                'filename' => isset($entry['filename']) ? (string) $entry['filename'] : '',
+                'relpath' => isset($entry['relpath']) ? (string) $entry['relpath'] : '',
+                'filesize' => strlen($bytes),
+                'url' => isset($entry['url']) ? (string) $entry['url'] : '',
+                'title' => isset($entry['title']) ? (string) $entry['title'] : '',
+                'alt' => isset($entry['alt']) ? (string) $entry['alt'] : '',
+                'caption' => isset($entry['caption']) ? (string) $entry['caption'] : '',
+                'refs' => $refs,
+                'bytes' => (string) $entry['bytes'],
+            ];
+        }
+        if ($stored === [] && $deferred === []) {
+            return ['stored' => null, 'count' => 0, 'deferred' => 0];
+        }
+
+        return ['stored' => wp_json_encode(['media' => $stored, 'deferred' => $deferred]), 'count' => count($stored), 'deferred' => count($deferred)];
     }
 
     /**

@@ -2,8 +2,10 @@
 
 namespace Dbvc\Connected\Transport;
 
+use Dbvc\Connected\Adapters\DomainRegistry;
 use Dbvc\Connected\Apply\Applier;
 use Dbvc\Connected\Capture\DirtyCapture;
+use Dbvc\Connected\Preparation\MediaReferences;
 use Dbvc\Connected\Preparation\Preparer;
 use Dbvc\Connected\Storage\ObjectStore;
 use Dbvc\Connected\Storage\OperationStore;
@@ -190,7 +192,9 @@ final class ReleaseWorker
             if ($this->operations->find((string) $approval['operation_id']) !== null) {
                 continue; // Executed (or refused) already; the unreported path resends its receipt.
             }
-            $receipt = $this->applier->apply($approval, $state, $hub_url);
+            $receipt = ($approval['kind'] ?? 'apply') === 'rollback'
+                ? $this->applier->rollback($approval, $state, $hub_url)
+                : $this->applier->apply($approval, $state, $hub_url);
             $summary['executions']++;
             $summary['operations'][] = ['operation_id' => $receipt['operation_id'], 'release_uid' => $receipt['release_uid'], 'outcome' => $receipt['outcome'], 'counts' => $receipt['counts']];
             $error = $this->report_execution($hub_url, $auth, $receipt, $summary);
@@ -270,12 +274,28 @@ final class ReleaseWorker
             } else {
                 $payload['body'] = $body;
                 $summary['payloads_sent']++;
+                // A service post's referenced attachments ride as a sibling media channel
+                // (bytes out-of-body, so the after_hash contract is untouched).
+                if (! $deletion && (string) $item['domain'] === DomainRegistry::DOMAIN_WP_SERVICE) {
+                    $after = json_decode($body, true);
+                    if (is_array($after)) {
+                        $bundle = MediaReferences::collect_for_transport($after);
+                        if ($bundle['media'] !== []) {
+                            $payload['media'] = $bundle['media'];
+                            $summary['media_sent'] = ($summary['media_sent'] ?? 0) + count($bundle['media']);
+                        }
+                        if ($bundle['deferred'] !== []) {
+                            $payload['media_deferred'] = $bundle['deferred'];
+                            $summary['media_deferred'] = ($summary['media_deferred'] ?? 0) + count($bundle['deferred']);
+                        }
+                    }
+                }
             }
             $batches[(string) $item['release_uid']][] = $payload;
         }
 
         foreach ($batches as $release_uid => $payloads) {
-            foreach (array_chunk($payloads, Protocol::MAX_PAYLOAD_ITEMS) as $chunk) {
+            foreach ($this->chunk_payloads($payloads) as $chunk) {
                 $post = HubClient::post_json($hub_url, '/releases/' . rawurlencode($release_uid) . '/payloads', ['items' => $chunk], $auth);
                 $summary['http_status'] = $post['status'];
                 if (! $post['ok']) {
@@ -285,6 +305,42 @@ final class ReleaseWorker
         }
 
         return null;
+    }
+
+    /**
+     * Group payloads into POSTs bounded by item count and request size: a
+     * media-bearing payload (its inline base64 bytes make it large) is posted
+     * on its own, so one request never carries more than a single item's media
+     * — well within the per-item media cap. Body-only payloads pack up to
+     * MAX_PAYLOAD_ITEMS per request as before.
+     *
+     * @param array<int, array<string, mixed>> $payloads
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    private function chunk_payloads(array $payloads)
+    {
+        $chunks = [];
+        $current = [];
+        foreach ($payloads as $payload) {
+            if (! empty($payload['media'])) {
+                if ($current !== []) {
+                    $chunks[] = $current;
+                    $current = [];
+                }
+                $chunks[] = [$payload];
+                continue;
+            }
+            $current[] = $payload;
+            if (count($current) >= Protocol::MAX_PAYLOAD_ITEMS) {
+                $chunks[] = $current;
+                $current = [];
+            }
+        }
+        if ($current !== []) {
+            $chunks[] = $current;
+        }
+
+        return $chunks;
     }
 
     /**

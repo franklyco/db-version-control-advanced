@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 457,
-        "source_fingerprint": "sha256:464bdc5384089234aede6ebcbf5f9c6c33f74b0eb760e12c220dce719e5e99fd",
+        "source_file_count": 461,
+        "source_fingerprint": "sha256:c03dce43d6dd7b2e9a822a7ed3f2fb853b79b90ecac34a367174a90bb525e3f7",
         "live_runtime_verified": false
     },
     "counts": {
@@ -12,17 +12,17 @@
         "admin_menus": 15,
         "bootstrap_includes": 131,
         "bootstrap_initializers": 19,
-        "cli_commands": 82,
+        "cli_commands": 91,
         "cli_namespaces": 11,
-        "database_tables": 37,
+        "database_tables": 39,
         "documentation": 527,
-        "extension_points": 174,
+        "extension_points": 176,
         "hook_listeners": 223,
         "rest_routes": 142,
         "scheduled_hooks": 3,
         "settings": 51,
         "source_reference_documentation": 13,
-        "tests": 145
+        "tests": 147
     },
     "collections": {
         "admin_handlers": [
@@ -1948,7 +1948,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1676
+                    "line": 1887
                 }
             },
             {
@@ -1967,7 +1967,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2036
+                    "line": 2441
                 }
             },
             {
@@ -1982,7 +1982,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1986
+                    "line": 2197
                 }
             },
             {
@@ -2000,7 +2000,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1451
+                    "line": 1662
                 }
             },
             {
@@ -2018,7 +2018,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1477
+                    "line": 1688
                 }
             },
             {
@@ -2036,7 +2036,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1414
+                    "line": 1625
                 }
             },
             {
@@ -2051,7 +2051,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1629
+                    "line": 1840
                 }
             },
             {
@@ -2076,7 +2076,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1605
+                    "line": 1816
                 }
             },
             {
@@ -2094,7 +2094,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1655
+                    "line": 1866
                 }
             },
             {
@@ -2112,7 +2112,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1350
+                    "line": 1561
                 }
             },
             {
@@ -2125,7 +2125,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1281
+                    "line": 1492
                 }
             },
             {
@@ -2143,7 +2143,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1132
+                    "line": 1343
                 }
             },
             {
@@ -2162,7 +2162,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1161
+                    "line": 1372
                 }
             },
             {
@@ -2181,7 +2181,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1789
+                    "line": 2000
                 }
             },
             {
@@ -2196,7 +2196,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2094
+                    "line": 2499
                 }
             },
             {
@@ -2214,7 +2214,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2120
+                    "line": 2525
                 }
             },
             {
@@ -2232,7 +2232,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1106
+                    "line": 1317
                 }
             },
             {
@@ -2247,7 +2247,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1510
+                    "line": 1721
                 }
             },
             {
@@ -2264,7 +2264,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1551
+                    "line": 1762
                 }
             },
             {
@@ -2279,7 +2279,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1709
+                    "line": 1920
                 }
             },
             {
@@ -2292,7 +2292,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1736
+                    "line": 1947
                 }
             },
             {
@@ -2309,7 +2309,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1759
+                    "line": 1970
                 }
             },
             {
@@ -2329,7 +2329,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1962
+                    "line": 2173
                 }
             },
             {
@@ -2342,7 +2342,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1930
+                    "line": 2141
                 }
             },
             {
@@ -2361,7 +2361,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1190
+                    "line": 1401
                 }
             },
             {
@@ -2374,7 +2374,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2074
+                    "line": 2479
                 }
             },
             {
@@ -2391,7 +2391,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1858
+                    "line": 2069
                 }
             },
             {
@@ -2404,7 +2404,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1876
+                    "line": 2087
                 }
             },
             {
@@ -2423,7 +2423,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1905
+                    "line": 2116
                 }
             },
             {
@@ -2439,7 +2439,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1810
+                    "line": 2021
                 }
             },
             {
@@ -2452,7 +2452,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1831
+                    "line": 2042
                 }
             },
             {
@@ -2472,7 +2472,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1382
+                    "line": 1593
                 }
             },
             {
@@ -2485,7 +2485,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2057
+                    "line": 2462
                 }
             },
             {
@@ -2500,7 +2500,139 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2007
+                    "line": 2412
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollback",
+                "command": "dbvc agency rollback",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollback",
+                "summary": "Roll back a consumed (executed) operation: creates a reviewed rollback the target restores on its next poll (its journalled before image, guarded by the operation's after fingerprint; a container that moved on yields a restore conflict, never an overwrite)",
+                "synopsis_tokens": [
+                    "[--note=<text>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2217
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollout-advance",
+                "command": "dbvc agency rollout-advance",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollout_advance",
+                "summary": "Drive a rollout one step: request prepares, approve received receipts, read execution outcomes, and open the next cohort once the current one has fully verified. A single target failure pauses the rollout. Safe to call repeatedly",
+                "synopsis_tokens": [],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2259
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollout-create",
+                "command": "dbvc agency rollout-create",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollout_create",
+                "summary": "Plan a fleet rollout: stage a sealed release across ordered cohorts of targets, canary first. No target is written yet — advance drives the per-target prepare/approve steps and gates each cohort on the prior one verifying",
+                "synopsis_tokens": [
+                    "[--note=<text>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2241
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollout-pause",
+                "command": "dbvc agency rollout-pause",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollout_pause",
+                "summary": "Pause a running rollout so later cohorts do not start",
+                "synopsis_tokens": [
+                    "[--reason=<text>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2280
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollout-prune",
+                "command": "dbvc agency rollout-prune",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollout_prune",
+                "summary": "Retention: delete finished rollouts (completed, withdrawn or failed) older than the window, with their target rows. Running and paused rollouts are never removed",
+                "synopsis_tokens": [
+                    "[--days=<number>]",
+                    "[--dry-run]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2391
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollout-resume",
+                "command": "dbvc agency rollout-resume",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollout_resume",
+                "summary": "Resume a paused rollout and advance it. A failed target in the current cohort re-pauses it until retried or withdrawn",
+                "synopsis_tokens": [],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2298
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollout-retry",
+                "command": "dbvc agency rollout-retry",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollout_retry",
+                "summary": "Reset one failed target back to pending so the next advance re-prepares it. The rollout stays paused until resumed",
+                "synopsis_tokens": [],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2319
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollout-withdraw",
+                "command": "dbvc agency rollout-withdraw",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollout_withdraw",
+                "summary": "Withdraw a rollout. Targets already applied are not reverted; use rollback for that",
+                "synopsis_tokens": [],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2337
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.rollouts",
+                "command": "dbvc agency rollouts",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "rollouts",
+                "summary": "List rollouts, or show one with its per-target progress via --rollout",
+                "synopsis_tokens": [
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--limit=<number>]",
+                    "[--release=<uid>]",
+                    "[--rollout=<uid>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 2366
                 }
             },
             {
@@ -2515,7 +2647,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1324
+                    "line": 1535
                 }
             },
             {
@@ -2528,7 +2660,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1077
+                    "line": 1288
                 }
             },
             {
@@ -2543,7 +2675,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1213
+                    "line": 1424
                 }
             },
             {
@@ -2559,7 +2691,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1246
+                    "line": 1457
                 }
             },
             {
@@ -2577,7 +2709,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1307
+                    "line": 1518
                 }
             },
             {
@@ -2590,7 +2722,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1528
+                    "line": 1739
                 }
             },
             {
@@ -2603,7 +2735,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 1263
+                    "line": 1474
                 }
             },
             {
@@ -3352,7 +3484,7 @@
                 "class": "DBVC_WP_CLI_Agency",
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2164
+                    "line": 2569
                 }
             },
             {
@@ -3571,6 +3703,24 @@
                 "source_ref": {
                     "path": "addons/agency-control/src/Storage/Schema.php",
                     "line": 44
+                }
+            },
+            {
+                "discovery_id": "database.table.dbvc_ac_rollouts",
+                "scope": "core",
+                "name": "dbvc_ac_rollouts",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Storage/Schema.php",
+                    "line": 45
+                }
+            },
+            {
+                "discovery_id": "database.table.dbvc_ac_rollout_targets",
+                "scope": "core",
+                "name": "dbvc_ac_rollout_targets",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Storage/Schema.php",
+                    "line": 46
                 }
             },
             {
@@ -4739,7 +4889,7 @@
                 "hook": "dbvc_allowed_statuses_for_export",
                 "source_ref": {
                     "path": "admin/admin-page.php",
-                    "line": 4818
+                    "line": 4813
                 }
             },
             {
@@ -5267,7 +5417,18 @@
                 "hook": "dbvc_connected_service_ignored_meta_keys",
                 "source_ref": {
                     "path": "addons/connected-environments/src/Adapters/ServicePostObserver.php",
-                    "line": 298
+                    "line": 301
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_connected_service_ignored_meta_keys.6c6ccd3a",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "apply_filters",
+                "hook": "dbvc_connected_service_ignored_meta_keys",
+                "source_ref": {
+                    "path": "addons/connected-environments/src/Adapters/ServicePostObserver.php",
+                    "line": 488
                 }
             },
             {
@@ -5278,7 +5439,7 @@
                 "hook": "dbvc_connected_service_post_type",
                 "source_ref": {
                     "path": "addons/connected-environments/src/Adapters/ServicePostObserver.php",
-                    "line": 74
+                    "line": 77
                 }
             },
             {
@@ -5575,7 +5736,7 @@
                 "hook": "dbvc_export_post_file_path",
                 "source_ref": {
                     "path": "admin/admin-page.php",
-                    "line": 4801
+                    "line": 4796
                 }
             },
             {
@@ -5740,7 +5901,7 @@
                 "hook": "dbvc_should_export_post",
                 "source_ref": {
                     "path": "admin/admin-page.php",
-                    "line": 4842
+                    "line": 4837
                 }
             },
             {
@@ -5751,7 +5912,18 @@
                 "hook": "dbvc_skip_meta_keys",
                 "source_ref": {
                     "path": "addons/connected-environments/src/Adapters/ServicePostObserver.php",
-                    "line": 292
+                    "line": 295
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_skip_meta_keys.50ee121c",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "apply_filters",
+                "hook": "dbvc_skip_meta_keys",
+                "source_ref": {
+                    "path": "addons/connected-environments/src/Adapters/ServicePostObserver.php",
+                    "line": 486
                 }
             },
             {
@@ -5784,7 +5956,7 @@
                 "hook": "dbvc_skip_read_cap_check",
                 "source_ref": {
                     "path": "admin/admin-page.php",
-                    "line": 4833
+                    "line": 4828
                 }
             },
             {
@@ -7139,7 +7311,7 @@
                 "hook": "dbvc_after_export_post",
                 "source_ref": {
                     "path": "admin/admin-page.php",
-                    "line": 5513
+                    "line": 5508
                 }
             },
             {
@@ -7183,7 +7355,7 @@
                 "hook": "dbvc_excluded_option_keys",
                 "source_ref": {
                     "path": "admin/admin-page.php",
-                    "line": 5508
+                    "line": 5503
                 }
             },
             {
@@ -7260,7 +7432,7 @@
                 "hook": "dbvc_supported_post_types",
                 "source_ref": {
                     "path": "admin/admin-page.php",
-                    "line": 5503
+                    "line": 5498
                 }
             },
             {
@@ -12204,8 +12376,10 @@
             "tests/phpunit/ConnectedEnvironmentsIsolationTest.php",
             "tests/phpunit/ConnectedEnvironmentsObservationTest.php",
             "tests/phpunit/ConnectedEnvironmentsServiceObserverTest.php",
+            "tests/phpunit/ConnectedMediaTest.php",
             "tests/phpunit/ConnectedProtocolContractsTest.php",
             "tests/phpunit/ConnectedReleaseTest.php",
+            "tests/phpunit/ConnectedRolloutTest.php",
             "tests/phpunit/ContentCollectorV2Phase1Test.php",
             "tests/phpunit/ContentCollectorV2Phase2Test.php",
             "tests/phpunit/ContentCollectorV2Phase3Test.php",

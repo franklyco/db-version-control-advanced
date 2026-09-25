@@ -4646,7 +4646,9 @@
                         "hook.extension_point.dbvc_skip_meta_keys.2d1f0260",
                         "hook.extension_point.dbvc_skip_option_names.8972408a",
                         "hook.extension_point.dbvc_skip_read_cap_check.6cb2e41f",
-                        "hook.extension_point.dbvc_skip_read_cap_check.a5e68e8d"
+                        "hook.extension_point.dbvc_skip_read_cap_check.a5e68e8d",
+                        "hook.extension_point.dbvc_connected_service_ignored_meta_keys.6c6ccd3a",
+                        "hook.extension_point.dbvc_skip_meta_keys.50ee121c"
                     ],
                     "source_ref": {
                         "path": "includes/hooks.php",
@@ -7222,7 +7224,7 @@
         {
             "id": "addon.connected_environments.admin_page",
             "title": "Connected Environments admin page (connector + hub)",
-            "summary": "Dedicated administrator page `DBVC Export > Connected Environments` (page=dbvc-connected) shared by the Connected Environments connector and the Agency Control hub. Registered (menu, assets, routes) only while at least one gate is ready, so disabled modules add nothing. A role-adaptive React app (src/connected-app, built to build/connected-app.js) wraps the existing CLI inspectors over cookie + nonce admin REST routes under dbvc/v1: role-neutral `connected-admin/overview` (roles, gates, both status reports, settings) and `connected-admin/settings` (same validation as the Add-ons tab; the apply gate cannot stay on while the connector is off), connector `connected/*` (status, jobs, objects, outbox, inbox, inventory, preparations, operations, run/{process|deliver|poll|release}, reconcile, enroll, resume) and hub `agency/*` (every inspector read as GET, every manage action as POST, enable-subscription). All routes require manage_options (401 anonymous / 403 otherwise) and answer with Cache-Control: no-store; write routes return the inspector's WP_Error unchanged (400 by default). Slice A1 ships the shell, Overview (hub stat cards + attention list, connector connection/coverage/pending cards), Settings (gates, apply confirmation, enrollment/resume) and the Run now runners; the page never prints tokens or app passwords. Slice A2 adds the hub Environments section: registry table (status, hold reason, epoch, last contact + freshness, received), Hold (operator note) / Release hold / Revoke (inline confirmation), the invitation form whose token is shown once in a modal with the enroll command (the hub stores only the hash) and the invitations list (`agency/invitations`, never tokens). Slice A3 adds the hub Compare section (same-client pair picker, domain filter, freshness/coverage banner, state chips as filters, rows with pairing, state, reasons and hash prefixes; Confirm baseline only where BaselineService would accept, Accept absent, Link instance…) and the object drawer (identity, both sides' projections, baselines, recent events through the new instance filters on `agency/events|projections|baselines`). Slice A4 adds the hub Framework section: Status (framework-status rows with drift/version badges and reasons, Adopt desired version, Approve override with a required rationale, Detach override, subscribe-an-object form), Definitions (versions grouped per definition, Set desired, Publish form from hash / environment object / copied version with the profile defaulted per domain) and Reviews (state chips, Classify now, Resolve with a required note). Later slices add Releases and connector Activity sections per the design guide.",
+            "summary": "Dedicated administrator page `DBVC Export > Connected Environments` (page=dbvc-connected) shared by the Connected Environments connector and the Agency Control hub. Registered (menu, assets, routes) only while at least one gate is ready, so disabled modules add nothing. A role-adaptive React app (src/connected-app, built to build/connected-app.js) wraps the existing CLI inspectors over cookie + nonce admin REST routes under dbvc/v1: role-neutral `connected-admin/overview` (roles, gates, both status reports, settings) and `connected-admin/settings` (same validation as the Add-ons tab; the apply gate cannot stay on while the connector is off), connector `connected/*` (status, jobs, objects, outbox, inbox, inventory, preparations, operations, run/{process|deliver|poll|release}, reconcile, enroll, resume) and hub `agency/*` (every inspector read as GET, every manage action as POST, enable-subscription). All routes require manage_options (401 anonymous / 403 otherwise) and answer with Cache-Control: no-store; write routes return the inspector's WP_Error unchanged (400 by default). Slice A1 ships the shell, Overview (hub stat cards + attention list, connector connection/coverage/pending cards), Settings (gates, apply confirmation, enrollment/resume) and the Run now runners; the page never prints tokens or app passwords. Slice A2 adds the hub Environments section: registry table (status, hold reason, epoch, last contact + freshness, received), Hold (operator note) / Release hold / Revoke (inline confirmation), the invitation form whose token is shown once in a modal with the enroll command (the hub stores only the hash) and the invitations list (`agency/invitations`, never tokens). Slice A3 adds the hub Compare section (same-client pair picker, domain filter, freshness/coverage banner, state chips as filters, rows with pairing, state, reasons and hash prefixes; Confirm baseline only where BaselineService would accept, Accept absent, Link instance…) and the object drawer (identity, both sides' projections, baselines, recent events through the new instance filters on `agency/events|projections|baselines`). Slice A4 adds the hub Framework section: Status (framework-status rows with drift/version badges and reasons, Adopt desired version, Approve override with a required rationale, Detach override, subscribe-an-object form), Definitions (versions grouped per definition, Set desired, Publish form from hash / environment object / copied version with the profile defaulted per domain) and Reviews (state chips, Classify now, Resolve with a required note). Slice A5 adds the release pipeline: Compare's outgoing rows carry a checkbox and a sticky release composer, and a Releases section shows each release's manifest → prepare → approve → execute stepper (prepare-receipt detail with identity, container fingerprint, patch changed-paths, dependency ledger, blockers and hub notes; a binding approval dialog printing the release and receipt digests, target and epoch; a read-only execution receipt with per-item verified flags and the CSS-not-rebuilt warning). Slice A6 adds the connector-role Activity section: the site's own outbox (origin, delivery state; delivery/domain filters; a Reconcile runner), the inbox of received observations grouped by source (never applied), and the prepare receipts + execution journal it produced, with an apply-gate banner. The connector reads (`connected/outbox|inbox|preparations|operations`) and `connected/reconcile` already existed. Slice A7 adds dark-mode tokens (the page follows `prefers-color-scheme`), a state-vocabulary gallery in the mockup folder, and retires the Add-ons tab tables (the tab keeps the enable/apply checkboxes and links to the page). The page is now the primary administrator surface for both roles.",
             "status": "experimental",
             "primary_category": "settings_configuration",
             "tags": [
@@ -7367,24 +7369,17 @@
                 "cli.agency.manage"
             ],
             "known_gaps": [
-                "Slices A1–A4 only: Releases (incl. the release composer from a Compare selection) and connector Activity sections are not built yet; the Add-ons tab tables remain the detail view until they land.",
+                "Desktop-only layout (no responsive breakpoints, decision D-058); dark mode follows prefers-color-scheme rather than WP's admin color scheme.",
                 "Role routes are registered from method maps, so static discovery cannot list them; the PHPUnit contract test compares each read route with its inspector output instead.",
                 "Desktop-only layout (no responsive breakpoints), matching the design decision D-058."
             ],
             "opportunity": {
-                "disposition": "candidate",
-                "priority": "high",
-                "effort": "large",
+                "disposition": "covered_elsewhere",
+                "priority": "low",
+                "effort": "small",
                 "recommended_surface": "admin",
-                "rationale": "Slices A2-A7 of the design guide add the remaining sections on the same routes and tokens.",
-                "candidate_scope": "Environments (invite/hold/release/revoke), Compare + baselines + links + object drawer, Framework, Releases stepper, connector Activity/Inbox/Releases, dark tokens and empty/error states, then retiring the Add-ons tab tables.",
-                "excluded_operations": [
-                    "Any content write outside the apply gate",
-                    "Displaying stored tokens or app passwords"
-                ],
-                "next_action": "Implement slice A5 (Releases stepper + release composer from a Compare selection).",
-                "related_record": "addon.connected_environments.observation",
-                "reviewed_date": "2026-09-20"
+                "rationale": "The seven design slices (A1–A7) are all shipped; further work (M5 step 2 rollback, M6 cohort scheduling) is tracked on the connector/hub records, not this page.",
+                "reviewed_date": "2026-09-21"
             },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
@@ -7397,7 +7392,7 @@
                     "same_checkout_wp_cli_execution"
                 ],
                 "live_runtime_verified": false,
-                "notes": "A1 (2026-09-20): PHPUnit covers gating (no menu/routes with both gates off, per-role registration), 401/403/200 authorization, no-store header, overview shape, read routes equal to inspector output, runner acknowledgement, settings semantics, bootstrap config and built assets. Page rendered and exercised in the disposable lab (hub + connector servers) with the built-in browser; not on the live LocalWP site. A2 (2026-09-20): PHPUnit covers invite → invitations list without token → exchange → hold (409 twice) → release (enrolled URL kept) → revoke (hold/release refused); lab: hold refused the connector's batch with 409, release re-enabled, invite modal showed the token once with focus returned to the opener, revoke confirmed inline. A3 (2026-09-20): PHPUnit seeds two environments through the machine receipt route and checks compare shape parity with the CLI, baseline confirmation, instance links and the instance filters; lab: drawer with Escape/focus restoration, Link instance, Accept absent, Confirm baseline exercised in the built-in browser. A4 (2026-09-20): PHPUnit drives publish → subscribe → status unknown/clean → classify auto-resolve → drift → classified item resolved with a note → override (rationale required) → new desired version (behind_version, needs_rebase_review) → adopt → detach over the admin routes; lab: the same flow through the page's buttons and forms."
+                "notes": "A1 (2026-09-20): PHPUnit covers gating (no menu/routes with both gates off, per-role registration), 401/403/200 authorization, no-store header, overview shape, read routes equal to inspector output, runner acknowledgement, settings semantics, bootstrap config and built assets. Page rendered and exercised in the disposable lab (hub + connector servers) with the built-in browser; not on the live LocalWP site. A2 (2026-09-20): PHPUnit covers invite → invitations list without token → exchange → hold (409 twice) → release (enrolled URL kept) → revoke (hold/release refused); lab: hold refused the connector's batch with 409, release re-enabled, invite modal showed the token once with focus returned to the opener, revoke confirmed inline. A3 (2026-09-20): PHPUnit seeds two environments through the machine receipt route and checks compare shape parity with the CLI, baseline confirmation, instance links and the instance filters; lab: drawer with Escape/focus restoration, Link instance, Accept absent, Confirm baseline exercised in the built-in browser. A4 (2026-09-20): PHPUnit drives publish → subscribe → status unknown/clean → classify auto-resolve → drift → classified item resolved with a note → override (rationale required) → new desired version (behind_version, needs_rebase_review) → adopt → detach over the admin routes; lab: the same flow through the page's buttons and forms. A5 (2026-09-21): PHPUnit covers release-create from projections, list/detail parity with the inspector, manifest payload state, withdraw idempotency and the prepare/approve guard errors over the admin routes; lab drove the whole pipeline through the page — Compare composer → create → seal (source poll) → prepare request → receipt detail → binding approval dialog → target apply gate → executed with the target option written and the receipt `applied`/verified. A6 (2026-09-21): PHPUnit checks the connector outbox (with state filter), inbox, preparations and operations reads and the reconcile runner over the admin routes, all equal to the inspector; lab (astage) showed the outbox with origins, the inbox grouped by aprod, an expandable prepare receipt and the execution journal steps, plus the Reconcile runner. A7 (2026-09-21): dark-mode tokens and retired Add-ons tables verified in the lab (app in emulated dark; Add-ons tab shows checkbox + link, no tables, on a connector and the hub); the states gallery renders both themes; ConnectedAdminSurfacesTest still covers the retained panel classes."
             }
         },
         {
@@ -7722,7 +7717,9 @@
                         "database.table.dbvc_ac_releases",
                         "database.table.dbvc_ac_release_items",
                         "database.table.dbvc_ac_preparations",
-                        "database.table.dbvc_ac_approvals"
+                        "database.table.dbvc_ac_approvals",
+                        "database.table.dbvc_ac_rollouts",
+                        "database.table.dbvc_ac_rollout_targets"
                     ],
                     "source_ref": {
                         "path": "addons/agency-control/src/Storage/Schema.php",
@@ -8300,7 +8297,7 @@
         {
             "id": "cli.agency.manage",
             "title": "Agency Control invite, subscription, routing, baseline, framework and hold/release/revoke commands",
-            "summary": "wp dbvc agency invite creates a single-use expiring enrollment invitation (token printed once); subscribe / subscribe-framework / unsubscribe / enable-subscription manage explicit same-client subscriptions and framework bindings; route processes pending received events into deliveries and review items; baseline-confirm records pair/object baselines for currently agreeing objects (--accept-absent for one-sided verified absence); link-instance / unlink-instance declare lineage between instances on two environments; revoke deletes the environment's application password; release clears a hold after review. definition-publish records an immutable definition version (hash supplied, read from one environment's fresh complete projection, or copied from a published version; order explicit or by publish sequence, never inferred from the label) and definition-desire marks a channel's desired version (approved overrides on that channel become needs_rebase_review); adopt-version declares which version a framework subscription follows; override-approve records an exact approved hash with rationale and the frozen policy revision; override-detach ends it. review-classify stamps open review items with the drift/version state from framework-status (auto-resolving superseded, clean/current and approved-and-current items) and review-resolve closes one explicitly with a note. release-create fixes an immutable manifest from a source environment's current projections (payloads are then collected from its connector and verified by hash), release-withdraw ends one, prepare-request asks a target to dry-run a sealed release (its connector returns the receipt; nothing is written). approve binds a received ready/no-op prepare receipt for execution; revoke-approval withdraws an unconsumed approval. `hold --environment --reason` places an operator hold (recorded as operator:<note>): the hub refuses the environment's batches with 409 and keeps its deliveries pending until `release`; revoked environments cannot be held.",
+            "summary": "wp dbvc agency invite creates a single-use expiring enrollment invitation (token printed once); subscribe / subscribe-framework / unsubscribe / enable-subscription manage explicit same-client subscriptions and framework bindings; route processes pending received events into deliveries and review items; baseline-confirm records pair/object baselines for currently agreeing objects (--accept-absent for one-sided verified absence); link-instance / unlink-instance declare lineage between instances on two environments; revoke deletes the environment's application password; release clears a hold after review. definition-publish records an immutable definition version (hash supplied, read from one environment's fresh complete projection, or copied from a published version; order explicit or by publish sequence, never inferred from the label) and definition-desire marks a channel's desired version (approved overrides on that channel become needs_rebase_review); adopt-version declares which version a framework subscription follows; override-approve records an exact approved hash with rationale and the frozen policy revision; override-detach ends it. review-classify stamps open review items with the drift/version state from framework-status (auto-resolving superseded, clean/current and approved-and-current items) and review-resolve closes one explicitly with a note. release-create fixes an immutable manifest from a source environment's current projections (payloads are then collected from its connector and verified by hash), release-withdraw ends one, prepare-request asks a target to dry-run a sealed release (its connector returns the receipt; nothing is written). approve binds a received ready/no-op prepare receipt for execution; revoke-approval withdraws an unconsumed approval. `hold --environment --reason` places an operator hold (recorded as operator:<note>): the hub refuses the environment's batches with 409 and keeps its deliveries pending until `release`; revoked environments cannot be held. `rollback --operation` creates a reviewed rollback (an approval-like record with kind=rollback bound to a consumed operation's execution digest); the target restores its journalled before image on its next poll with one conditional write per container guarded by the operation's after fingerprint (a container that moved on yields a restore conflict, never an overwrite), and the hub regresses the pair baseline to the restored hash.",
             "status": "experimental",
             "primary_category": "cli_automation",
             "tags": [
@@ -8327,7 +8324,7 @@
             "surfaces": [
                 {
                     "type": "cli",
-                    "identifier": "wp dbvc agency invite|subscribe|subscribe-framework|unsubscribe|enable-subscription|route|baseline-confirm|link-instance|unlink-instance|definition-publish|definition-desire|adopt-version|override-approve|override-detach|review-classify|review-resolve|release-create|release-withdraw|prepare-request|approve|revoke-approval|revoke|release|hold",
+                    "identifier": "wp dbvc agency invite|subscribe|subscribe-framework|unsubscribe|enable-subscription|route|baseline-confirm|link-instance|unlink-instance|definition-publish|definition-desire|adopt-version|override-approve|override-detach|review-classify|review-resolve|release-create|release-withdraw|prepare-request|approve|rollback|revoke-approval|revoke|release|hold",
                     "discovery_ids": [
                         "cli.command.dbvc.agency.invite",
                         "cli.command.dbvc.agency.revoke",
@@ -8352,7 +8349,16 @@
                         "cli.command.dbvc.agency.release-withdraw",
                         "cli.command.dbvc.agency.prepare-request",
                         "cli.command.dbvc.agency.approve",
-                        "cli.command.dbvc.agency.revoke-approval"
+                        "cli.command.dbvc.agency.rollback",
+                        "cli.command.dbvc.agency.revoke-approval",
+                        "cli.command.dbvc.agency.rollout-create",
+                        "cli.command.dbvc.agency.rollout-advance",
+                        "cli.command.dbvc.agency.rollout-pause",
+                        "cli.command.dbvc.agency.rollout-resume",
+                        "cli.command.dbvc.agency.rollout-retry",
+                        "cli.command.dbvc.agency.rollout-withdraw",
+                        "cli.command.dbvc.agency.rollouts",
+                        "cli.command.dbvc.agency.rollout-prune"
                     ],
                     "source_ref": {
                         "path": "commands/class-agency-cli.php",
@@ -8446,7 +8452,8 @@
                 "addon.agency_control.scaffold",
                 "cli.agency.inspect",
                 "cli.connected.transport",
-                "addon.connected_environments.admin_page"
+                "addon.connected_environments.admin_page",
+                "addon.connected_environments.observation"
             ],
             "known_gaps": [
                 "No administrator UI for invitations yet."

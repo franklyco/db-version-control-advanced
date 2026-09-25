@@ -34,13 +34,14 @@
 .dbvc-ce {
   --dbvc-ce-color-text: var(--dbvc-color-text-primary);
   --dbvc-ce-color-text-muted: var(--dbvc-color-text-muted);
-  --dbvc-ce-color-text-subtle: var(--dbvc-color-text-subtle);
+  --dbvc-ce-color-text-subtle: var(--dbvc-color-gray-600); /* #6b7280: WCAG-AA (4.8:1) on white; #8c8f94 was 3.2:1 */
   --dbvc-ce-color-border: var(--dbvc-color-border-default);
   --dbvc-ce-color-border-strong: var(--dbvc-color-border-muted);
   --dbvc-ce-color-surface: var(--dbvc-color-white);
   --dbvc-ce-color-surface-muted: var(--dbvc-color-surface-muted);
   --dbvc-ce-color-surface-table: var(--dbvc-color-surface-table);
   --dbvc-ce-color-accent: var(--dbvc-color-accent-blue);
+  --dbvc-ce-color-accent-text: var(--dbvc-color-accent-blue); /* link text; lifted in dark so it reads on tinted panels */
   --dbvc-ce-color-accent-soft: var(--dbvc-color-surface-highlight);
   --dbvc-ce-color-success: var(--dbvc-color-success);
   --dbvc-ce-color-warning: var(--dbvc-color-warning-amber);
@@ -53,12 +54,17 @@
   color: var(--dbvc-ce-color-text);
   max-width: 1400px;
 }
+/* Dark: the app follows the viewer's OS/browser preference; .dbvc-ce--dark-preview forces it for the mockup gallery. */
 @media (prefers-color-scheme: dark) {
-  .dbvc-ce.dbvc-ce--dark-preview,
-  .dbvc-ce--dark-preview { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #8c8f94; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent-soft: #1b2a3d; }
+  .dbvc-ce { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #a7aaad; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent: #4f94d4; --dbvc-ce-color-accent-text: #79b0e6; --dbvc-ce-color-accent-soft: #1b2a3d; --dbvc-ce-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); background: #16191d; padding: 12px 16px 20px; border-radius: 12px; }
+  /* Badge tones read on a dark surface: lighten the text/border instead of darkening. */
+  .dbvc-ce .dbvc-badge { --dbvc-badge-text-darken: -34%; --dbvc-badge-border-darken: -14%; }
 }
-.dbvc-ce--dark-preview { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #8c8f94; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent-soft: #1b2a3d; }
+.dbvc-ce--dark-preview { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #a7aaad; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent: #4f94d4; --dbvc-ce-color-accent-text: #79b0e6; --dbvc-ce-color-accent-soft: #1b2a3d; --dbvc-ce-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); background: #16191d; padding: 12px 16px 20px; border-radius: 12px; }
+.dbvc-ce--dark-preview .dbvc-badge { --dbvc-badge-text-darken: -34%; --dbvc-badge-border-darken: -14%; }
 
+.dbvc-ce input[type="text"], .dbvc-ce input[type="url"], .dbvc-ce input[type="password"], .dbvc-ce input[type="number"], .dbvc-ce input[type="search"], .dbvc-ce select, .dbvc-ce textarea { background: var(--dbvc-ce-color-surface); color: var(--dbvc-ce-color-text); border: 1px solid var(--dbvc-ce-color-border-strong); border-radius: var(--dbvc-ce-radius-sm); padding: 4px 8px; font: inherit; }
+.dbvc-ce input::placeholder, .dbvc-ce textarea::placeholder { color: var(--dbvc-ce-color-text-subtle); }
 .dbvc-ce *:focus-visible { outline: 0; box-shadow: var(--dbvc-ce-focus-ring); border-radius: var(--dbvc-ce-radius-sm); }
 .dbvc-ce code { font: 12px/1.4 SFMono-Regular, Menlo, Consolas, monospace; color: inherit; background: transparent; padding: 0; }
 .dbvc-ce .num { font-variant-numeric: tabular-nums; text-align: right; }
@@ -83,7 +89,7 @@
 /* ---- Section nav (mirrors .dbvc-section-nav) ---- */
 .dbvc-section-nav { display: flex; align-items: center; gap: 8px; margin: 12px 0 16px; flex-wrap: wrap; }
 .dbvc-section-nav button { border: 1px solid var(--dbvc-ce-color-text-subtle); background: var(--dbvc-ce-color-surface); color: var(--dbvc-ce-color-text); border-radius: 20px; padding: 5px 14px; font: inherit; font-size: 13px; cursor: pointer; }
-.dbvc-section-nav button[aria-current="page"] { background: var(--dbvc-ce-color-text); color: #fff; border-color: var(--dbvc-ce-color-text); }
+.dbvc-section-nav button[aria-current="page"] { background: var(--dbvc-ce-color-text); color: var(--dbvc-ce-color-surface); border-color: var(--dbvc-ce-color-text); }
 .dbvc-section-nav .count { margin-left: 6px; font-size: 11px; opacity: .8; }
 
 /* ---- Cards / panels (mirrors .dbvc-tools-panel) ---- */
@@ -115,7 +121,6 @@
 .dbvc-badge--caution { --dbvc-badge-h: 35deg; --dbvc-badge-s: 90%; --dbvc-badge-l: 42%; }
 .dbvc-badge--negative { --dbvc-badge-h: 358deg; --dbvc-badge-s: 66%; --dbvc-badge-l: 48%; }
 .dbvc-badge--uncertain { --dbvc-badge-h: 210deg; --dbvc-badge-s: 6%; --dbvc-badge-l: 50%; border-style: dashed; background: transparent; }
-.dbvc-ce--dark-preview .dbvc-badge { --dbvc-badge-text-darken: -30%; --dbvc-badge-border-darken: -10%; }
 
 /* ---- Attention list ---- */
 .dbvc-ce-attention { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -214,3 +219,47 @@
 .dbvc-ce-drawer__head code { display: block; margin-top: 2px; color: var(--dbvc-ce-color-text-subtle); font-size: 12px; word-break: break-all; }
 .dbvc-ce-drawer .dbvc-ce-kv { grid-template-columns: 110px minmax(0, 1fr); }
 .dbvc-ce-drawer .dbvc-ce-kv dd { word-break: break-all; }
+
+/* Releases stepper, prepare/approve blocks and receipt detail — A5. */
+.dbvc-ce-row--active > td { background: var(--dbvc-ce-color-accent-soft); }
+.dbvc-ce-linkbtn { border: 0; background: transparent; padding: 0; font: inherit; font-weight: 600; color: var(--dbvc-ce-color-accent-text); cursor: pointer; text-align: left; }
+.dbvc-ce-linkbtn:hover { text-decoration: underline; }
+.dbvc-ce-steps { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; padding: 0; }
+.dbvc-ce-steps button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dbvc-ce-color-border-strong); background: var(--dbvc-ce-color-surface); border-radius: 20px; padding: 4px 12px; font: inherit; font-size: 12px; color: inherit; cursor: pointer; }
+.dbvc-ce-steps button.is-active { background: var(--dbvc-ce-color-text); color: #fff; border-color: var(--dbvc-ce-color-text); }
+.dbvc-ce-steps__n { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--dbvc-ce-color-surface-muted); color: var(--dbvc-ce-color-text); font-size: 11px; font-weight: 600; }
+.dbvc-ce-steps button.is-active .dbvc-ce-steps__n { background: rgba(255,255,255,.24); color: #fff; }
+.dbvc-ce-prep { border: 1px solid var(--dbvc-ce-color-border); border-radius: var(--dbvc-ce-radius-sm); padding: 10px 12px; margin: 0 0 8px; }
+.dbvc-ce-prep__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dbvc-ce-prep__head code { font-size: 12px; }
+.dbvc-ce-prep__body { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--dbvc-ce-color-border); }
+.dbvc-ce-receipt-item { padding: 8px 0; border-bottom: 1px dashed var(--dbvc-ce-color-border); }
+.dbvc-ce-receipt-item:last-child { border-bottom: 0; }
+.dbvc-ce-receipt-item__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.dbvc-ce-receipt-item .dbvc-ce-kv { grid-template-columns: 110px minmax(0, 1fr); }
+.dbvc-ce-receipt-item .dbvc-ce-kv dd { word-break: break-word; }
+
+/* Compare release composer — A5. */
+.dbvc-ce-composer .dbvc-ce__actions { display: flex; align-items: center; gap: 8px; }
+.dbvc-ce-composer input[type="text"] { min-width: 200px; }
+
+/* Connector execution journal — A6. */
+.dbvc-ce-journal { margin: 0; padding-left: 18px; font-size: 12px; }
+.dbvc-ce-journal li { margin: 2px 0; }
+.dbvc-ce-journal code { font-size: 11px; }
+
+/* ---- Fleet rollouts — M6 ---- */
+.dbvc-ce-rollout-composer { border: 1px solid var(--dbvc-ce-color-accent); background: var(--dbvc-ce-color-accent-soft); border-radius: var(--dbvc-ce-radius); padding: 12px 14px; margin: 0 0 14px; }
+.dbvc-ce-rollout-composer > .dbvc-ce-field:first-child { margin-bottom: 8px; }
+.dbvc-ce-rollout-composer table { margin: 8px 0; }
+.dbvc-ce-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dbvc-ce-muted { color: var(--dbvc-ce-color-text-muted); }
+.dbvc-ce-hint { color: var(--dbvc-ce-color-text-muted); font-size: 12px; margin: 0 0 12px; }
+.dbvc-ce-plan-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.dbvc-ce-cohort { margin-top: 14px; }
+.dbvc-ce-cohort > h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.dbvc-ce-evidence > td { background: var(--dbvc-ce-color-surface-muted); }
+.dbvc-ce-evidence__body { display: grid; gap: 10px; padding: 4px 2px 8px; }
+.dbvc-ce-evidence__renders h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
+.dbvc-ce-warnings { margin: 0; padding-left: 18px; font-size: 12px; }
+.dbvc-ce-warnings li { margin: 2px 0; }

@@ -10,10 +10,11 @@ use Dbvc\Connected\Adapters\ServicePostObserver;
  * the object's after-state references and whether the target already has
  * it. Every entry is required; its status is `present` (found on the
  * target), `selected` (supplied by another item of the same release),
- * `unresolved` (neither) or `unsupported` (a reference prepare cannot
- * carry yet, such as media files). An `unresolved` or `unsupported`
- * entry blocks the item; `complete=false` says discovery itself could not
- * finish and is equally visible. Nothing here writes or creates.
+ * `unresolved` (neither — including a referenced attachment the target does
+ * not yet hold, pending the M7 byte channel) or `unsupported` (a reference
+ * prepare cannot carry). An `unresolved` or `unsupported` entry blocks the
+ * item; `complete=false` says discovery itself could not finish and is
+ * equally visible. Nothing here writes or creates.
  */
 final class DependencyLedger
 {
@@ -27,9 +28,10 @@ final class DependencyLedger
      * @param array<string, mixed>                $after     Decoded canonical after-state.
      * @param array<int, array<string, mixed>>    $release_items Every manifest item (domain, instance_uid, body).
      * @param \Dbvc\ConnectedProtocol\DomainObserver $observer
+     * @param array<int, string>                  $carried_media_hashes Content hashes this item's release carries bytes for.
      * @return array{entries: array<int, array<string, mixed>>, complete: bool, blocking: array<int, string>}
      */
-    public static function build($domain, array $after, array $release_items, $observer)
+    public static function build($domain, array $after, array $release_items, $observer, array $carried_media_hashes = [])
     {
         switch ($domain) {
             case DomainRegistry::DOMAIN_BRICKS_GLOBAL_CLASS:
@@ -39,7 +41,7 @@ final class DependencyLedger
                 $entries = self::bricks_member($after, $release_items, 'bricks_global_variables_categories', 'bricks.variable_category');
                 break;
             case DomainRegistry::DOMAIN_WP_SERVICE:
-                $entries = self::service_post($after, $release_items, $observer);
+                $entries = self::service_post($after, $release_items, $observer, $carried_media_hashes);
                 break;
             default:
                 return ['entries' => [], 'complete' => false, 'blocking' => ['dependency_discovery_unsupported:' . $domain]];
@@ -94,14 +96,15 @@ final class DependencyLedger
     }
 
     /**
-     * Parent post, taxonomy terms and (unsupported) media references.
+     * Parent post, taxonomy terms and media references (present or pending).
      *
      * @param array<string, mixed>                  $after
      * @param array<int, array<string, mixed>>      $release_items
      * @param \Dbvc\ConnectedProtocol\DomainObserver $observer
+     * @param array<int, string>                    $carried_media_hashes
      * @return array<int, array<string, mixed>>
      */
-    private static function service_post(array $after, array $release_items, $observer)
+    private static function service_post(array $after, array $release_items, $observer, array $carried_media_hashes = [])
     {
         $entries = [];
         $post_type = $observer instanceof ServicePostObserver ? $observer->post_type() : 'post';
@@ -135,11 +138,21 @@ final class DependencyLedger
             }
         }
 
-        $media = [];
-        self::collect_media_references($after['post_content'] ?? null, $media);
-        self::collect_media_references($after['meta'] ?? null, $media);
-        foreach (array_keys($media) as $reference) {
-            $entries[] = self::entry('wp.media', $reference, self::STATUS_UNSUPPORTED, 'media_transfer_not_part_of_prepare');
+        // Media (attachments): the body references each by a portable content-hash
+        // token. `present` when this site already holds that content by hash (dedup)
+        // or the release carries its bytes (apply sideloads it — M7 step 3b) — the
+        // post can converge and does not block; `unresolved` otherwise, still
+        // blocking, so a post is never applied with a dangling reference.
+        $carried = array_fill_keys(array_map([self::class, 'media_hex'], $carried_media_hashes), true);
+        foreach (MediaReferences::tokens_in_body($after) as $hash) {
+            $local = MediaReferences::local_by_hash($hash);
+            if ($local > 0) {
+                $entries[] = self::entry('wp.media', MediaReferences::TOKEN_PREFIX . $hash, self::STATUS_PRESENT, 'attachment:' . $local);
+            } elseif (isset($carried[$hash])) {
+                $entries[] = self::entry('wp.media', MediaReferences::TOKEN_PREFIX . $hash, self::STATUS_PRESENT, 'carried');
+            } else {
+                $entries[] = self::entry('wp.media', MediaReferences::TOKEN_PREFIX . $hash, self::STATUS_UNRESOLVED, 'media_transfer_pending');
+            }
         }
 
         return $entries;
@@ -155,6 +168,17 @@ final class DependencyLedger
     private static function entry($kind, $ref, $status, $detail = '')
     {
         return ['kind' => $kind, 'ref' => $ref, 'required' => true, 'status' => $status, 'detail' => $detail];
+    }
+
+    /**
+     * @param string $hash sha256 hex, optionally `sha256:`-prefixed.
+     * @return string bare lowercase hex, or '' when not a sha256 hex.
+     */
+    private static function media_hex($hash)
+    {
+        $hash = strpos((string) $hash, ':') !== false ? substr((string) $hash, strpos((string) $hash, ':') + 1) : (string) $hash;
+
+        return preg_match('/^[a-f0-9]{64}$/', $hash) ? $hash : '';
     }
 
     /**
@@ -224,34 +248,6 @@ final class DependencyLedger
         if (is_string($value) && preg_match_all('/var\(\s*--([A-Za-z0-9_-]+)/', $value, $matches)) {
             foreach ($matches[1] as $name) {
                 $names[$name] = true;
-            }
-        }
-    }
-
-    /**
-     * @param mixed               $value
-     * @param array<string, true> $references
-     * @return void
-     */
-    private static function collect_media_references($value, array &$references)
-    {
-        if (is_array($value)) {
-            foreach ($value as $child) {
-                self::collect_media_references($child, $references);
-            }
-            return;
-        }
-        if (! is_string($value) || $value === '') {
-            return;
-        }
-        if (preg_match_all('/wp-image-(\d+)/', $value, $matches)) {
-            foreach ($matches[1] as $id) {
-                $references['attachment:' . $id] = true;
-            }
-        }
-        if (preg_match_all('#https?://[^\s"\'<>]+/wp-content/uploads/[^\s"\'<>]+#', $value, $matches)) {
-            foreach ($matches[0] as $url) {
-                $references['upload:' . basename((string) wp_parse_url($url, PHP_URL_PATH))] = true;
             }
         }
     }

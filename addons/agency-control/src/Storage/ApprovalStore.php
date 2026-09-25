@@ -35,13 +35,15 @@ final class ApprovalStore
                 'target_environment_id' => (string) $data['target_environment_id'],
                 'target_epoch' => (string) $data['target_epoch'],
                 'policy_revision' => (string) ($data['policy_revision'] ?? ''),
+                'kind' => (string) ($data['kind'] ?? 'apply'),
+                'rolls_back_operation_id' => (string) ($data['rolls_back_operation_id'] ?? ''),
                 'state' => self::STATE_APPROVED,
                 'note' => mb_substr((string) ($data['note'] ?? ''), 0, 191),
                 'approved_by' => (int) ($data['approved_by'] ?? 0),
                 'approved_at' => current_time('mysql', true),
                 'expires_at' => (string) $data['expires_at'],
             ],
-            ['%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']
+            ['%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']
         );
         $wpdb->suppress_errors($suppress);
         if ($inserted !== 1) {
@@ -83,6 +85,22 @@ final class ApprovalStore
      * @param string $operation_id
      * @return array<string, mixed>|null
      */
+    /**
+     * The open or consumed rollback approval that reverses this operation, if any.
+     *
+     * @param string $operation_id The original (apply) operation id being reversed.
+     * @return array<string, mixed>|null
+     */
+    public function find_rollback_of($operation_id)
+    {
+        global $wpdb;
+
+        $table = Schema::table('approvals');
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE kind = 'rollback' AND rolls_back_operation_id = %s AND state IN ('approved', 'consumed') ORDER BY approval_id DESC LIMIT 1", (string) $operation_id), ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+        return is_array($row) ? $this->normalize($row) : null;
+    }
+
     public function find_by_operation($operation_id)
     {
         global $wpdb;
@@ -205,6 +223,8 @@ final class ApprovalStore
         $row['approval_id'] = (int) $row['approval_id'];
         $row['release_id'] = (int) $row['release_id'];
         $row['approved_by'] = (int) $row['approved_by'];
+        $row['kind'] = (string) ($row['kind'] ?? 'apply');
+        $row['rolls_back_operation_id'] = (string) ($row['rolls_back_operation_id'] ?? '');
         $receipt = json_decode((string) ($row['execution_receipt'] ?? ''), true);
         $row['execution_receipt'] = is_array($receipt) ? $receipt : null;
 

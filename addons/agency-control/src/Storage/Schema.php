@@ -9,7 +9,7 @@ namespace Dbvc\AgencyControl\Storage;
  */
 final class Schema
 {
-    public const SCHEMA_VERSION = 8;
+    public const SCHEMA_VERSION = 11;
     public const OPTION_SCHEMA_VERSION = 'dbvc_agency_control_schema_version';
     public const ENVIRONMENT_ROLE = 'dbvc_connected_environment';
 
@@ -42,6 +42,8 @@ final class Schema
             'release_items' => "{$wpdb->prefix}dbvc_ac_release_items",
             'preparations' => "{$wpdb->prefix}dbvc_ac_preparations",
             'approvals' => "{$wpdb->prefix}dbvc_ac_approvals",
+            'rollouts' => "{$wpdb->prefix}dbvc_ac_rollouts",
+            'rollout_targets' => "{$wpdb->prefix}dbvc_ac_rollout_targets",
         ];
         if (! isset($map[$name])) {
             throw new \InvalidArgumentException('Unknown hub table: ' . (string) $name);
@@ -55,7 +57,7 @@ final class Schema
      */
     public static function table_names()
     {
-        return array_map([self::class, 'table'], ['invitations', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'review_items', 'baselines', 'instance_links', 'definitions', 'overrides', 'releases', 'release_items', 'preparations', 'approvals']);
+        return array_map([self::class, 'table'], ['invitations', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'review_items', 'baselines', 'instance_links', 'definitions', 'overrides', 'releases', 'release_items', 'preparations', 'approvals', 'rollouts', 'rollout_targets']);
     }
 
     /**
@@ -188,6 +190,8 @@ final class Schema
         $release_items = self::table('release_items');
         $preparations = self::table('preparations');
         $approvals = self::table('approvals');
+        $rollouts = self::table('rollouts');
+        $rollout_targets = self::table('rollout_targets');
 
         $sql = [];
         $sql[] = "CREATE TABLE {$invitations} (
@@ -446,6 +450,7 @@ final class Schema
             payload longtext NULL,
             payload_reason varbinary(128) NOT NULL DEFAULT '',
             payload_received_at datetime NULL,
+            media longtext NULL,
             PRIMARY KEY  (release_item_id),
             UNIQUE KEY release_object (release_id, domain, instance_uid, profile),
             KEY release_payload (release_id, payload_state)
@@ -487,6 +492,8 @@ final class Schema
             target_environment_id varbinary(128) NOT NULL,
             target_epoch varbinary(64) NOT NULL,
             policy_revision varbinary(64) NOT NULL DEFAULT '',
+            kind varbinary(16) NOT NULL DEFAULT 'apply',
+            rolls_back_operation_id varbinary(128) NOT NULL DEFAULT '',
             state varbinary(32) NOT NULL DEFAULT 'approved',
             note varchar(191) NOT NULL DEFAULT '',
             approved_by bigint(20) unsigned NULL,
@@ -500,6 +507,45 @@ final class Schema
             UNIQUE KEY approval_uid (approval_uid),
             UNIQUE KEY operation_id (operation_id),
             KEY target_state (target_environment_id, state, approval_id)
+        ) {$charset_collate};";
+
+        $sql[] = "CREATE TABLE {$rollouts} (
+            rollout_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            rollout_uid varbinary(128) NOT NULL,
+            agency_id varbinary(128) NOT NULL,
+            client_id varbinary(128) NOT NULL,
+            release_id bigint(20) unsigned NOT NULL,
+            release_uid varbinary(128) NOT NULL,
+            source_environment_id varbinary(128) NOT NULL,
+            state varbinary(32) NOT NULL DEFAULT 'running',
+            current_cohort int(10) unsigned NOT NULL DEFAULT 0,
+            cohort_count int(10) unsigned NOT NULL DEFAULT 0,
+            target_count int(10) unsigned NOT NULL DEFAULT 0,
+            paused_reason varchar(191) NOT NULL DEFAULT '',
+            note varchar(191) NOT NULL DEFAULT '',
+            created_by bigint(20) unsigned NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (rollout_id),
+            UNIQUE KEY rollout_uid (rollout_uid),
+            KEY release_state (release_id, state, rollout_id)
+        ) {$charset_collate};";
+
+        $sql[] = "CREATE TABLE {$rollout_targets} (
+            rollout_target_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            rollout_id bigint(20) unsigned NOT NULL,
+            cohort int(10) unsigned NOT NULL DEFAULT 0,
+            position int(10) unsigned NOT NULL DEFAULT 0,
+            target_environment_id varbinary(128) NOT NULL,
+            state varbinary(32) NOT NULL DEFAULT 'pending',
+            operation_id varbinary(128) NOT NULL DEFAULT '',
+            approval_uid varbinary(128) NOT NULL DEFAULT '',
+            outcome varbinary(32) NOT NULL DEFAULT '',
+            detail varchar(191) NOT NULL DEFAULT '',
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (rollout_target_id),
+            UNIQUE KEY rollout_target (rollout_id, target_environment_id),
+            KEY rollout_cohort (rollout_id, cohort, state)
         ) {$charset_collate};";
 
         foreach ($sql as $statement) {
