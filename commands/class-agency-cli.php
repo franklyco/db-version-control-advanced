@@ -757,6 +757,129 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 		}
 
 		/**
+		 * M8 parity: create or update a per-pair sync policy.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function sync_policy_set(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$args = [
+				'source' => (string) ($assoc_args['source'] ?? ''),
+				'target' => (string) ($assoc_args['target'] ?? ''),
+			];
+			foreach (['mode', 'conflict_policy', 'direction', 'cadence', 'note'] as $key) {
+				if (array_key_exists($key, $assoc_args)) {
+					$args[$key] = (string) $assoc_args[$key];
+				}
+			}
+			foreach (['scope' => 'scope_domains', 'include' => 'include_uids', 'exclude' => 'exclude_uids'] as $flag => $field) {
+				if (array_key_exists($flag, $assoc_args)) {
+					$args[$field] = array_values(array_filter(array_map('trim', explode(',', (string) $assoc_args[$flag]))));
+				}
+			}
+			foreach (['create_new', 'propagate_deletions', 'enabled'] as $key) {
+				if (array_key_exists($key, $assoc_args)) {
+					$args[$key] = filter_var($assoc_args[$key], FILTER_VALIDATE_BOOLEAN);
+				}
+			}
+			if (array_key_exists('max_objects', $assoc_args)) {
+				$args['max_objects'] = (int) $assoc_args['max_objects'];
+			}
+			$result = (new \Dbvc\AgencyControl\Parity\SyncPolicyService())->set($args);
+
+			return is_wp_error($result) ? $result : ['policy' => $result];
+		}
+
+		/**
+		 * M8 parity: one policy (source+target) or a list.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function sync_policies(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$service = new \Dbvc\AgencyControl\Parity\SyncPolicyService();
+			if (! empty($assoc_args['source']) && ! empty($assoc_args['target'])) {
+				$one = $service->get((string) $assoc_args['source'], (string) $assoc_args['target']);
+				if ($one === null) {
+					return new WP_Error('dbvc_agency_sync_policy_not_found', 'No sync policy for that pair.');
+				}
+
+				return ['policy' => $one];
+			}
+			$rows = $service->all([
+				'agency' => isset($assoc_args['agency']) ? (string) $assoc_args['agency'] : null,
+				'client' => isset($assoc_args['client']) ? (string) $assoc_args['client'] : null,
+				'limit' => self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT),
+			]);
+
+			return ['returned' => count($rows), 'policies' => $rows];
+		}
+
+		/**
+		 * M8 parity: delete a pair's sync policy.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function sync_policy_delete(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Parity\SyncPolicyService())->delete((string) ($assoc_args['source'] ?? ''), (string) ($assoc_args['target'] ?? ''));
+		}
+
+		/**
+		 * M8 parity: read-only parity view (comparison counts + a dry-run proposal).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function parity(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Parity\SyncDriver())->parity((string) ($assoc_args['source'] ?? ''), (string) ($assoc_args['target'] ?? ''));
+		}
+
+		/**
+		 * M8 parity: auto-propose a release for the pair's outgoing objects (assisted).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function sync_now(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$result = (new \Dbvc\AgencyControl\Parity\SyncDriver())->sync_now(
+				(string) ($assoc_args['source'] ?? ''),
+				(string) ($assoc_args['target'] ?? ''),
+				filter_var($assoc_args['dry_run'] ?? false, FILTER_VALIDATE_BOOLEAN)
+			);
+			if (is_wp_error($result)) {
+				return $result;
+			}
+			if (isset($result['release']) && is_array($result['release'])) {
+				$result['release'] = self::release_row($result['release']);
+			}
+
+			return $result;
+		}
+
+		/**
 		 * @param array $assoc_args
 		 * @return array|WP_Error
 		 */
@@ -2525,6 +2648,161 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function invitations($args, $assoc_args) {
 			unset($args);
 			$this->emit_rows(DBVC_Agency_CLI_Inspector::invitations($assoc_args), 'invitations', ['invitation_id', 'client_id', 'environment_label', 'environment_id', 'state', 'expires_at', 'consumed_environment_id'], $assoc_args);
+		}
+
+		/**
+		 * Create or update a per-pair parity sync policy.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier.
+		 *
+		 * [--mode=<mode>]
+		 * : manual, assisted or auto. Default: manual.
+		 *
+		 * [--conflict_policy=<policy>]
+		 * : hold, source_wins or skip. Default: hold.
+		 *
+		 * [--scope=<domains>]
+		 * : Comma-separated domains to cover (empty = all subscribed).
+		 *
+		 * [--include=<uids>]
+		 * : Comma-separated instance UIDs to include (empty = all).
+		 *
+		 * [--exclude=<uids>]
+		 * : Comma-separated instance UIDs to exclude.
+		 *
+		 * [--create_new=<bool>]
+		 * : Propose creating source objects absent on the target. Default: off.
+		 *
+		 * [--propagate_deletions=<bool>]
+		 * : Propose removing baselined objects deleted on the source. Default: off.
+		 *
+		 * [--max_objects=<n>]
+		 * : Cap objects proposed per run. Default: 25.
+		 *
+		 * [--cadence=<cadence>]
+		 * : Scheduler cadence hint. Default: manual.
+		 *
+		 * [--enabled=<bool>]
+		 * : Enable the policy. Default: on.
+		 *
+		 * [--note=<note>]
+		 * : Optional note.
+		 *
+		 * @subcommand sync-policy-set
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function sync_policy_set($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::sync_policy_set($assoc_args));
+		}
+
+		/**
+		 * List parity sync policies, or one by --source and --target.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--source=<id>]
+		 * : Source environment identifier (with --target, returns one policy).
+		 *
+		 * [--target=<id>]
+		 * : Target environment identifier.
+		 *
+		 * [--agency=<id>]
+		 * : Filter by agency.
+		 *
+		 * [--client=<id>]
+		 * : Filter by client.
+		 *
+		 * [--limit=<n>]
+		 * : Maximum rows.
+		 *
+		 * @subcommand sync-policies
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function sync_policies($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::sync_policies($assoc_args));
+		}
+
+		/**
+		 * Delete a pair's parity sync policy.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier.
+		 *
+		 * @subcommand sync-policy-delete
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function sync_policy_delete($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::sync_policy_delete($assoc_args));
+		}
+
+		/**
+		 * Read-only parity view for a pair: comparison counts plus a dry-run proposal.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier.
+		 *
+		 * @subcommand parity
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function parity($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::parity($assoc_args));
+		}
+
+		/**
+		 * Auto-propose a release for the pair's outgoing objects (assisted parity).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier.
+		 *
+		 * [--dry_run=<bool>]
+		 * : Preview the proposal without creating a release.
+		 *
+		 * @subcommand sync-now
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function sync_now($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::sync_now($assoc_args));
 		}
 
 		/**

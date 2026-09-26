@@ -7226,7 +7226,1175 @@ function RolloutEvidence( { payload } ) {
 	);
 }
 
+/* ---------- Subscriptions (client pair → domain picker) ---------- */
+
+/**
+ * Normalize a free-text token into a domain string: a bare CPT slug becomes
+ * `wp.post:<slug>`; anything already containing `.` or `:` is used as typed.
+ *
+ * @param {string} token Raw token.
+ * @return {string} Domain string.
+ */
+function toDomainToken( token ) {
+	const t = String( token || '' ).trim();
+	if ( t === '' ) {
+		return '';
+	}
+	return t.indexOf( '.' ) === -1 && t.indexOf( ':' ) === -1
+		? `wp.post:${ t }`
+		: t;
+}
+
+function Subscriptions( { notify, onChanged } ) {
+	const [ environments, setEnvironments ] = useState( [] );
+	const [ subs, setSubs ] = useState( null );
+	const [ loading, setLoading ] = useState( true );
+	const [ busy, setBusy ] = useState( '' );
+	const [ form, setForm ] = useState( {
+		source: '',
+		target: '',
+		domains: {
+			'bricks.global_class': false,
+			'bricks.variable': false,
+			'wp.service': false,
+		},
+		extra: '',
+	} );
+
+	const load = useCallback( async () => {
+		setLoading( true );
+		try {
+			const [ envs, list ] = await Promise.all( [
+				apiFetch( { path: 'agency/environments?limit=200' } ),
+				apiFetch( { path: 'agency/subscriptions?limit=200' } ),
+			] );
+			setEnvironments( envs.environments || [] );
+			setSubs(
+				( list.subscriptions || [] ).filter(
+					( s ) => s.type === 'client'
+				)
+			);
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setLoading( false );
+	}, [ notify ] );
+
+	useEffect( () => {
+		load();
+	}, [ load ] );
+
+	const enabledEnvironments = useMemo(
+		() => environments.filter( ( e ) => e.status !== 'revoked' ),
+		[ environments ]
+	);
+
+	const sourceEnv = useMemo(
+		() =>
+			environments.find( ( e ) => e.environment_id === form.source ) ||
+			null,
+		[ environments, form.source ]
+	);
+
+	// A client subscription stays within one agency + client, so only same-scope
+	// environments (never the source itself) are valid targets.
+	const targetEnvironments = useMemo( () => {
+		if ( ! sourceEnv ) {
+			return enabledEnvironments;
+		}
+		return enabledEnvironments.filter(
+			( e ) =>
+				e.environment_id !== sourceEnv.environment_id &&
+				e.agency_id === sourceEnv.agency_id &&
+				e.client_id === sourceEnv.client_id
+		);
+	}, [ enabledEnvironments, sourceEnv ] );
+
+	const chosenDomains = useMemo( () => {
+		const base = Object.keys( form.domains ).filter(
+			( d ) => form.domains[ d ]
+		);
+		const extra = form.extra
+			.split( /[\s,]+/ )
+			.map( toDomainToken )
+			.filter( Boolean );
+		return Array.from( new Set( [ ...base, ...extra ] ) );
+	}, [ form ] );
+
+	const submit = async ( event ) => {
+		event.preventDefault();
+		if ( ! form.source || ! form.target ) {
+			notify( 'error', __( 'Choose a source and a target.', 'dbvc' ) );
+			return;
+		}
+		if ( form.source === form.target ) {
+			notify(
+				'error',
+				__( 'Source and target must be different.', 'dbvc' )
+			);
+			return;
+		}
+		if ( chosenDomains.length === 0 ) {
+			notify(
+				'error',
+				__(
+					'Choose at least one domain (a base domain or a wp.post:<type>).',
+					'dbvc'
+				)
+			);
+			return;
+		}
+		setBusy( 'subscribe' );
+		try {
+			const result = await apiFetch( {
+				path: 'agency/subscribe',
+				method: 'POST',
+				data: {
+					source: form.source,
+					target: form.target,
+					domains: chosenDomains.join( ',' ),
+				},
+			} );
+			const outcomes = result.domains || {};
+			const created = Object.values( outcomes ).filter(
+				( v ) => v === 'created'
+			).length;
+			const existed = Object.values( outcomes ).filter(
+				( v ) => v === 'exists'
+			).length;
+			notify(
+				'success',
+				sprintf(
+					/* translators: 1: created count, 2: already-existing count */
+					__(
+						'%1$d domain(s) subscribed, %2$d already present.',
+						'dbvc'
+					),
+					created,
+					existed
+				)
+			);
+			setForm( { ...form, extra: '' } );
+			await load();
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const toggle = async ( row ) => {
+		setBusy( `toggle:${ row.subscription_id }` );
+		try {
+			await apiFetch( {
+				path: 'agency/enable-subscription',
+				method: 'POST',
+				data: {
+					id: row.subscription_id,
+					enabled: row.enabled !== 'yes',
+				},
+			} );
+			await load();
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	// Group client rows by source→target pair for a readable list.
+	const pairs = useMemo( () => {
+		const groups = {};
+		( subs || [] ).forEach( ( row ) => {
+			const key = `${ row.source }→${ row.target }`;
+			groups[ key ] = groups[ key ] || {
+				key,
+				source: row.source,
+				target: row.target,
+				client_id: row.client_id,
+				rows: [],
+			};
+			groups[ key ].rows.push( row );
+		} );
+		return Object.values( groups );
+	}, [ subs ] );
+
+	const initialLoading = loading && ! subs;
+
+	return (
+		<div className="dbvc-ce-grid">
+			<div>
+				<div className="dbvc-tools-panel">
+					<div className="dbvc-ce-panel__head">
+						<h2>{ __( 'Client subscriptions', 'dbvc' ) }</h2>
+						<span className="dbvc-ce-asof">
+							{ __( 'source → target, per domain', 'dbvc' ) }
+						</span>
+					</div>
+					{ initialLoading && (
+						<p className="dbvc-ce-loading">
+							{ __( 'Loading…', 'dbvc' ) }
+						</p>
+					) }
+					{ ! initialLoading && pairs.length === 0 && (
+						<p className="dbvc-ce-empty">
+							{ __(
+								'No client subscriptions yet. Subscribe a source→target pair to a set of domains to route its observations.',
+								'dbvc'
+							) }
+						</p>
+					) }
+					{ ! initialLoading &&
+						pairs.map( ( pair ) => (
+							<div
+								key={ pair.key }
+								className="dbvc-tools-panel"
+								style={ { marginBottom: 12 } }
+							>
+								<div className="dbvc-ce-panel__head">
+									<h3 style={ { margin: 0 } }>
+										{ pair.source } → { pair.target }
+									</h3>
+									<span className="dbvc-ce-asof">
+										{ sprintf(
+											/* translators: %s: client id */
+											__( 'client %s', 'dbvc' ),
+											pair.client_id
+										) }
+									</span>
+								</div>
+								<table className="widefat striped">
+									<thead>
+										<tr>
+											<th>{ __( 'Domain', 'dbvc' ) }</th>
+											<th>{ __( 'Enabled', 'dbvc' ) }</th>
+											<th />
+										</tr>
+									</thead>
+									<tbody>
+										{ pair.rows.map( ( row ) => (
+											<tr key={ row.subscription_id }>
+												<td>
+													<code>{ row.domain }</code>
+												</td>
+												<td>
+													<Badge
+														state={
+															row.enabled ===
+															'yes'
+																? 'ready'
+																: 'held'
+														}
+													>
+														{ row.enabled === 'yes'
+															? __(
+																	'enabled',
+																	'dbvc'
+															  )
+															: __(
+																	'disabled',
+																	'dbvc'
+															  ) }
+													</Badge>
+												</td>
+												<td>
+													<button
+														type="button"
+														className="btn btn--small"
+														aria-busy={
+															busy ===
+															`toggle:${ row.subscription_id }`
+														}
+														onClick={ () =>
+															toggle( row )
+														}
+													>
+														{ row.enabled === 'yes'
+															? __(
+																	'Disable',
+																	'dbvc'
+															  )
+															: __(
+																	'Enable',
+																	'dbvc'
+															  ) }
+													</button>
+												</td>
+											</tr>
+										) ) }
+									</tbody>
+								</table>
+							</div>
+						) ) }
+				</div>
+			</div>
+			<div>
+				<div className="dbvc-tools-panel">
+					<div className="dbvc-ce-panel__head">
+						<h2>{ __( 'Subscribe a pair', 'dbvc' ) }</h2>
+					</div>
+					<p className="dbvc-ce-empty" style={ { paddingTop: 0 } }>
+						{ __(
+							'Choose which domains a source→target pair syncs. Both environments must be enrolled in the same agency and client.',
+							'dbvc'
+						) }
+					</p>
+					<form className="dbvc-ce-inv-form" onSubmit={ submit }>
+						<div className="dbvc-ce-field">
+							<label htmlFor="dbvc-ce-sub-source">
+								{ __( 'Source', 'dbvc' ) }
+							</label>
+							<select
+								id="dbvc-ce-sub-source"
+								required
+								value={ form.source }
+								onChange={ ( e ) =>
+									setForm( {
+										...form,
+										source: e.target.value,
+										target: '',
+									} )
+								}
+							>
+								<option value="">
+									{ __( '— choose —', 'dbvc' ) }
+								</option>
+								{ enabledEnvironments.map( ( e ) => (
+									<option
+										key={ e.environment_id }
+										value={ e.environment_id }
+									>
+										{ e.environment_id }
+									</option>
+								) ) }
+							</select>
+						</div>
+						<div className="dbvc-ce-field">
+							<label htmlFor="dbvc-ce-sub-target">
+								{ __( 'Target', 'dbvc' ) }
+							</label>
+							<select
+								id="dbvc-ce-sub-target"
+								required
+								value={ form.target }
+								disabled={ ! form.source }
+								onChange={ ( e ) =>
+									setForm( {
+										...form,
+										target: e.target.value,
+									} )
+								}
+							>
+								<option value="">
+									{ __( '— choose —', 'dbvc' ) }
+								</option>
+								{ targetEnvironments.map( ( e ) => (
+									<option
+										key={ e.environment_id }
+										value={ e.environment_id }
+									>
+										{ e.environment_id }
+									</option>
+								) ) }
+							</select>
+						</div>
+						<fieldset
+							className="dbvc-ce-field"
+							style={ { border: 0, margin: 0, padding: 0 } }
+						>
+							<legend style={ { padding: 0 } }>
+								{ __( 'Domains', 'dbvc' ) }
+							</legend>
+							{ Object.keys( form.domains ).map( ( d ) => {
+								const cid = `dbvc-ce-sub-dom-${ d.replace(
+									/[^a-z0-9]+/gi,
+									'-'
+								) }`;
+								return (
+									<label
+										key={ d }
+										htmlFor={ cid }
+										style={ {
+											display: 'block',
+											fontWeight: 'normal',
+										} }
+									>
+										<input
+											id={ cid }
+											type="checkbox"
+											checked={ form.domains[ d ] }
+											onChange={ ( e ) =>
+												setForm( {
+													...form,
+													domains: {
+														...form.domains,
+														[ d ]: e.target.checked,
+													},
+												} )
+											}
+										/>{ ' ' }
+										<code>{ d }</code>
+									</label>
+								);
+							} ) }
+						</fieldset>
+						<div className="dbvc-ce-field">
+							<label htmlFor="dbvc-ce-sub-extra">
+								{ __( 'Custom post types', 'dbvc' ) }
+							</label>
+							<input
+								id="dbvc-ce-sub-extra"
+								type="text"
+								placeholder={ __(
+									'portfolio, wp.post:case_study',
+									'dbvc'
+								) }
+								value={ form.extra }
+								onChange={ ( e ) =>
+									setForm( {
+										...form,
+										extra: e.target.value,
+									} )
+								}
+							/>
+							<p className="description">
+								{ __(
+									'A bare slug becomes wp.post:<slug>; commas or spaces separate several. The target connector only observes a type it has opted in.',
+									'dbvc'
+								) }
+							</p>
+						</div>
+						{ chosenDomains.length > 0 && (
+							<p className="description">
+								{ sprintf(
+									/* translators: %s: comma-separated domain list */
+									__( 'Will subscribe: %s', 'dbvc' ),
+									chosenDomains.join( ', ' )
+								) }
+							</p>
+						) }
+						<button
+							type="submit"
+							className="btn btn--primary"
+							aria-busy={ busy === 'subscribe' }
+						>
+							{ __( 'Subscribe', 'dbvc' ) }
+						</button>
+					</form>
+				</div>
+			</div>
+		</div>
+	);
+}
 /* ---------- App ---------- */
+
+function Sync( { notify } ) {
+	const [ environments, setEnvironments ] = useState( [] );
+	const [ pair, setPair ] = useState( { source: '', target: '' } );
+	const [ policy, setPolicy ] = useState( null );
+	const [ counts, setCounts ] = useState( null );
+	const [ proposal, setProposal ] = useState( null );
+	const [ busy, setBusy ] = useState( '' );
+	const [ form, setForm ] = useState( {
+		mode: 'manual',
+		conflict_policy: 'hold',
+		max_objects: 25,
+		create_new: false,
+		propagate_deletions: false,
+		enabled: true,
+		domains: {
+			'bricks.global_class': false,
+			'bricks.variable': false,
+			'wp.service': false,
+		},
+		extra: '',
+	} );
+
+	const loadEnvironments = useCallback( async () => {
+		try {
+			const envs = await apiFetch( {
+				path: 'agency/environments?limit=200',
+			} );
+			setEnvironments( envs.environments || [] );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	}, [ notify ] );
+
+	useEffect( () => {
+		loadEnvironments();
+	}, [ loadEnvironments ] );
+
+	const enabledEnvironments = useMemo(
+		() => environments.filter( ( e ) => e.status !== 'revoked' ),
+		[ environments ]
+	);
+
+	const sourceEnv = useMemo(
+		() =>
+			environments.find( ( e ) => e.environment_id === pair.source ) ||
+			null,
+		[ environments, pair.source ]
+	);
+
+	const targetEnvironments = useMemo( () => {
+		if ( ! sourceEnv ) {
+			return enabledEnvironments;
+		}
+		return enabledEnvironments.filter(
+			( e ) =>
+				e.environment_id !== sourceEnv.environment_id &&
+				e.agency_id === sourceEnv.agency_id &&
+				e.client_id === sourceEnv.client_id
+		);
+	}, [ enabledEnvironments, sourceEnv ] );
+
+	// Populate the editor form from a loaded policy (or reset to defaults).
+	const applyPolicyToForm = useCallback( ( loaded ) => {
+		const base = {
+			'bricks.global_class': false,
+			'bricks.variable': false,
+			'wp.service': false,
+		};
+		if ( ! loaded ) {
+			setForm( ( f ) => ( {
+				...f,
+				mode: 'manual',
+				conflict_policy: 'hold',
+				max_objects: 25,
+				create_new: false,
+				propagate_deletions: false,
+				enabled: true,
+				domains: base,
+				extra: '',
+			} ) );
+			return;
+		}
+		const extra = [];
+		( loaded.scope_domains || [] ).forEach( ( d ) => {
+			if ( d in base ) {
+				base[ d ] = true;
+			} else {
+				extra.push( d );
+			}
+		} );
+		setForm( {
+			mode: loaded.mode,
+			conflict_policy: loaded.conflict_policy,
+			max_objects: loaded.max_objects,
+			create_new: !! loaded.create_new,
+			propagate_deletions: !! loaded.propagate_deletions,
+			enabled: !! loaded.enabled,
+			domains: base,
+			extra: extra.join( ', ' ),
+		} );
+	}, [] );
+
+	const loadPair = useCallback(
+		async ( source, target ) => {
+			if ( ! source || ! target ) {
+				return;
+			}
+			setBusy( 'load' );
+			setProposal( null );
+			try {
+				const [ pol, cmp ] = await Promise.all( [
+					apiFetch( {
+						path: `agency/sync-policies?source=${ encodeURIComponent(
+							source
+						) }&target=${ encodeURIComponent( target ) }`,
+					} ).catch( () => null ),
+					apiFetch( {
+						path: `agency/compare?source=${ encodeURIComponent(
+							source
+						) }&target=${ encodeURIComponent( target ) }`,
+					} ),
+				] );
+				const loaded = pol && pol.policy ? pol.policy : null;
+				setPolicy( loaded );
+				applyPolicyToForm( loaded );
+				setCounts( cmp && ! cmp.code ? cmp.counts : null );
+			} catch ( err ) {
+				notify( 'error', errorMessage( err ) );
+			}
+			setBusy( '' );
+		},
+		[ notify, applyPolicyToForm ]
+	);
+
+	const choosePair = ( source, target ) => {
+		setPair( { source, target } );
+		setPolicy( null );
+		setCounts( null );
+		setProposal( null );
+		if ( source && target ) {
+			loadPair( source, target );
+		}
+	};
+
+	const scopeDomains = useMemo( () => {
+		const base = Object.keys( form.domains ).filter(
+			( d ) => form.domains[ d ]
+		);
+		const extra = form.extra
+			.split( /[\s,]+/ )
+			.map( toDomainToken )
+			.filter( Boolean );
+		return Array.from( new Set( [ ...base, ...extra ] ) );
+	}, [ form ] );
+
+	const savePolicy = async ( event ) => {
+		event.preventDefault();
+		if ( ! pair.source || ! pair.target ) {
+			notify( 'error', __( 'Choose a source and a target.', 'dbvc' ) );
+			return;
+		}
+		setBusy( 'save' );
+		try {
+			await apiFetch( {
+				path: 'agency/sync-policy-set',
+				method: 'POST',
+				data: {
+					source: pair.source,
+					target: pair.target,
+					mode: form.mode,
+					conflict_policy: form.conflict_policy,
+					max_objects: Number( form.max_objects ) || 25,
+					create_new: form.create_new,
+					propagate_deletions: form.propagate_deletions,
+					enabled: form.enabled,
+					scope: scopeDomains.join( ',' ),
+				},
+			} );
+			notify( 'success', __( 'Sync policy saved.', 'dbvc' ) );
+			await loadPair( pair.source, pair.target );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const deletePolicy = async () => {
+		setBusy( 'delete' );
+		try {
+			await apiFetch( {
+				path: 'agency/sync-policy-delete',
+				method: 'POST',
+				data: { source: pair.source, target: pair.target },
+			} );
+			notify( 'success', __( 'Sync policy deleted.', 'dbvc' ) );
+			await loadPair( pair.source, pair.target );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const runSync = async ( dryRun ) => {
+		setBusy( dryRun ? 'preview' : 'sync' );
+		setProposal( null );
+		try {
+			const result = await apiFetch( {
+				path: 'agency/sync-now',
+				method: 'POST',
+				data: {
+					source: pair.source,
+					target: pair.target,
+					dry_run: dryRun,
+				},
+			} );
+			setProposal( result );
+			if ( ! dryRun ) {
+				if ( result.release ) {
+					notify(
+						'success',
+						sprintf(
+							/* translators: 1: release uid, 2: item count */
+							__(
+								'Release %1$s proposed with %2$d object(s); it seals once the source delivers payloads, then approve it.',
+								'dbvc'
+							),
+							result.release.release_uid,
+							result.proposed_count
+						)
+					);
+				} else {
+					notify(
+						'success',
+						__(
+							'Nothing to propose — the pair is in sync.',
+							'dbvc'
+						)
+					);
+				}
+				await loadPair( pair.source, pair.target );
+			}
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const hasPair = !! ( pair.source && pair.target );
+	const canPropose = policy && policy.enabled && policy.mode !== 'manual';
+
+	return (
+		<div className="dbvc-ce-grid">
+			<div>
+				<div className="dbvc-tools-panel">
+					<div className="dbvc-ce-panel__head">
+						<h2>{ __( 'Parity', 'dbvc' ) }</h2>
+						<span className="dbvc-ce-asof">
+							{ __( 'source → target', 'dbvc' ) }
+						</span>
+					</div>
+					<div className="dbvc-ce-field">
+						<label htmlFor="dbvc-ce-sync-source">
+							{ __( 'Source', 'dbvc' ) }
+						</label>
+						<select
+							id="dbvc-ce-sync-source"
+							value={ pair.source }
+							onChange={ ( e ) =>
+								choosePair( e.target.value, '' )
+							}
+						>
+							<option value="">
+								{ __( '— choose —', 'dbvc' ) }
+							</option>
+							{ enabledEnvironments.map( ( e ) => (
+								<option
+									key={ e.environment_id }
+									value={ e.environment_id }
+								>
+									{ e.environment_id }
+								</option>
+							) ) }
+						</select>
+					</div>
+					<div className="dbvc-ce-field">
+						<label htmlFor="dbvc-ce-sync-target">
+							{ __( 'Target', 'dbvc' ) }
+						</label>
+						<select
+							id="dbvc-ce-sync-target"
+							value={ pair.target }
+							disabled={ ! pair.source }
+							onChange={ ( e ) =>
+								choosePair( pair.source, e.target.value )
+							}
+						>
+							<option value="">
+								{ __( '— choose —', 'dbvc' ) }
+							</option>
+							{ targetEnvironments.map( ( e ) => (
+								<option
+									key={ e.environment_id }
+									value={ e.environment_id }
+								>
+									{ e.environment_id }
+								</option>
+							) ) }
+						</select>
+					</div>
+
+					{ hasPair && counts && (
+						<div style={ { marginTop: 12 } }>
+							<h3 style={ { margin: '0 0 8px' } }>
+								{ __( 'Comparison', 'dbvc' ) }
+							</h3>
+							<div className="dbvc-ce-parity-counts">
+								{ COMPARE_STATES.map( ( state ) => (
+									<span
+										key={ state }
+										style={ {
+											display: 'inline-block',
+											marginRight: 12,
+											marginBottom: 6,
+										} }
+									>
+										<Badge state={ state }>{ state }</Badge>{ ' ' }
+										<strong>
+											{ counts[ state ] || 0 }
+										</strong>
+									</span>
+								) ) }
+							</div>
+						</div>
+					) }
+
+					{ hasPair && (
+						<div style={ { marginTop: 12 } }>
+							<button
+								type="button"
+								className="btn"
+								disabled={ ! canPropose }
+								aria-busy={ busy === 'preview' }
+								onClick={ () => runSync( true ) }
+							>
+								{ __( 'Preview proposal', 'dbvc' ) }
+							</button>{ ' ' }
+							<button
+								type="button"
+								className="btn btn--primary"
+								disabled={ ! canPropose }
+								aria-busy={ busy === 'sync' }
+								onClick={ () => runSync( false ) }
+							>
+								{ __( 'Sync now', 'dbvc' ) }
+							</button>
+							{ ! canPropose && (
+								<p className="description">
+									{ __(
+										'Set an enabled assisted or auto policy to propose a sync.',
+										'dbvc'
+									) }
+								</p>
+							) }
+						</div>
+					) }
+
+					{ proposal && (
+						<div style={ { marginTop: 12 } }>
+							<h3 style={ { margin: '0 0 8px' } }>
+								{ proposal.dry_run
+									? __( 'Would propose', 'dbvc' )
+									: __( 'Proposed', 'dbvc' ) }
+							</h3>
+							{ proposal.proposed_count === 0 ? (
+								<p className="dbvc-ce-empty">
+									{ __(
+										'Nothing to propose — no outgoing objects the policy covers.',
+										'dbvc'
+									) }
+								</p>
+							) : (
+								<>
+									{ proposal.release && (
+										<p className="description">
+											{ sprintf(
+												/* translators: %s: release uid */
+												__(
+													'Open release %s — seals when the source delivers payloads, then approve on the Releases tab.',
+													'dbvc'
+												),
+												proposal.release.release_uid
+											) }
+										</p>
+									) }
+									<table className="widefat striped">
+										<thead>
+											<tr>
+												<th>
+													{ __( 'Domain', 'dbvc' ) }
+												</th>
+												<th>
+													{ __( 'Instance', 'dbvc' ) }
+												</th>
+											</tr>
+										</thead>
+										<tbody>
+											{ proposal.proposed.map(
+												( row ) => (
+													<tr
+														key={ `${ row.domain }|${ row.instance_uid }` }
+													>
+														<td>
+															<code>
+																{ row.domain }
+															</code>
+														</td>
+														<td>
+															<code>
+																{
+																	row.instance_uid
+																}
+															</code>
+														</td>
+													</tr>
+												)
+											) }
+										</tbody>
+									</table>
+								</>
+							) }
+							{ proposal.skipped && (
+								<p className="description">
+									{ __( 'Skipped', 'dbvc' ) }:{ ' ' }
+									{ Object.entries( proposal.skipped )
+										.filter( ( [ , n ] ) => n > 0 )
+										.map(
+											( [ key, n ] ) => `${ key } ${ n }`
+										)
+										.join( ' · ' ) || __( 'none', 'dbvc' ) }
+								</p>
+							) }
+						</div>
+					) }
+				</div>
+			</div>
+
+			<div>
+				<div className="dbvc-tools-panel">
+					<div className="dbvc-ce-panel__head">
+						<h2>{ __( 'Sync policy', 'dbvc' ) }</h2>
+						{ policy && (
+							<span className="dbvc-ce-asof">
+								{ __( 'saved', 'dbvc' ) }
+							</span>
+						) }
+					</div>
+					{ ! hasPair ? (
+						<p className="dbvc-ce-empty">
+							{ __(
+								'Choose a source and target to view or edit its sync policy.',
+								'dbvc'
+							) }
+						</p>
+					) : (
+						<form
+							className="dbvc-ce-inv-form"
+							onSubmit={ savePolicy }
+						>
+							<div className="dbvc-ce-field">
+								<label htmlFor="dbvc-ce-sync-mode">
+									{ __( 'Mode', 'dbvc' ) }
+								</label>
+								<select
+									id="dbvc-ce-sync-mode"
+									value={ form.mode }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											mode: e.target.value,
+										} )
+									}
+								>
+									<option value="manual">
+										{ __(
+											'manual (operator builds releases)',
+											'dbvc'
+										) }
+									</option>
+									<option value="assisted">
+										{ __(
+											'assisted (auto-propose, you approve)',
+											'dbvc'
+										) }
+									</option>
+									<option value="auto">
+										{ __(
+											'auto (propose + apply within caps)',
+											'dbvc'
+										) }
+									</option>
+								</select>
+							</div>
+							<div className="dbvc-ce-field">
+								<label htmlFor="dbvc-ce-sync-conflict">
+									{ __( 'On conflict', 'dbvc' ) }
+								</label>
+								<select
+									id="dbvc-ce-sync-conflict"
+									value={ form.conflict_policy }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											conflict_policy: e.target.value,
+										} )
+									}
+								>
+									<option value="hold">
+										{ __(
+											'hold (never auto-resolve)',
+											'dbvc'
+										) }
+									</option>
+									<option value="source_wins">
+										{ __(
+											'source_wins (propose overwrite)',
+											'dbvc'
+										) }
+									</option>
+									<option value="skip">
+										{ __( 'skip', 'dbvc' ) }
+									</option>
+								</select>
+							</div>
+							<fieldset
+								className="dbvc-ce-field"
+								style={ { border: 0, margin: 0, padding: 0 } }
+							>
+								<legend style={ { padding: 0 } }>
+									{ __( 'Scope (blank = all)', 'dbvc' ) }
+								</legend>
+								{ Object.keys( form.domains ).map( ( d ) => {
+									const cid = `dbvc-ce-sync-dom-${ d.replace(
+										/[^a-z0-9]+/gi,
+										'-'
+									) }`;
+									return (
+										<label
+											key={ d }
+											htmlFor={ cid }
+											style={ {
+												display: 'block',
+												fontWeight: 'normal',
+											} }
+										>
+											<input
+												id={ cid }
+												type="checkbox"
+												checked={ form.domains[ d ] }
+												onChange={ ( e ) =>
+													setForm( {
+														...form,
+														domains: {
+															...form.domains,
+															[ d ]: e.target
+																.checked,
+														},
+													} )
+												}
+											/>{ ' ' }
+											<code>{ d }</code>
+										</label>
+									);
+								} ) }
+							</fieldset>
+							<div className="dbvc-ce-field">
+								<label htmlFor="dbvc-ce-sync-extra">
+									{ __( 'Custom post types', 'dbvc' ) }
+								</label>
+								<input
+									id="dbvc-ce-sync-extra"
+									type="text"
+									placeholder={ __(
+										'portfolio, wp.post:case_study',
+										'dbvc'
+									) }
+									value={ form.extra }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											extra: e.target.value,
+										} )
+									}
+								/>
+							</div>
+							<div className="dbvc-ce-field">
+								<label htmlFor="dbvc-ce-sync-max">
+									{ __( 'Max objects per run', 'dbvc' ) }
+								</label>
+								<input
+									id="dbvc-ce-sync-max"
+									type="number"
+									min={ 1 }
+									max={ 500 }
+									value={ form.max_objects }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											max_objects: e.target.value,
+										} )
+									}
+								/>
+							</div>
+							<label
+								htmlFor="dbvc-ce-sync-createnew"
+								style={ {
+									display: 'block',
+									fontWeight: 'normal',
+								} }
+							>
+								<input
+									id="dbvc-ce-sync-createnew"
+									type="checkbox"
+									checked={ form.create_new }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											create_new: e.target.checked,
+										} )
+									}
+								/>{ ' ' }
+								{ __(
+									'Propose creating new objects on the target',
+									'dbvc'
+								) }
+							</label>
+							<label
+								htmlFor="dbvc-ce-sync-deletions"
+								style={ {
+									display: 'block',
+									fontWeight: 'normal',
+								} }
+							>
+								<input
+									id="dbvc-ce-sync-deletions"
+									type="checkbox"
+									checked={ form.propagate_deletions }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											propagate_deletions:
+												e.target.checked,
+										} )
+									}
+								/>{ ' ' }
+								{ __(
+									'Propose propagating deletions (trash)',
+									'dbvc'
+								) }
+							</label>
+							<label
+								htmlFor="dbvc-ce-sync-enabled"
+								style={ {
+									display: 'block',
+									fontWeight: 'normal',
+								} }
+							>
+								<input
+									id="dbvc-ce-sync-enabled"
+									type="checkbox"
+									checked={ form.enabled }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											enabled: e.target.checked,
+										} )
+									}
+								/>{ ' ' }
+								{ __( 'Policy enabled', 'dbvc' ) }
+							</label>
+							<div style={ { marginTop: 8 } }>
+								<button
+									type="submit"
+									className="btn btn--primary"
+									aria-busy={ busy === 'save' }
+								>
+									{ policy
+										? __( 'Update policy', 'dbvc' )
+										: __( 'Create policy', 'dbvc' ) }
+								</button>{ ' ' }
+								{ policy && (
+									<button
+										type="button"
+										className="btn btn--small"
+										aria-busy={ busy === 'delete' }
+										onClick={ deletePolicy }
+									>
+										{ __( 'Delete', 'dbvc' ) }
+									</button>
+								) }
+							</div>
+						</form>
+					) }
+				</div>
+			</div>
+		</div>
+	);
+}
 
 function App() {
 	const [ overview, setOverview ] = useState( null );
@@ -7371,6 +8539,11 @@ function App() {
 						key: 'environments',
 						label: __( 'Environments', 'dbvc' ),
 					},
+					{
+						key: 'subscriptions',
+						label: __( 'Subscriptions', 'dbvc' ),
+					},
+					{ key: 'sync', label: __( 'Sync', 'dbvc' ) },
 					{ key: 'compare', label: __( 'Compare', 'dbvc' ) },
 					{ key: 'framework', label: __( 'Framework', 'dbvc' ) },
 					{ key: 'releases', label: __( 'Releases', 'dbvc' ) },
@@ -7452,6 +8625,12 @@ function App() {
 						setView( 'compare' );
 					} }
 				/>
+			) }
+			{ overview && overview.roles.hub && view === 'subscriptions' && (
+				<Subscriptions notify={ notify } onChanged={ load } />
+			) }
+			{ overview && overview.roles.hub && view === 'sync' && (
+				<Sync notify={ notify } />
 			) }
 			{ overview && overview.roles.hub && view === 'compare' && (
 				<Compare

@@ -160,6 +160,14 @@ if (! class_exists('DBVC_Connected_Environments_Addon')) {
                         self::OPTION_APPLY_ENABLED,
                     ],
                 ],
+                'coverage' => [
+                    'label' => __('Post-type coverage', 'dbvc'),
+                    'fields' => [
+                        \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_DOMAINS,
+                        \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_APPLY_DOMAINS,
+                        \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_TYPE_META,
+                    ],
+                ],
             ];
         }
 
@@ -179,6 +187,24 @@ if (! class_exists('DBVC_Connected_Environments_Addon')) {
                     'input' => 'checkbox',
                     'help' => __('Off by default. When on, the connector executes releases the studio hub has explicitly approved for this environment, only after its own prepare receipt, with a conditional write that refuses to overwrite a container edited in the meantime, a journalled before image and verified after-state. Bricks global classes and variables only in this release.', 'dbvc'),
                 ],
+                \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_DOMAINS => [
+                    'label' => __('Observed post types (one slug per line)', 'dbvc'),
+                    'input' => 'textarea',
+                    'rows' => 4,
+                    'help' => __('Opt in custom post types to observe as wp.post:<type> domains, one post-type slug per line (commas also work). The service post type (wp.service alias) is always observed and never listed here; media and built-in editor/theme types are excluded automatically.', 'dbvc'),
+                ],
+                \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_APPLY_DOMAINS => [
+                    'label' => __('Post types approved releases may apply (subset of observed)', 'dbvc'),
+                    'input' => 'textarea',
+                    'rows' => 3,
+                    'help' => __('One slug per line. Even with the apply gate on, an approved release only writes a custom post type listed here (a type must also be observed above). Empty means no custom post type is applied. The wp.service alias is always apply-eligible.', 'dbvc'),
+                ],
+                \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_TYPE_META => [
+                    'label' => __('Per-type meta & term policy (JSON)', 'dbvc'),
+                    'input' => 'textarea',
+                    'rows' => 5,
+                    'help' => __('Optional JSON keyed by post-type slug: {"portfolio": {"allow": ["client"], "deny": ["_internal"], "create_terms": true}}. "allow" (non-empty) projects only those meta keys; "deny" excludes keys; "create_terms" lets apply create a missing taxonomy term. Masked/privacy fields are never synced regardless. Leave blank for defaults (all meta minus the ignored set, create_terms off).', 'dbvc'),
+                ],
             ];
         }
 
@@ -192,7 +218,99 @@ if (! class_exists('DBVC_Connected_Environments_Addon')) {
             return [
                 self::OPTION_ENABLED => (string) get_option(self::OPTION_ENABLED, '0'),
                 self::OPTION_APPLY_ENABLED => (string) get_option(self::OPTION_APPLY_ENABLED, '0'),
+                \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_DOMAINS => self::format_slug_list(get_option(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_DOMAINS, [])),
+                \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_APPLY_DOMAINS => self::format_slug_list(get_option(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_APPLY_DOMAINS, [])),
+                \Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_TYPE_META => self::format_type_meta(get_option(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_TYPE_META, [])),
             ];
+        }
+
+        /**
+         * Newline-joined slug list for a textarea.
+         *
+         * @param mixed $value
+         * @return string
+         */
+        private static function format_slug_list($value)
+        {
+            $value = is_array($value) ? $value : [];
+
+            return implode("\n", array_map('strval', $value));
+        }
+
+        /**
+         * Pretty JSON for the per-type policy textarea ('' when empty).
+         *
+         * @param mixed $value
+         * @return string
+         */
+        private static function format_type_meta($value)
+        {
+            if (! is_array($value) || $value === []) {
+                return '';
+            }
+
+            return (string) wp_json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        }
+
+        /**
+         * Parse a textarea slug list (newlines or commas) into sanitized slugs.
+         *
+         * @param string $raw
+         * @return array<int, string>
+         */
+        private static function parse_slug_list($raw)
+        {
+            $out = [];
+            foreach (preg_split('/[\s,]+/', (string) $raw) as $token) {
+                $slug = sanitize_key((string) $token);
+                if ($slug !== '') {
+                    $out[$slug] = true;
+                }
+            }
+
+            return array_keys($out);
+        }
+
+        /**
+         * Parse the per-type meta/term policy JSON into a normalized array keyed by
+         * post-type slug. Empty input clears the policy ([]); invalid JSON returns
+         * null so the caller keeps the previous value and surfaces an error.
+         *
+         * @param string $raw
+         * @return array<string, array<string, mixed>>|null
+         */
+        private static function parse_type_meta($raw)
+        {
+            $raw = trim((string) $raw);
+            if ($raw === '') {
+                return [];
+            }
+            $decoded = json_decode($raw, true);
+            if (! is_array($decoded)) {
+                return null;
+            }
+            $out = [];
+            foreach ($decoded as $type => $policy) {
+                $type = sanitize_key((string) $type);
+                if ($type === '' || ! is_array($policy)) {
+                    continue;
+                }
+                $entry = [];
+                if (isset($policy['allow'])) {
+                    $entry['allow'] = array_values(array_filter(array_map('strval', (array) $policy['allow']), 'strlen'));
+                }
+                if (isset($policy['deny'])) {
+                    $entry['deny'] = array_values(array_filter(array_map('strval', (array) $policy['deny']), 'strlen'));
+                }
+                if (array_key_exists('create_terms', $policy)) {
+                    $entry['create_terms'] = (bool) $policy['create_terms'];
+                }
+                if ($entry !== []) {
+                    $out[$type] = $entry;
+                }
+            }
+
+            return $out;
         }
 
         /**
@@ -225,6 +343,36 @@ if (! class_exists('DBVC_Connected_Environments_Addon')) {
             $apply_enabled = $enabled === '1' && isset($request_data[self::OPTION_APPLY_ENABLED]) ? '1' : '0';
             update_option(self::OPTION_APPLY_ENABLED, $apply_enabled);
 
+            // Post-type coverage config. Each key is written only when present in the request, so a
+            // programmatic save_settings([OPTION_ENABLED => '1']) (tests, CLI, enrollment) never wipes
+            // the operator's allow-lists. Updated before the enable block so an enable-from-disabled
+            // full reconciliation already covers any newly opted-in CPT.
+            $added_observe = [];
+            $coverage_changed = false;
+            if (array_key_exists(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_DOMAINS, $request_data)) {
+                $before_observe = \Dbvc\Connected\Adapters\DomainRegistry::opted_in_post_types();
+                update_option(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_DOMAINS, self::parse_slug_list($request_data[\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_DOMAINS]));
+                \Dbvc\Connected\Adapters\DomainRegistry::reset_observers();
+                $added_observe = array_values(array_diff(\Dbvc\Connected\Adapters\DomainRegistry::opted_in_post_types(), $before_observe));
+                $coverage_changed = true;
+            }
+            if (array_key_exists(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_APPLY_DOMAINS, $request_data)) {
+                update_option(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_APPLY_DOMAINS, self::parse_slug_list($request_data[\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_APPLY_DOMAINS]));
+                $coverage_changed = true;
+            }
+            if (array_key_exists(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_TYPE_META, $request_data)) {
+                $parsed_meta = self::parse_type_meta((string) $request_data[\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_TYPE_META]);
+                if ($parsed_meta === null) {
+                    $errors[] = __('Per-type meta & term policy must be valid JSON; the previous value was kept.', 'dbvc');
+                } else {
+                    update_option(\Dbvc\Connected\Adapters\DomainRegistry::OPTION_POST_TYPE_META, $parsed_meta);
+                    $coverage_changed = true;
+                }
+            }
+            if ($coverage_changed) {
+                \Dbvc\Connected\Adapters\DomainRegistry::reset_observers();
+            }
+
             if ($enabled === '1' && ! self::is_emergency_disabled()) {
                 // Explicit lifecycle step: migrate schema under the administrator's action, then initialize provisional identity.
                 if (! \Dbvc\Connected\Storage\Schema::install()) {
@@ -232,8 +380,13 @@ if (! class_exists('DBVC_Connected_Environments_Addon')) {
                 } else {
                     (new \Dbvc\Connected\Storage\StateStore())->initialize_provisional();
                     if (! $was_enabled) {
-                        // Edits made while disabled are unknown; request a full reconciliation of every supported domain.
+                        // Edits made while disabled are unknown; request a full reconciliation of every supported domain (incl. newly opted-in CPTs).
                         self::request_reconciliation('', 'enable');
+                    } elseif ($added_observe !== []) {
+                        // Already enabled: begin observing each newly opted-in CPT so it does not wait for the next save.
+                        foreach ($added_observe as $added_type) {
+                            self::request_reconciliation(\Dbvc\Connected\Adapters\DomainRegistry::DOMAIN_POST_PREFIX . $added_type, 'coverage_opt_in');
+                        }
                     }
                 }
             } elseif ($enabled === '0' && $was_enabled) {

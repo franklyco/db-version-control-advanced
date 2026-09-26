@@ -3,7 +3,7 @@
 namespace Dbvc\Connected\Preparation;
 
 use Dbvc\Connected\Adapters\DomainRegistry;
-use Dbvc\Connected\Adapters\ServicePostObserver;
+use Dbvc\Connected\Adapters\PostTypeObserver;
 
 /**
  * Read-only dependency discovery for one release item on the target: what
@@ -33,18 +33,21 @@ final class DependencyLedger
      */
     public static function build($domain, array $after, array $release_items, $observer, array $carried_media_hashes = [])
     {
-        switch ($domain) {
-            case DomainRegistry::DOMAIN_BRICKS_GLOBAL_CLASS:
-                $entries = self::bricks_member($after, $release_items, 'bricks_global_classes_categories', 'bricks.class_category');
-                break;
-            case DomainRegistry::DOMAIN_BRICKS_VARIABLE:
-                $entries = self::bricks_member($after, $release_items, 'bricks_global_variables_categories', 'bricks.variable_category');
-                break;
-            case DomainRegistry::DOMAIN_WP_SERVICE:
-                $entries = self::service_post($after, $release_items, $observer, $carried_media_hashes);
-                break;
-            default:
-                return ['entries' => [], 'complete' => false, 'blocking' => ['dependency_discovery_unsupported:' . $domain]];
+        if (DomainRegistry::is_post_domain($domain)) {
+            // Every post domain (the `wp.service` alias and any `wp.post:<type>`) uses
+            // the same parent/term/media discovery.
+            $entries = self::post_dependencies($domain, $after, $release_items, $observer, $carried_media_hashes);
+        } else {
+            switch ($domain) {
+                case DomainRegistry::DOMAIN_BRICKS_GLOBAL_CLASS:
+                    $entries = self::bricks_member($after, $release_items, 'bricks_global_classes_categories', 'bricks.class_category');
+                    break;
+                case DomainRegistry::DOMAIN_BRICKS_VARIABLE:
+                    $entries = self::bricks_member($after, $release_items, 'bricks_global_variables_categories', 'bricks.variable_category');
+                    break;
+                default:
+                    return ['entries' => [], 'complete' => false, 'blocking' => ['dependency_discovery_unsupported:' . $domain]];
+            }
         }
         $blocking = [];
         foreach ($entries as $entry) {
@@ -96,23 +99,26 @@ final class DependencyLedger
     }
 
     /**
-     * Parent post, taxonomy terms and media references (present or pending).
+     * Parent post, taxonomy terms and media references (present or pending) for
+     * any post domain (the `wp.service` alias or a `wp.post:<type>`).
      *
+     * @param string                                $domain
      * @param array<string, mixed>                  $after
      * @param array<int, array<string, mixed>>      $release_items
      * @param \Dbvc\ConnectedProtocol\DomainObserver $observer
      * @param array<int, string>                    $carried_media_hashes
      * @return array<int, array<string, mixed>>
      */
-    private static function service_post(array $after, array $release_items, $observer, array $carried_media_hashes = [])
+    private static function post_dependencies($domain, array $after, array $release_items, $observer, array $carried_media_hashes = [])
     {
         $entries = [];
-        $post_type = $observer instanceof ServicePostObserver ? $observer->post_type() : 'post';
+        $post_type = $observer instanceof PostTypeObserver ? $observer->post_type() : 'post';
         $parent_uid = isset($after['post_parent_uid']) && is_scalar($after['post_parent_uid']) ? trim((string) $after['post_parent_uid']) : '';
         if ($parent_uid !== '') {
             $in_release = false;
             foreach ($release_items as $item) {
-                if (($item['domain'] ?? '') === DomainRegistry::DOMAIN_WP_SERVICE && ($item['instance_uid'] ?? '') === $parent_uid) {
+                // A post_parent is a post of the same type, so it rides the same domain.
+                if (($item['domain'] ?? '') === $domain && ($item['instance_uid'] ?? '') === $parent_uid) {
                     $in_release = true;
                     break;
                 }

@@ -4,7 +4,7 @@ namespace Dbvc\Connected\Apply;
 
 use Dbvc\Connected\Adapters\BricksOptionCollectionObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
-use Dbvc\Connected\Adapters\ServicePostObserver;
+use Dbvc\Connected\Adapters\PostTypeObserver;
 use Dbvc\Connected\Capture\DirtyCapture;
 use Dbvc\Connected\Storage\JobStore;
 use Dbvc\Connected\Storage\OperationStore;
@@ -130,7 +130,16 @@ final class Applier
                 $results[$key] = $result;
                 continue;
             }
-            if ($observer instanceof ServicePostObserver) {
+            if ($observer instanceof PostTypeObserver) {
+                // Per-CPT apply allow-list: even with the global apply gate on, a post type
+                // this connector has not opted into applying is refused here (the write path
+                // is authoritative — advertisement in capabilities()['apply'] mirrors it).
+                if (empty($observer->capabilities()['apply'])) {
+                    $result['outcome'] = 'unsupported';
+                    $result['error'] = 'apply_not_enabled_for_domain';
+                    $results[$key] = $result;
+                    continue;
+                }
                 $service_plan[$key] = ['key' => $key, 'observer' => $observer, 'manifest' => $manifest, 'prepared' => $prepared];
                 $results[$key] = $result;
                 continue;
@@ -414,7 +423,7 @@ final class Applier
         foreach ((array) $original['before_image'] as $key => $target_image) {
             if (($target_image['kind'] ?? '') === 'service') {
                 $observer = DomainRegistry::observer_for((string) ($target_image['domain'] ?? 'wp.service'));
-                if (! $observer instanceof ServicePostObserver) {
+                if (! $observer instanceof PostTypeObserver) {
                     continue;
                 }
                 $snapshot = $observer->snapshot(['storage_key' => (string) ($target_image['post_id'] ?? '')]);
@@ -479,7 +488,7 @@ final class Applier
                 return $rows;
             };
             $observer = $items === [] ? null : DomainRegistry::observer_for((string) $items[0]['domain']);
-            if ($observer === null || ($is_service && ! $observer instanceof ServicePostObserver) || (! $is_service && ! $observer instanceof BricksOptionCollectionObserver)) {
+            if ($observer === null || ($is_service && ! $observer instanceof PostTypeObserver) || (! $is_service && ! $observer instanceof BricksOptionCollectionObserver)) {
                 $journal[] = ['container' => $container, 'step' => 'precheck', 'result' => 'unsupported'];
                 foreach ($item_result('unsupported', false, 'domain_rollback_not_supported_in_this_step') as $r) {
                     $results[] = $r;

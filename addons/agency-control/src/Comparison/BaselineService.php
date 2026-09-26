@@ -112,7 +112,7 @@ final class BaselineService
                 return new \WP_Error('dbvc_agency_invalid_identifier', $key . ' must be a bounded ASCII identifier.', ['status' => 400]);
             }
         }
-        if (! in_array((string) ($args['domain'] ?? ''), ObservationEvent::DOMAINS, true)) {
+        if (! ObservationEvent::isDomain((string) ($args['domain'] ?? ''))) {
             return new \WP_Error('dbvc_agency_invalid_domain', 'Unknown domain.', ['status' => 400]);
         }
         // Reuse the comparison's scope checks (same agency/client, both enrolled, not self).

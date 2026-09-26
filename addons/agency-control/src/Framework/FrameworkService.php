@@ -329,7 +329,7 @@ final class FrameworkService
         }
 
         $domain = (string) ($args['domain'] ?? '');
-        if (! in_array($domain, ObservationEvent::DOMAINS, true)) {
+        if (! ObservationEvent::isDomain($domain)) {
             return new \WP_Error('dbvc_agency_invalid_domain', 'Unknown domain: ' . $domain, ['status' => 400]);
         }
         $profile = (string) ($args['profile'] ?? '');

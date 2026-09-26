@@ -44,10 +44,20 @@
       ],
       "properties": {
         "domain": {
-          "enum": [
-            "bricks.global_class",
-            "bricks.variable",
-            "wp.service"
+          "type": "string",
+          "maxLength": 128,
+          "anyOf": [
+            {
+              "enum": [
+                "bricks.global_class",
+                "bricks.variable",
+                "wp.service"
+              ]
+            },
+            {
+              "description": "Universal post-type coverage: wp.post: followed by a post-type slug (wp.service is the back-compat alias of wp.post:service).",
+              "pattern": "^wp\\.post:[a-z0-9_-]+$"
+            }
           ]
         },
         "instance_uid": {

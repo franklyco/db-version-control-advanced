@@ -87,7 +87,7 @@ final class ComparisonService
             return new \WP_Error('dbvc_agency_scope_mismatch', 'Comparisons stay within one agency and client.', ['status' => 403]);
         }
         $domain = $domain !== null && $domain !== '' ? (string) $domain : null;
-        if ($domain !== null && ! in_array($domain, ObservationEvent::DOMAINS, true)) {
+        if ($domain !== null && ! ObservationEvent::isDomain($domain)) {
             return new \WP_Error('dbvc_agency_invalid_domain', 'Unknown domain: ' . $domain, ['status' => 400]);
         }
 

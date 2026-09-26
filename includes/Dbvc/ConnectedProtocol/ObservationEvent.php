@@ -21,7 +21,15 @@ final class ObservationEvent
     public const HASH_PATTERN = '/^[a-f0-9]{64}$/';
     public const DATE_TIME_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/';
 
+    /**
+     * The fixed base domains. Universal post-type coverage additionally accepts
+     * any `wp.post:<type>` domain (validated by {@see isDomain()}); this list is
+     * still the default "all base domains" set for a client subscription and the
+     * back-compat allow-list callers built on before the pattern existed.
+     */
     public const DOMAINS = ['bricks.global_class', 'bricks.variable', 'wp.service'];
+    /** A universal post domain: `wp.post:` followed by a post-type slug. */
+    public const DOMAIN_POST_PATTERN = '/^wp\.post:[a-z0-9_-]+$/';
     public const ORIGINS = ['human', 'apply', 'rollback', 'reconciliation'];
 
     private const TOP_LEVEL_KEYS = [
@@ -127,7 +135,7 @@ final class ObservationEvent
                         $errors[] = 'unknown:object.' . $key;
                     }
                 }
-                if (array_key_exists('domain', $object) && ! in_array($object['domain'], self::DOMAINS, true)) {
+                if (array_key_exists('domain', $object) && ! self::isDomain($object['domain'])) {
                     $errors[] = 'invalid:object.domain';
                 }
                 if (array_key_exists('instance_uid', $object) && ! self::isIdentifier($object['instance_uid'])) {
@@ -207,5 +215,26 @@ final class ObservationEvent
             && $value !== ''
             && strlen($value) <= 128
             && preg_match(self::ID_PATTERN, $value) === 1;
+    }
+
+    /**
+     * A valid observation domain: one of the fixed base domains, or a universal
+     * `wp.post:<type>` post domain whose `<type>` is a bounded post-type slug.
+     * The hub stores keyed on domain+profile+instance_uid, so this is the only
+     * gate on which domain strings the protocol accepts.
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    public static function isDomain($value)
+    {
+        if (! is_string($value) || $value === '' || strlen($value) > 128) {
+            return false;
+        }
+        if (in_array($value, self::DOMAINS, true)) {
+            return true;
+        }
+
+        return preg_match(self::DOMAIN_POST_PATTERN, $value) === 1;
     }
 }

@@ -4,7 +4,7 @@ namespace Dbvc\Connected\Worker;
 
 use Dbvc\Connected\Adapters\BricksOptionCollectionObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
-use Dbvc\Connected\Adapters\ServicePostObserver;
+use Dbvc\Connected\Adapters\PostTypeObserver;
 use Dbvc\Connected\Capture\DirtyCapture;
 use Dbvc\Connected\Identity\InstanceIdentity;
 use Dbvc\Connected\Storage\JobStore;
@@ -449,7 +449,7 @@ final class ObservationWorker
 
             // A single-object change can add or remove a member, so the domain's coverage projection is
             // re-read (IDs and UIDs only) and re-emitted when it changed.
-            if ($observer instanceof ServicePostObserver) {
+            if ($observer instanceof PostTypeObserver) {
                 $coverage = $observer->inventory_projection();
                 if ($coverage['status'] === 'available') {
                     $emitted = $this->emit_order_projection($observer, $context, $coverage['hash'], $coverage['canonical'], (bool) $coverage['complete']);
@@ -513,7 +513,7 @@ final class ObservationWorker
         $this->emit(array_merge($context, ['profile' => $profile, 'storage_fingerprint' => null]), [
             'instance_uid' => BricksOptionCollectionObserver::ORDER_INSTANCE_UID,
             'storage_key' => '',
-            'display_name' => $observer instanceof ServicePostObserver ? 'Inventory' : 'Collection order',
+            'display_name' => $observer instanceof PostTypeObserver ? 'Inventory' : 'Collection order',
             'exists' => true,
             'complete' => $complete,
             'hash' => $hash,

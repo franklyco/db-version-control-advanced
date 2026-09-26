@@ -274,9 +274,10 @@ final class ReleaseWorker
             } else {
                 $payload['body'] = $body;
                 $summary['payloads_sent']++;
-                // A service post's referenced attachments ride as a sibling media channel
-                // (bytes out-of-body, so the after_hash contract is untouched).
-                if (! $deletion && (string) $item['domain'] === DomainRegistry::DOMAIN_WP_SERVICE) {
+                // A post's referenced attachments ride as a sibling media channel
+                // (bytes out-of-body, so the after_hash contract is untouched). Any post
+                // domain — the `wp.service` alias or a `wp.post:<type>` — carries media.
+                if (! $deletion && DomainRegistry::is_post_domain((string) $item['domain'])) {
                     $after = json_decode($body, true);
                     if (is_array($after)) {
                         $bundle = MediaReferences::collect_for_transport($after);

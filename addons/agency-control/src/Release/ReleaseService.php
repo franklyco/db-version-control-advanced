@@ -72,7 +72,7 @@ final class ReleaseService
         foreach ($selections as $selection) {
             $domain = (string) ($selection['domain'] ?? '');
             $instance_uid = (string) ($selection['instance_uid'] ?? '');
-            if (! in_array($domain, ObservationEvent::DOMAINS, true)) {
+            if (! ObservationEvent::isDomain($domain)) {
                 return new \WP_Error('dbvc_agency_invalid_domain', 'Unknown domain: ' . $domain, ['status' => 400]);
             }
             if (! ObservationEvent::isIdentifier($instance_uid) || $instance_uid === ComparisonService::ORDER_INSTANCE_UID) {

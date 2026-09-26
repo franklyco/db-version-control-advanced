@@ -15,10 +15,10 @@ final class RestController
     public const CAPABILITY = 'manage_options';
 
     /** @var array<int, string> Inspector methods exposed as GET. */
-    private const READS = ['status', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'reviews', 'compare', 'baselines', 'links', 'definitions', 'overrides', 'framework_status', 'releases', 'preparations', 'approvals', 'invitations', 'rollouts'];
+    private const READS = ['status', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'reviews', 'compare', 'baselines', 'links', 'definitions', 'overrides', 'framework_status', 'releases', 'preparations', 'approvals', 'invitations', 'rollouts', 'sync_policies', 'parity'];
 
     /** @var array<int, string> Inspector methods exposed as POST. */
-    private const WRITES = ['invite', 'revoke', 'release', 'hold', 'rollback', 'subscribe', 'subscribe_framework', 'route', 'baseline_confirm', 'link_instance', 'unlink_instance', 'definition_publish', 'definition_desire', 'adopt_version', 'override_approve', 'override_detach', 'review_classify', 'review_resolve', 'release_create', 'release_withdraw', 'prepare_request', 'approve', 'revoke_approval', 'rollout_create', 'rollout_advance', 'rollout_pause', 'rollout_resume', 'rollout_retry', 'rollout_withdraw', 'rollout_prune'];
+    private const WRITES = ['invite', 'revoke', 'release', 'hold', 'rollback', 'subscribe', 'subscribe_framework', 'route', 'baseline_confirm', 'link_instance', 'unlink_instance', 'definition_publish', 'definition_desire', 'adopt_version', 'override_approve', 'override_detach', 'review_classify', 'review_resolve', 'release_create', 'release_withdraw', 'prepare_request', 'approve', 'revoke_approval', 'rollout_create', 'rollout_advance', 'rollout_pause', 'rollout_resume', 'rollout_retry', 'rollout_withdraw', 'rollout_prune', 'sync_policy_set', 'sync_policy_delete', 'sync_now'];
 
     /**
      * @return void

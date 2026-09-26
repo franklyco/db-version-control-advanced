@@ -9,7 +9,7 @@ namespace Dbvc\AgencyControl\Storage;
  */
 final class Schema
 {
-    public const SCHEMA_VERSION = 11;
+    public const SCHEMA_VERSION = 12;
     public const OPTION_SCHEMA_VERSION = 'dbvc_agency_control_schema_version';
     public const ENVIRONMENT_ROLE = 'dbvc_connected_environment';
 
@@ -44,6 +44,7 @@ final class Schema
             'approvals' => "{$wpdb->prefix}dbvc_ac_approvals",
             'rollouts' => "{$wpdb->prefix}dbvc_ac_rollouts",
             'rollout_targets' => "{$wpdb->prefix}dbvc_ac_rollout_targets",
+            'sync_policies' => "{$wpdb->prefix}dbvc_ac_sync_policies",
         ];
         if (! isset($map[$name])) {
             throw new \InvalidArgumentException('Unknown hub table: ' . (string) $name);
@@ -192,6 +193,7 @@ final class Schema
         $approvals = self::table('approvals');
         $rollouts = self::table('rollouts');
         $rollout_targets = self::table('rollout_targets');
+        $sync_policies = self::table('sync_policies');
 
         $sql = [];
         $sql[] = "CREATE TABLE {$invitations} (
@@ -546,6 +548,34 @@ final class Schema
             PRIMARY KEY  (rollout_target_id),
             UNIQUE KEY rollout_target (rollout_id, target_environment_id),
             KEY rollout_cohort (rollout_id, cohort, state)
+        ) {$charset_collate};";
+
+        // M8: one parity sync policy per source→target pair (additive). The driver reads
+        // it to auto-propose releases for `outgoing` objects through the existing pipeline.
+        $sql[] = "CREATE TABLE {$sync_policies} (
+            sync_policy_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            agency_id varbinary(128) NOT NULL,
+            client_id varbinary(128) NOT NULL,
+            source_environment_id varbinary(128) NOT NULL,
+            target_environment_id varbinary(128) NOT NULL,
+            direction varbinary(16) NOT NULL DEFAULT 'push',
+            mode varbinary(16) NOT NULL DEFAULT 'manual',
+            scope_domains longtext NULL,
+            include_uids longtext NULL,
+            exclude_uids longtext NULL,
+            conflict_policy varbinary(16) NOT NULL DEFAULT 'hold',
+            create_new tinyint(1) NOT NULL DEFAULT 0,
+            propagate_deletions tinyint(1) NOT NULL DEFAULT 0,
+            max_objects int(10) unsigned NOT NULL DEFAULT 25,
+            cadence varbinary(32) NOT NULL DEFAULT 'manual',
+            enabled tinyint(1) NOT NULL DEFAULT 1,
+            note varchar(191) NOT NULL DEFAULT '',
+            created_by bigint(20) unsigned NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (sync_policy_id),
+            UNIQUE KEY pair (source_environment_id, target_environment_id),
+            KEY scope (agency_id, client_id, enabled)
         ) {$charset_collate};";
 
         foreach ($sql as $statement) {

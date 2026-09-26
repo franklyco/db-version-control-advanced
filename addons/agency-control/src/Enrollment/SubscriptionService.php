@@ -55,7 +55,7 @@ final class SubscriptionService
         }
         $results = [];
         foreach ($domains as $domain) {
-            if (! in_array($domain, ObservationEvent::DOMAINS, true)) {
+            if (! ObservationEvent::isDomain($domain)) {
                 return new \WP_Error('dbvc_agency_invalid_domain', 'Unknown domain: ' . $domain, ['status' => 400]);
             }
             $results[$domain] = $this->subscriptions->subscribe_client($source, $target, $domain);
@@ -79,7 +79,7 @@ final class SubscriptionService
         if ($environment === null) {
             return new \WP_Error('dbvc_agency_environment_not_found', 'Environment not found.', ['status' => 404]);
         }
-        if (! in_array((string) $domain, ObservationEvent::DOMAINS, true)) {
+        if (! ObservationEvent::isDomain((string) $domain)) {
             return new \WP_Error('dbvc_agency_invalid_domain', 'Unknown domain: ' . $domain, ['status' => 400]);
         }
         if (! ObservationEvent::isIdentifier($instance_uid) || ! ObservationEvent::isIdentifier($definition_uid)) {

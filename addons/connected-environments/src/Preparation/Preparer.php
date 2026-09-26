@@ -4,7 +4,7 @@ namespace Dbvc\Connected\Preparation;
 
 use Dbvc\Connected\Adapters\BricksOptionCollectionObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
-use Dbvc\Connected\Adapters\ServicePostObserver;
+use Dbvc\Connected\Adapters\PostTypeObserver;
 use Dbvc\Connected\Identity\InstanceIdentity;
 use Dbvc\ConnectedProtocol\Canonicalizer;
 use Dbvc\ConnectedProtocol\ObservationEvent;
@@ -247,7 +247,7 @@ final class Preparer
      */
     private function resolve_identity($domain, $instance_uid, $observer)
     {
-        if ($observer instanceof ServicePostObserver) {
+        if ($observer instanceof PostTypeObserver) {
             $ids = get_posts([
                 'post_type' => $observer->post_type(),
                 'post_status' => 'any',
@@ -285,7 +285,7 @@ final class Preparer
      */
     private function container($domain, $storage_key, $observer)
     {
-        if ($observer instanceof ServicePostObserver) {
+        if ($observer instanceof PostTypeObserver) {
             return 'post_type:' . $observer->post_type() . ($storage_key !== null ? '#' . $storage_key : '');
         }
         $definitions = DomainRegistry::definitions();

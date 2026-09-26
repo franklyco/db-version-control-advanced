@@ -4646,9 +4646,7 @@
                         "hook.extension_point.dbvc_skip_meta_keys.2d1f0260",
                         "hook.extension_point.dbvc_skip_option_names.8972408a",
                         "hook.extension_point.dbvc_skip_read_cap_check.6cb2e41f",
-                        "hook.extension_point.dbvc_skip_read_cap_check.a5e68e8d",
-                        "hook.extension_point.dbvc_connected_service_ignored_meta_keys.6c6ccd3a",
-                        "hook.extension_point.dbvc_skip_meta_keys.50ee121c"
+                        "hook.extension_point.dbvc_skip_read_cap_check.a5e68e8d"
                     ],
                     "source_ref": {
                         "path": "includes/hooks.php",
@@ -6978,7 +6976,13 @@
                         "hook.extension_point.dbvc_connected_inbox_poll_interval.5998b237",
                         "hook.extension_point.dbvc_connected_service_ignored_meta_keys.29b80cdc",
                         "hook.extension_point.dbvc_connected_service_post_type.64be3427",
-                        "hook.extension_point.dbvc_skip_meta_keys.97e16b44"
+                        "hook.extension_point.dbvc_connected_service_post_type.89cc2260",
+                        "hook.extension_point.dbvc_connected_post_domains.4c70ce67",
+                        "hook.extension_point.dbvc_connected_post_apply_domains.b9844928",
+                        "hook.extension_point.dbvc_connected_post_ignored_meta_keys.fc5be2b4",
+                        "hook.extension_point.dbvc_connected_post_meta_allow.d5b90256",
+                        "hook.extension_point.dbvc_connected_post_create_terms.90d1cdd8",
+                        "hook.extension_point.dbvc_skip_meta_keys.f68ef645"
                     ]
                 },
                 {
@@ -7019,7 +7023,7 @@
             "inputs": [
                 "WordPress core added_option/updated_option/deleted_option hooks for bricks_global_classes and bricks_global_variables",
                 "Explicit reconciliation requests (enable transition, `wp dbvc connected reconcile`)",
-                "WordPress save_post/deleted_post/post-meta hooks for the configured service post type",
+                "WordPress save_post/deleted_post/post-meta hooks for the configured service post type and any opted-in wp.post:<type> (dbvc_connected_post_domains)",
                 "Hub inbox pages (GET /inbox) and acknowledgements"
             ],
             "outputs": [
@@ -7028,7 +7032,7 @@
                 "Immutable agency-control.observation.v0.2 events with sequence and digest (wp_dbvc_ce_outbox)",
                 "Instance identity sidecar rows (wp_dbvc_ce_identity)",
                 "Provisional environment identity and worker status (wp_dbvc_ce_state)",
-                "Per-object wp.service projections (profile wp-service-v1; masked fields mark the projection incomplete)",
+                "Per-object post projections: the wp.service alias (profile wp-service-v1) plus any opted-in wp.post:<type> (profile wp-post:<type>-v1); masked fields mark the projection incomplete",
                 "Durable inbox rows of received deliveries (wp_dbvc_ce_inbox) with local cursor"
             ],
             "artifacts": [
@@ -7052,7 +7056,10 @@
             "settings": [
                 "dbvc_addon_connected_environments_apply_enabled",
                 "dbvc_addon_connected_environments_enabled",
-                "dbvc_connected_schema_version"
+                "dbvc_connected_schema_version",
+                "dbvc_connected_post_domains (observe allow-list of post-type slugs)",
+                "dbvc_connected_post_apply_domains (apply allow-list; subset of observe)",
+                "dbvc_connected_post_type_meta (per-type meta allow/deny + create-terms policy)"
             ],
             "hooks": [
                 "dbvc_connected_bricks_available",
@@ -7064,7 +7071,12 @@
                 "dbvc_connected_inbox_poll_interval",
                 "dbvc_connected_service_post_type",
                 "dbvc_connected_service_ignored_meta_keys",
-                "dbvc_skip_meta_keys (consumer: existing core filter applied to the wp.service projection)"
+                "dbvc_connected_post_domains (opt-in allow-list of post-type slugs observed as wp.post:<type> domains)",
+                "dbvc_connected_post_apply_domains (subset of the observe list this connector will also let approved releases apply)",
+                "dbvc_connected_post_ignored_meta_keys (per-type meta deny list; receives $ignored, $post_type)",
+                "dbvc_connected_post_meta_allow (per-type meta allow-list; receives $allow, $post_type; empty = allow all)",
+                "dbvc_connected_post_create_terms (per-type create-missing-terms toggle for apply; receives $create, $post_type)",
+                "dbvc_skip_meta_keys (consumer: existing core filter applied to every post projection)"
             ],
             "safety": {
                 "classification": "wordpress_write",
@@ -7719,7 +7731,8 @@
                         "database.table.dbvc_ac_preparations",
                         "database.table.dbvc_ac_approvals",
                         "database.table.dbvc_ac_rollouts",
-                        "database.table.dbvc_ac_rollout_targets"
+                        "database.table.dbvc_ac_rollout_targets",
+                        "database.table.dbvc_ac_sync_policies"
                     ],
                     "source_ref": {
                         "path": "addons/agency-control/src/Storage/Schema.php",
@@ -8358,7 +8371,12 @@
                         "cli.command.dbvc.agency.rollout-retry",
                         "cli.command.dbvc.agency.rollout-withdraw",
                         "cli.command.dbvc.agency.rollouts",
-                        "cli.command.dbvc.agency.rollout-prune"
+                        "cli.command.dbvc.agency.rollout-prune",
+                        "cli.command.dbvc.agency.sync-policy-set",
+                        "cli.command.dbvc.agency.sync-policies",
+                        "cli.command.dbvc.agency.sync-policy-delete",
+                        "cli.command.dbvc.agency.parity",
+                        "cli.command.dbvc.agency.sync-now"
                     ],
                     "source_ref": {
                         "path": "commands/class-agency-cli.php",
