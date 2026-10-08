@@ -9,7 +9,7 @@ namespace Dbvc\AgencyControl\Storage;
  */
 final class Schema
 {
-    public const SCHEMA_VERSION = 12;
+    public const SCHEMA_VERSION = 13;
     public const OPTION_SCHEMA_VERSION = 'dbvc_agency_control_schema_version';
     public const ENVIRONMENT_ROLE = 'dbvc_connected_environment';
 
@@ -570,6 +570,10 @@ final class Schema
             cadence varbinary(32) NOT NULL DEFAULT 'manual',
             enabled tinyint(1) NOT NULL DEFAULT 1,
             note varchar(191) NOT NULL DEFAULT '',
+            active_release_uid varbinary(128) NOT NULL DEFAULT '',
+            active_rollout_uid varbinary(128) NOT NULL DEFAULT '',
+            last_run_at datetime NULL,
+            last_run_note varchar(191) NOT NULL DEFAULT '',
             created_by bigint(20) unsigned NULL,
             created_at datetime NOT NULL,
             updated_at datetime NOT NULL,

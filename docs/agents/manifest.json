@@ -8376,7 +8376,8 @@
                         "cli.command.dbvc.agency.sync-policies",
                         "cli.command.dbvc.agency.sync-policy-delete",
                         "cli.command.dbvc.agency.parity",
-                        "cli.command.dbvc.agency.sync-now"
+                        "cli.command.dbvc.agency.sync-now",
+                        "cli.command.dbvc.agency.sync-advance"
                     ],
                     "source_ref": {
                         "path": "commands/class-agency-cli.php",

@@ -103,6 +103,34 @@ final class SyncPolicyStore
     }
 
     /**
+     * Update only the auto-drive state (the in-flight release/rollout + last run),
+     * never the operator's policy config.
+     *
+     * @param string $source
+     * @param string $target
+     * @param string $release_uid
+     * @param string $rollout_uid
+     * @param string $note
+     * @return void
+     */
+    public function set_state($source, $target, $release_uid, $rollout_uid, $note)
+    {
+        global $wpdb;
+
+        $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+            Schema::table('sync_policies'),
+            [
+                'active_release_uid' => (string) $release_uid,
+                'active_rollout_uid' => (string) $rollout_uid,
+                'last_run_at' => current_time('mysql', 1),
+                'last_run_note' => substr((string) $note, 0, 191),
+                'updated_at' => current_time('mysql', 1),
+            ],
+            ['source_environment_id' => (string) $source, 'target_environment_id' => (string) $target]
+        );
+    }
+
+    /**
      * @param string $source
      * @param string $target
      * @return bool
@@ -145,6 +173,10 @@ final class SyncPolicyStore
             'cadence' => (string) $row['cadence'],
             'enabled' => (int) $row['enabled'] === 1,
             'note' => (string) $row['note'],
+            'active_release_uid' => (string) ($row['active_release_uid'] ?? ''),
+            'active_rollout_uid' => (string) ($row['active_rollout_uid'] ?? ''),
+            'last_run_at' => (string) ($row['last_run_at'] ?? ''),
+            'last_run_note' => (string) ($row['last_run_note'] ?? ''),
             'created_at' => (string) $row['created_at'],
             'updated_at' => (string) $row['updated_at'],
         ];

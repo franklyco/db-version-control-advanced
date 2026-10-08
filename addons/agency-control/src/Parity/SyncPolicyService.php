@@ -31,6 +31,14 @@ final class SyncPolicyService
     }
 
     /**
+     * @return SyncPolicyStore
+     */
+    public function store()
+    {
+        return $this->store;
+    }
+
+    /**
      * Create or update the policy for a pair.
      *
      * @param array<string, mixed> $args source, target, mode, conflict_policy, scope_domains,

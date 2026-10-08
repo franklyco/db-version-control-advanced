@@ -880,6 +880,31 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 		}
 
 		/**
+		 * M8 parity: drive an auto policy one reconcile step (propose -> seal -> rollout -> apply -> clear).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function sync_advance(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$result = (new \Dbvc\AgencyControl\Parity\SyncDriver())->advance(
+				(string) ($assoc_args['source'] ?? ''),
+				(string) ($assoc_args['target'] ?? '')
+			);
+			if (is_wp_error($result)) {
+				return $result;
+			}
+			if (isset($result['release']) && is_array($result['release'])) {
+				$result['release'] = self::release_row($result['release']);
+			}
+
+			return $result;
+		}
+
+		/**
 		 * @param array $assoc_args
 		 * @return array|WP_Error
 		 */
@@ -2803,6 +2828,28 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function sync_now($args, $assoc_args) {
 			unset($args);
 			$this->emit_json(DBVC_Agency_CLI_Inspector::sync_now($assoc_args));
+		}
+
+		/**
+		 * Drive an auto sync policy one reconcile step (cron calls this per policy).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier.
+		 *
+		 * @subcommand sync-advance
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function sync_advance($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::sync_advance($assoc_args));
 		}
 
 		/**

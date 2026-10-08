@@ -4,6 +4,7 @@ namespace Dbvc\AgencyControl;
 
 use Dbvc\AgencyControl\Admin\HubPanel;
 use Dbvc\AgencyControl\Admin\RestController as AdminRestController;
+use Dbvc\AgencyControl\Parity\ParityScheduler;
 use Dbvc\AgencyControl\Rest\Controller;
 use Dbvc\AgencyControl\Storage\Schema;
 
@@ -54,6 +55,9 @@ final class Runtime
         add_action('rest_api_init', [self::$controller, 'register_routes']);
         self::$admin_rest = new AdminRestController();
         add_action('rest_api_init', [self::$admin_rest, 'register_routes']);
+        // Auto parity: a base WP-Cron tick advances due/in-flight auto policies (idempotent schedule).
+        add_action(ParityScheduler::HOOK, [ParityScheduler::class, 'run']);
+        ParityScheduler::schedule();
         if (is_admin()) {
             // Administrator panel actions only exist inside wp-admin (admin-post.php included); public requests register nothing.
             HubPanel::register();
@@ -73,6 +77,8 @@ final class Runtime
     public static function unregister()
     {
         remove_action('plugins_loaded', [Schema::class, 'maybe_upgrade'], 15);
+        // Detach the cron callback; the scheduled event itself is cleared only on explicit disable.
+        remove_action(ParityScheduler::HOOK, [ParityScheduler::class, 'run']);
         HubPanel::unregister();
         if (self::$admin_rest instanceof AdminRestController) {
             remove_action('rest_api_init', [self::$admin_rest, 'register_routes']);

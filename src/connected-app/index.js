@@ -7698,6 +7698,7 @@ function Sync( { notify } ) {
 	const [ form, setForm ] = useState( {
 		mode: 'manual',
 		conflict_policy: 'hold',
+		cadence: 'manual',
 		max_objects: 25,
 		create_new: false,
 		propagate_deletions: false,
@@ -7761,6 +7762,7 @@ function Sync( { notify } ) {
 				...f,
 				mode: 'manual',
 				conflict_policy: 'hold',
+				cadence: 'manual',
 				max_objects: 25,
 				create_new: false,
 				propagate_deletions: false,
@@ -7781,6 +7783,7 @@ function Sync( { notify } ) {
 		setForm( {
 			mode: loaded.mode,
 			conflict_policy: loaded.conflict_policy,
+			cadence: loaded.cadence || 'manual',
 			max_objects: loaded.max_objects,
 			create_new: !! loaded.create_new,
 			propagate_deletions: !! loaded.propagate_deletions,
@@ -7859,6 +7862,7 @@ function Sync( { notify } ) {
 					target: pair.target,
 					mode: form.mode,
 					conflict_policy: form.conflict_policy,
+					cadence: form.cadence,
 					max_objects: Number( form.max_objects ) || 25,
 					create_new: form.create_new,
 					propagate_deletions: form.propagate_deletions,
@@ -7935,8 +7939,37 @@ function Sync( { notify } ) {
 		setBusy( '' );
 	};
 
+	// Auto mode: drive one reconcile step (propose → seal → rollout → apply → clear).
+	const runAdvance = async () => {
+		setBusy( 'advance' );
+		setProposal( null );
+		try {
+			const result = await apiFetch( {
+				path: 'agency/sync-advance',
+				method: 'POST',
+				data: { source: pair.source, target: pair.target },
+			} );
+			setProposal( result );
+			notify(
+				'success',
+				sprintf(
+					/* translators: %s: reconcile phase */
+					__( 'Auto step: %s.', 'dbvc' ),
+					result.note
+				)
+			);
+			await loadPair( pair.source, pair.target );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
 	const hasPair = !! ( pair.source && pair.target );
 	const canPropose = policy && policy.enabled && policy.mode !== 'manual';
+	const isAuto = policy && policy.enabled && policy.mode === 'auto';
+	const inFlight =
+		policy && ( policy.active_release_uid || policy.active_rollout_uid );
 
 	return (
 		<div className="dbvc-ce-grid">
@@ -8043,12 +8076,34 @@ function Sync( { notify } ) {
 							>
 								{ __( 'Sync now', 'dbvc' ) }
 							</button>
+							{ isAuto && (
+								<>
+									{ ' ' }
+									<button
+										type="button"
+										className="btn"
+										aria-busy={ busy === 'advance' }
+										onClick={ runAdvance }
+									>
+										{ __( 'Advance', 'dbvc' ) }
+									</button>
+								</>
+							) }
 							{ ! canPropose && (
 								<p className="description">
 									{ __(
 										'Set an enabled assisted or auto policy to propose a sync.',
 										'dbvc'
 									) }
+								</p>
+							) }
+							{ inFlight && (
+								<p className="description">
+									{ __( 'Auto cycle in flight —', 'dbvc' ) }{ ' ' }
+									{ policy.last_run_note ||
+										( policy.active_rollout_uid
+											? 'rollout'
+											: 'release' ) }
 								</p>
 							) }
 						</div>
@@ -8299,6 +8354,43 @@ function Sync( { notify } ) {
 										} )
 									}
 								/>
+							</div>
+							<div className="dbvc-ce-field">
+								<label htmlFor="dbvc-ce-sync-cadence">
+									{ __( 'Auto cadence', 'dbvc' ) }
+								</label>
+								<select
+									id="dbvc-ce-sync-cadence"
+									value={ form.cadence }
+									onChange={ ( e ) =>
+										setForm( {
+											...form,
+											cadence: e.target.value,
+										} )
+									}
+								>
+									<option value="manual">
+										{ __(
+											'manual (Sync now / Advance only)',
+											'dbvc'
+										) }
+									</option>
+									<option value="every15">
+										{ __( 'every 15 minutes', 'dbvc' ) }
+									</option>
+									<option value="hourly">
+										{ __( 'hourly', 'dbvc' ) }
+									</option>
+									<option value="daily">
+										{ __( 'daily', 'dbvc' ) }
+									</option>
+								</select>
+								<p className="description">
+									{ __(
+										'How often the hub cron starts a new auto cycle (auto mode only); an in-flight cycle advances every tick.',
+										'dbvc'
+									) }
+								</p>
 							</div>
 							<label
 								htmlFor="dbvc-ce-sync-createnew"
