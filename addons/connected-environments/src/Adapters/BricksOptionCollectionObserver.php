@@ -22,7 +22,7 @@ use Dbvc\ConnectedProtocol\DomainObserver;
  * It never writes, never assigns identity, and reports the whole collection
  * in one read so per-batch cost is one parse regardless of member count.
  */
-final class BricksOptionCollectionObserver implements DomainObserver
+class BricksOptionCollectionObserver implements DomainObserver
 {
     public const ORDER_PROFILE = 'bricks-collection-order-v1';
     public const ORDER_INSTANCE_UID = 'collection.order';
@@ -259,11 +259,127 @@ final class BricksOptionCollectionObserver implements DomainObserver
     }
 
     /**
+     * @return string
+     */
+    public function name_field()
+    {
+        return (string) $this->config['name_field'];
+    }
+
+    /**
+     * Resolve the site-local storage key of the member carrying this name, for
+     * idempotent creation (never create a second member with a name the target
+     * already has). Returns null when no member — or more than one — carries it,
+     * so an ambiguous name is never silently deduplicated.
+     *
+     * @param string $name
+     * @return string|null
+     */
+    public function find_storage_key_by_name($name)
+    {
+        $name = (string) $name;
+        if ($name === '') {
+            return null;
+        }
+        $read = $this->read_collection();
+        if ($read['status'] !== 'available') {
+            return null;
+        }
+        $match = null;
+        foreach ($read['members'] as $member) {
+            if ((string) $member['display_name'] === $name) {
+                if ($match !== null) {
+                    return null; // ambiguous: two members share the name.
+                }
+                $match = (string) $member['storage_key'];
+            }
+        }
+
+        return $match;
+    }
+
+    /**
      * @return array<int, string>
      */
     public function volatile_top_level_keys()
     {
         return (array) $this->config['volatile_top_level_keys'];
+    }
+
+    /**
+     * Project one member to its canonical hash. The base projection is
+     * structural and site-local; a subclass whose members carry cross-object id
+     * references (e.g. components) overrides this to rewrite those references to
+     * portable, identity-independent tokens BEFORE hashing, so the projection
+     * hash is the same on every site.
+     *
+     * @param array<string, mixed> $entry
+     * @param array<int, string>   $volatile
+     * @return array<string, mixed> Canonicalizer::project() result.
+     */
+    protected function project_member(array $entry, array $volatile)
+    {
+        return Canonicalizer::project($entry, $volatile);
+    }
+
+    /**
+     * The member's human display name (for idempotent create-by-name and the
+     * hub's link proposals). The base reads the configured `name_field`; a
+     * subclass whose name is not a top-level field (e.g. a component named by
+     * its root element's label) overrides this.
+     *
+     * @param array<string, mixed> $entry
+     * @return string
+     */
+    protected function member_display_name(array $entry)
+    {
+        $name_field = (string) $this->config['name_field'];
+
+        return isset($entry[$name_field]) && is_scalar($entry[$name_field]) ? (string) $entry[$name_field] : '';
+    }
+
+    /**
+     * Public projection hash of one member, using this observer's own projection
+     * (so a subclass that tokenizes references hashes the same way the apply
+     * verify + the prepare receipt do). Used by the Applier's replace precheck.
+     *
+     * @param array<string, mixed> $entry
+     * @return string
+     */
+    public function member_hash(array $entry)
+    {
+        $projection = $this->project_member($entry, $this->volatile_top_level_keys());
+
+        return $projection['ok'] ? $projection['hash'] : self::incomplete_hash();
+    }
+
+    /**
+     * Public accessor for a member's display name (the Applier uses it for
+     * create-by-name collision/idempotency). Subclasses whose name is not a
+     * top-level field override {@see member_display_name}.
+     *
+     * @param array<string, mixed> $entry
+     * @return string
+     */
+    public function name_of(array $entry)
+    {
+        return $this->member_display_name($entry);
+    }
+
+    /**
+     * Transform a release body into the exact value to write for this site
+     * immediately before the guarded write. The base writes it verbatim; a
+     * subclass whose body carries portable reference tokens (components)
+     * overrides this to DETOKENIZE them to local ids. The result must still
+     * re-project to the release `after_hash` (the token form is identity-
+     * independent), so verify passes.
+     *
+     * @param array<string, mixed> $after
+     * @return array<string, mixed>
+     */
+    public function prepare_body_for_apply(array $after)
+    {
+        return $after;
     }
 
     /**
@@ -307,7 +423,6 @@ final class BricksOptionCollectionObserver implements DomainObserver
         }
 
         $key_field = (string) $this->config['key_field'];
-        $name_field = (string) $this->config['name_field'];
         $volatile = (array) $this->config['volatile_top_level_keys'];
         $members = [];
         $order = [];
@@ -327,8 +442,8 @@ final class BricksOptionCollectionObserver implements DomainObserver
             }
 
             $key_counts[$storage_key] = ($key_counts[$storage_key] ?? 0) + 1;
-            $projection = Canonicalizer::project($entry, $volatile);
-            $display_name = isset($entry[$name_field]) && is_scalar($entry[$name_field]) ? (string) $entry[$name_field] : '';
+            $projection = $this->project_member($entry, $volatile);
+            $display_name = $this->member_display_name($entry);
             $members[] = [
                 'storage_key' => $storage_key,
                 'display_name' => $display_name,

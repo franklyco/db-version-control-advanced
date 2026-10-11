@@ -9,9 +9,19 @@ namespace Dbvc\AgencyControl\Storage;
  */
 final class Schema
 {
-    public const SCHEMA_VERSION = 13;
+    public const SCHEMA_VERSION = 19;
     public const OPTION_SCHEMA_VERSION = 'dbvc_agency_control_schema_version';
     public const ENVIRONMENT_ROLE = 'dbvc_connected_environment';
+
+    /**
+     * Human hub capabilities (M9 slice 7b): a framework *publisher* (authoring +
+     * distributing the framework) and a client *approver* (reviewing, approving
+     * and rolling back client-side changes). Both are granted to `administrator`,
+     * and `manage_options` remains a superset, so an admin is never locked out;
+     * the split only narrows access for a non-admin user granted just one cap.
+     */
+    public const CAP_PUBLISH = 'dbvc_agency_publish';
+    public const CAP_APPROVE = 'dbvc_agency_approve';
 
     /**
      * @var bool|null
@@ -45,6 +55,10 @@ final class Schema
             'rollouts' => "{$wpdb->prefix}dbvc_ac_rollouts",
             'rollout_targets' => "{$wpdb->prefix}dbvc_ac_rollout_targets",
             'sync_policies' => "{$wpdb->prefix}dbvc_ac_sync_policies",
+            'framework_rollouts' => "{$wpdb->prefix}dbvc_ac_framework_rollouts",
+            'framework_rollout_targets' => "{$wpdb->prefix}dbvc_ac_framework_rollout_targets",
+            'notification_channels' => "{$wpdb->prefix}dbvc_ac_notification_channels",
+            'notification_log' => "{$wpdb->prefix}dbvc_ac_notification_log",
         ];
         if (! isset($map[$name])) {
             throw new \InvalidArgumentException('Unknown hub table: ' . (string) $name);
@@ -150,6 +164,28 @@ final class Schema
     }
 
     /**
+     * Grant the human hub capabilities to the administrator role (idempotent).
+     * Administrators already pass every agency route via `manage_options`; this
+     * makes the capabilities real on the site so an operator can grant just the
+     * publisher or just the approver cap to a non-admin user. Never removes a
+     * cap, so a disable/enable cycle does not strip a hand-granted assignment.
+     *
+     * @return void
+     */
+    public static function ensure_capabilities()
+    {
+        $role = get_role('administrator');
+        if ($role === null) {
+            return;
+        }
+        foreach ([self::CAP_PUBLISH, self::CAP_APPROVE] as $cap) {
+            if (! $role->has_cap($cap)) {
+                $role->add_cap($cap);
+            }
+        }
+    }
+
+    /**
      * @return bool|null
      */
     public static function is_transactional()
@@ -194,6 +230,10 @@ final class Schema
         $rollouts = self::table('rollouts');
         $rollout_targets = self::table('rollout_targets');
         $sync_policies = self::table('sync_policies');
+        $framework_rollouts = self::table('framework_rollouts');
+        $framework_rollout_targets = self::table('framework_rollout_targets');
+        $notification_channels = self::table('notification_channels');
+        $notification_log = self::table('notification_log');
 
         $sql = [];
         $sql[] = "CREATE TABLE {$invitations} (
@@ -225,6 +265,10 @@ final class Schema
             principal_uuid varbinary(64) NOT NULL,
             status varbinary(32) NOT NULL DEFAULT 'enabled',
             hold_reason varbinary(128) NOT NULL DEFAULT '',
+            tags longtext NULL,
+            freeze_from datetime NULL,
+            freeze_until datetime NULL,
+            freeze_reason varbinary(128) NOT NULL DEFAULT '',
             enrolled_site_url text NULL,
             last_site_url text NULL,
             last_contact_at datetime NULL,
@@ -270,6 +314,7 @@ final class Schema
             instance_uid varbinary(128) NOT NULL,
             profile varbinary(128) NOT NULL,
             semantic_hash varbinary(64) NOT NULL,
+            match_key varbinary(191) NOT NULL DEFAULT '',
             object_exists tinyint(1) unsigned NOT NULL DEFAULT 0,
             snapshot_complete tinyint(1) unsigned NOT NULL DEFAULT 0,
             observed_sequence bigint(20) unsigned NOT NULL,
@@ -519,6 +564,7 @@ final class Schema
             release_id bigint(20) unsigned NOT NULL,
             release_uid varbinary(128) NOT NULL,
             source_environment_id varbinary(128) NOT NULL,
+            scope varbinary(16) NOT NULL DEFAULT 'client',
             state varbinary(32) NOT NULL DEFAULT 'running',
             current_cohort int(10) unsigned NOT NULL DEFAULT 0,
             cohort_count int(10) unsigned NOT NULL DEFAULT 0,
@@ -580,6 +626,80 @@ final class Schema
             PRIMARY KEY  (sync_policy_id),
             UNIQUE KEY pair (source_environment_id, target_environment_id),
             KEY scope (agency_id, client_id, enabled)
+        ) {$charset_collate};";
+
+        // M9 slice 4c: a framework rollout campaign (additive). One header per
+        // "publish a framework version to the fleet" action; one target row per
+        // subscribing environment. Each target rides its OWN override-aware
+        // release + single-target rollout, so per-target in-flight refs live
+        // here (release_uid → rollout_uid), mirroring sync_policies' state track.
+        $sql[] = "CREATE TABLE {$framework_rollouts} (
+            framework_rollout_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            campaign_uid varbinary(128) NOT NULL,
+            agency_id varbinary(128) NOT NULL,
+            client_id varbinary(128) NOT NULL DEFAULT '',
+            source_environment_id varbinary(128) NOT NULL,
+            version varbinary(64) NOT NULL DEFAULT '',
+            channel varbinary(64) NOT NULL DEFAULT 'stable',
+            definition_uids longtext NULL,
+            state varbinary(32) NOT NULL DEFAULT 'running',
+            target_count int(10) unsigned NOT NULL DEFAULT 0,
+            note varchar(191) NOT NULL DEFAULT '',
+            created_by bigint(20) unsigned NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (framework_rollout_id),
+            UNIQUE KEY campaign_uid (campaign_uid),
+            KEY scope (agency_id, state, framework_rollout_id)
+        ) {$charset_collate};";
+
+        $sql[] = "CREATE TABLE {$framework_rollout_targets} (
+            framework_rollout_target_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            campaign_uid varbinary(128) NOT NULL,
+            target_environment_id varbinary(128) NOT NULL,
+            cohort int(10) unsigned NOT NULL DEFAULT 0,
+            position int(10) unsigned NOT NULL DEFAULT 0,
+            state varbinary(32) NOT NULL DEFAULT 'pending',
+            release_uid varbinary(128) NOT NULL DEFAULT '',
+            rollout_uid varbinary(128) NOT NULL DEFAULT '',
+            item_count int(10) unsigned NOT NULL DEFAULT 0,
+            detail varchar(191) NOT NULL DEFAULT '',
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (framework_rollout_target_id),
+            UNIQUE KEY campaign_target (campaign_uid, target_environment_id),
+            KEY campaign_state (campaign_uid, state)
+        ) {$charset_collate};";
+
+        // M9 slice 7d: outbound notification channels + a delivery/dedupe log.
+        $sql[] = "CREATE TABLE {$notification_channels} (
+            channel_row_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            channel_uid varbinary(128) NOT NULL,
+            agency_id varbinary(128) NOT NULL DEFAULT '',
+            type varbinary(32) NOT NULL DEFAULT 'webhook',
+            target text NOT NULL,
+            events longtext NULL,
+            secret varbinary(191) NOT NULL DEFAULT '',
+            enabled tinyint(1) NOT NULL DEFAULT 1,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (channel_row_id),
+            UNIQUE KEY channel_uid (channel_uid),
+            KEY scope (agency_id, enabled)
+        ) {$charset_collate};";
+
+        $sql[] = "CREATE TABLE {$notification_log} (
+            log_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            channel_uid varbinary(128) NOT NULL,
+            event_kind varbinary(64) NOT NULL,
+            dedupe_key varbinary(191) NOT NULL,
+            status varbinary(32) NOT NULL DEFAULT 'pending',
+            payload longtext NULL,
+            detail varchar(191) NOT NULL DEFAULT '',
+            created_at datetime NOT NULL,
+            sent_at datetime NULL,
+            PRIMARY KEY  (log_id),
+            UNIQUE KEY dedupe (channel_uid, dedupe_key),
+            KEY status (status, log_id)
         ) {$charset_collate};";
 
         foreach ($sql as $statement) {

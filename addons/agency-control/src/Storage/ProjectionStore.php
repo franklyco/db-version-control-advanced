@@ -24,12 +24,14 @@ final class ProjectionStore
             (string) $data['instance_uid'], (string) $data['profile'],
         ];
 
+        $match_key = isset($data['match_key']) ? (string) $data['match_key'] : '';
         $updated = $wpdb->query($wpdb->prepare(
             "UPDATE {$table}
-             SET semantic_hash = %s, object_exists = %d, snapshot_complete = %d, observed_sequence = %d, observed_at = %s, event_id = %s, updated_at = %s
+             SET semantic_hash = %s, match_key = %s, object_exists = %d, snapshot_complete = %d, observed_sequence = %d, observed_at = %s, event_id = %s, updated_at = %s
              WHERE environment_id = %s AND installation_epoch = %s AND domain = %s AND instance_uid = %s AND profile = %s
                AND observed_sequence < %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             (string) $data['semantic_hash'],
+            $match_key,
             ! empty($data['object_exists']) ? 1 : 0,
             ! empty($data['snapshot_complete']) ? 1 : 0,
             (int) $data['observed_sequence'],
@@ -56,6 +58,7 @@ final class ProjectionStore
                 'instance_uid' => $keys[3],
                 'profile' => $keys[4],
                 'semantic_hash' => (string) $data['semantic_hash'],
+                'match_key' => $match_key,
                 'object_exists' => ! empty($data['object_exists']) ? 1 : 0,
                 'snapshot_complete' => ! empty($data['snapshot_complete']) ? 1 : 0,
                 'observed_sequence' => (int) $data['observed_sequence'],
@@ -63,7 +66,7 @@ final class ProjectionStore
                 'event_id' => (string) $data['event_id'],
                 'updated_at' => $now,
             ],
-            ['%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s']
+            ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s']
         );
         $wpdb->suppress_errors($suppress);
 

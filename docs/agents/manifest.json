@@ -6970,6 +6970,7 @@
                     "identifier": "Connector extension points",
                     "discovery_ids": [
                         "hook.extension_point.dbvc_connected_bricks_available.69527fc4",
+                        "hook.extension_point.dbvc_connected_bricks_available.3383ace8",
                         "hook.extension_point.dbvc_connected_processing_delay.d8d77ac1",
                         "hook.extension_point.dbvc_connected_transaction_strategy.ff3d61d1",
                         "hook.extension_point.dbvc_connected_allow_insecure_hub.37986833",
@@ -6978,6 +6979,7 @@
                         "hook.extension_point.dbvc_connected_service_post_type.64be3427",
                         "hook.extension_point.dbvc_connected_service_post_type.89cc2260",
                         "hook.extension_point.dbvc_connected_post_domains.4c70ce67",
+                        "hook.extension_point.dbvc_connected_bricks_domains.babd6e4f",
                         "hook.extension_point.dbvc_connected_post_apply_domains.b9844928",
                         "hook.extension_point.dbvc_connected_post_ignored_meta_keys.fc5be2b4",
                         "hook.extension_point.dbvc_connected_post_meta_allow.d5b90256",
@@ -7072,6 +7074,7 @@
                 "dbvc_connected_service_post_type",
                 "dbvc_connected_service_ignored_meta_keys",
                 "dbvc_connected_post_domains (opt-in allow-list of post-type slugs observed as wp.post:<type> domains)",
+                "dbvc_connected_bricks_domains (M9 slice 6: opt-in allow-list of extra Bricks domain slugs — color_palette|pseudo_classes|class_categories|variable_categories — observed as wp.bricks:<slug>; default none)",
                 "dbvc_connected_post_apply_domains (subset of the observe list this connector will also let approved releases apply)",
                 "dbvc_connected_post_ignored_meta_keys (per-type meta deny list; receives $ignored, $post_type)",
                 "dbvc_connected_post_meta_allow (per-type meta allow-list; receives $allow, $post_type; empty = allow all)",
@@ -7732,7 +7735,11 @@
                         "database.table.dbvc_ac_approvals",
                         "database.table.dbvc_ac_rollouts",
                         "database.table.dbvc_ac_rollout_targets",
-                        "database.table.dbvc_ac_sync_policies"
+                        "database.table.dbvc_ac_sync_policies",
+                        "database.table.dbvc_ac_framework_rollouts",
+                        "database.table.dbvc_ac_framework_rollout_targets",
+                        "database.table.dbvc_ac_notification_channels",
+                        "database.table.dbvc_ac_notification_log"
                     ],
                     "source_ref": {
                         "path": "addons/agency-control/src/Storage/Schema.php",
@@ -7744,7 +7751,8 @@
                     "identifier": "Hub extension points",
                     "discovery_ids": [
                         "hook.extension_point.dbvc_agency_control_transaction_strategy.1f59cc4e",
-                        "hook.extension_point.dbvc_agency_control_freshness_seconds.cd011d36"
+                        "hook.extension_point.dbvc_agency_control_freshness_seconds.cd011d36",
+                        "hook.extension_point.dbvc_agency_release_domain_ranks.3ae055ae"
                     ]
                 },
                 {
@@ -8184,7 +8192,7 @@
         {
             "id": "cli.agency.inspect",
             "title": "Agency Control read-only inspection commands",
-            "summary": "wp dbvc agency status|environments|events|projections|subscriptions|deliveries|reviews|baselines|links|definitions|overrides report hub gate, schema, protocol limits, enrolled environments (no secrets), received events, projections, sequence gaps, subscriptions (with adopted version and channel), per-target delivery summaries, framework review items (with --state/--environment filters, drift/version/resolution columns), confirmed baselines, instance links, published definition versions and overrides; compare is the read-only three-way comparison and framework-status the read-only drift/version report per enabled framework subscription. releases (with --release for items and payload states) and preparations (with --operation for the full receipt and hub notes) list release manifests and prepare receipts. approvals lists approvals with execution outcomes (--approval shows the execution receipt). `invitations` lists enrollment invitations with their state (open/consumed/expired) and never their tokens (only hashes are stored). `events`, `projections` and `baselines` accept `--instance=<uid>` (baselines match either side) for per-object views.",
+            "summary": "wp dbvc agency status|environments|events|projections|subscriptions|deliveries|reviews|baselines|links|definitions|overrides report hub gate, schema, protocol limits, enrolled environments (no secrets), received events, projections, sequence gaps, subscriptions (with adopted version and channel), per-target delivery summaries, framework review items (with --state/--environment filters, drift/version/resolution columns), confirmed baselines, instance links, published definition versions and overrides; compare is the read-only three-way comparison and framework-status the read-only drift/version report per enabled framework subscription; fleet is the per-site worst-wins rollup and framework-plan the read-only rollout preview of a framework version (per object, per subscribing environment: create/replace/skip_override/up_to_date/blocked, honouring approved overrides), applying nothing. framework-rollouts lists framework rollout campaigns and framework-rollout reads one campaign's per-target release/rollout state. segments lists the distinct environment tags (with counts); fleet and framework-plan accept --segment to restrict to sites carrying a tag. releases (with --release for items and payload states) and preparations (with --operation for the full receipt and hub notes) list release manifests and prepare receipts. approvals lists approvals with execution outcomes (--approval shows the execution receipt). `invitations` lists enrollment invitations with their state (open/consumed/expired) and never their tokens (only hashes are stored). `events`, `projections` and `baselines` accept `--instance=<uid>` (baselines match either side) for per-object views.",
             "status": "experimental",
             "primary_category": "cli_automation",
             "tags": [
@@ -8208,7 +8216,7 @@
             "surfaces": [
                 {
                     "type": "cli",
-                    "identifier": "wp dbvc agency status|environments|events|projections|subscriptions|deliveries|reviews|compare|baselines|links|definitions|overrides|framework-status|releases|preparations|approvals|invitations",
+                    "identifier": "wp dbvc agency status|environments|events|projections|subscriptions|deliveries|reviews|compare|baselines|links|definitions|overrides|framework-status|fleet|framework-plan|framework-rollouts|framework-rollout|segments|releases|preparations|approvals|invitations|audit-export|notifications|notification-log",
                     "discovery_ids": [
                         "cli.command.dbvc.agency.status",
                         "cli.command.dbvc.agency.environments",
@@ -8223,10 +8231,18 @@
                         "cli.command.dbvc.agency.definitions",
                         "cli.command.dbvc.agency.overrides",
                         "cli.command.dbvc.agency.framework-status",
+                        "cli.command.dbvc.agency.fleet",
+                        "cli.command.dbvc.agency.framework-plan",
+                        "cli.command.dbvc.agency.framework-rollouts",
+                        "cli.command.dbvc.agency.framework-rollout",
+                        "cli.command.dbvc.agency.segments",
                         "cli.command.dbvc.agency.releases",
                         "cli.command.dbvc.agency.preparations",
                         "cli.command.dbvc.agency.approvals",
-                        "cli.command.dbvc.agency.invitations"
+                        "cli.command.dbvc.agency.invitations",
+                        "cli.command.dbvc.agency.audit-export",
+                        "cli.command.dbvc.agency.notifications",
+                        "cli.command.dbvc.agency.notification-log"
                     ],
                     "source_ref": {
                         "path": "commands/class-agency-cli.php",
@@ -8241,6 +8257,9 @@
             "inputs": [
                 "Optional --client, --environment, --limit, --fields, --format",
                 "framework-status: [--environment] [--definition] [--drift]",
+                "framework-plan: [--definitions] [--cohorts] [--agency] [--client] (read-only rollout preview; default = all desired definitions)",
+                "framework-rollouts: [--agency] [--limit] (list framework rollout campaigns); framework-rollout: --campaign (one campaign's per-target release/rollout state)",
+                "segments: [--agency] [--client] (list distinct environment tags with counts); fleet + framework-plan also accept [--segment=<tag>] to restrict to sites carrying a segment tag",
                 "reviews: [--definition] [--environment] [--state]",
                 "releases: [--release] [--source]",
                 "preparations: [--operation] [--release] [--target]"
@@ -8310,7 +8329,7 @@
         {
             "id": "cli.agency.manage",
             "title": "Agency Control invite, subscription, routing, baseline, framework and hold/release/revoke commands",
-            "summary": "wp dbvc agency invite creates a single-use expiring enrollment invitation (token printed once); subscribe / subscribe-framework / unsubscribe / enable-subscription manage explicit same-client subscriptions and framework bindings; route processes pending received events into deliveries and review items; baseline-confirm records pair/object baselines for currently agreeing objects (--accept-absent for one-sided verified absence); link-instance / unlink-instance declare lineage between instances on two environments; revoke deletes the environment's application password; release clears a hold after review. definition-publish records an immutable definition version (hash supplied, read from one environment's fresh complete projection, or copied from a published version; order explicit or by publish sequence, never inferred from the label) and definition-desire marks a channel's desired version (approved overrides on that channel become needs_rebase_review); adopt-version declares which version a framework subscription follows; override-approve records an exact approved hash with rationale and the frozen policy revision; override-detach ends it. review-classify stamps open review items with the drift/version state from framework-status (auto-resolving superseded, clean/current and approved-and-current items) and review-resolve closes one explicitly with a note. release-create fixes an immutable manifest from a source environment's current projections (payloads are then collected from its connector and verified by hash), release-withdraw ends one, prepare-request asks a target to dry-run a sealed release (its connector returns the receipt; nothing is written). approve binds a received ready/no-op prepare receipt for execution; revoke-approval withdraws an unconsumed approval. `hold --environment --reason` places an operator hold (recorded as operator:<note>): the hub refuses the environment's batches with 409 and keeps its deliveries pending until `release`; revoked environments cannot be held. `rollback --operation` creates a reviewed rollback (an approval-like record with kind=rollback bound to a consumed operation's execution digest); the target restores its journalled before image on its next poll with one conditional write per container guarded by the operation's after fingerprint (a container that moved on yields a restore conflict, never an overwrite), and the hub regresses the pair baseline to the restored hash.",
+            "summary": "wp dbvc agency invite creates a single-use expiring enrollment invitation (token printed once); subscribe / subscribe-framework / unsubscribe / enable-subscription manage explicit same-client subscriptions and framework bindings; route processes pending received events into deliveries and review items; baseline-confirm records pair/object baselines for currently agreeing objects (--accept-absent for one-sided verified absence); link-instance / unlink-instance declare lineage between instances on two environments; revoke deletes the environment's application password; release clears a hold after review. definition-publish records an immutable definition version (hash supplied, read from one environment's fresh complete projection, or copied from a published version; order explicit or by publish sequence, never inferred from the label) and definition-desire marks a channel's desired version (approved overrides on that channel become needs_rebase_review); framework-publish stamps one version label across a golden source's objects (each an immutable per-object definition version, marked desired unless --no-desire) and applies nothing — it is the what-changed half of a fleet publish, previewed by the read-only framework-plan; framework-rollout-start enrols a same-client fleet for a published framework version and drives execution (each target rides its own override-aware release + single-target rollout through the M5/M6 pipeline; a locked target is skipped, never overwritten), framework-rollout-advance is the re-entrant driver tick (advancing the active cohort one step, opening the next only after the canary succeeds and pausing the fleet if a cohort fails; a base WP-Cron tick advances running campaigns hands-off), framework-rollout-resume restarts a paused campaign and framework-rollout-retry resets a failed target to pending, and framework-rollout-withdraw ends a running campaign (withdrawing each target's in-flight release/rollout; landed changes are not rolled back); environment-tag sets/adds/removes an environment's segment tags so a rollout (framework-rollout-start --segment) can target sites by vertical/tier across clients; adopt-version declares which version a framework subscription follows; override-approve records an exact approved hash with rationale and the frozen policy revision; override-detach ends it. review-classify stamps open review items with the drift/version state from framework-status (auto-resolving superseded, clean/current and approved-and-current items) and review-resolve closes one explicitly with a note. release-create fixes an immutable manifest from a source environment's current projections (payloads are then collected from its connector and verified by hash), release-withdraw ends one, prepare-request asks a target to dry-run a sealed release (its connector returns the receipt; nothing is written). approve binds a received ready/no-op prepare receipt for execution; revoke-approval withdraws an unconsumed approval. `hold --environment --reason` places an operator hold (recorded as operator:<note>): the hub refuses the environment's batches with 409 and keeps its deliveries pending until `release`; revoked environments cannot be held. `rollback --operation` creates a reviewed rollback (an approval-like record with kind=rollback bound to a consumed operation's execution digest); the target restores its journalled before image on its next poll with one conditional write per container guarded by the operation's after fingerprint (a container that moved on yields a restore conflict, never an overwrite), and the hub regresses the pair baseline to the restored hash.",
             "status": "experimental",
             "primary_category": "cli_automation",
             "tags": [
@@ -8337,12 +8356,18 @@
             "surfaces": [
                 {
                     "type": "cli",
-                    "identifier": "wp dbvc agency invite|subscribe|subscribe-framework|unsubscribe|enable-subscription|route|baseline-confirm|link-instance|unlink-instance|definition-publish|definition-desire|adopt-version|override-approve|override-detach|review-classify|review-resolve|release-create|release-withdraw|prepare-request|approve|rollback|revoke-approval|revoke|release|hold",
+                    "identifier": "wp dbvc agency invite|subscribe|subscribe-framework|unsubscribe|enable-subscription|route|baseline-confirm|link-instance|unlink-instance|link-proposals|link-accept|definition-publish|definition-desire|framework-publish|framework-rollout-start|framework-rollout-advance|framework-rollout-resume|framework-rollout-retry|framework-rollout-withdraw|environment-tag|adopt-version|override-approve|override-detach|review-classify|review-resolve|release-create|release-withdraw|prepare-request|approve|rollback|revoke-approval|revoke|release|hold|freeze-set|freeze-clear|notification-channel-set|notification-channel-delete|notification-flush|environment-reassign",
                     "discovery_ids": [
                         "cli.command.dbvc.agency.invite",
                         "cli.command.dbvc.agency.revoke",
                         "cli.command.dbvc.agency.release",
                         "cli.command.dbvc.agency.hold",
+                        "cli.command.dbvc.agency.freeze-set",
+                        "cli.command.dbvc.agency.freeze-clear",
+                        "cli.command.dbvc.agency.notification-channel-set",
+                        "cli.command.dbvc.agency.notification-channel-delete",
+                        "cli.command.dbvc.agency.notification-flush",
+                        "cli.command.dbvc.agency.environment-reassign",
                         "cli.command.dbvc.agency.subscribe",
                         "cli.command.dbvc.agency.subscribe-framework",
                         "cli.command.dbvc.agency.unsubscribe",
@@ -8351,8 +8376,17 @@
                         "cli.command.dbvc.agency.baseline-confirm",
                         "cli.command.dbvc.agency.link-instance",
                         "cli.command.dbvc.agency.unlink-instance",
+                        "cli.command.dbvc.agency.link-proposals",
+                        "cli.command.dbvc.agency.link-accept",
                         "cli.command.dbvc.agency.definition-publish",
                         "cli.command.dbvc.agency.definition-desire",
+                        "cli.command.dbvc.agency.framework-publish",
+                        "cli.command.dbvc.agency.framework-rollout-start",
+                        "cli.command.dbvc.agency.framework-rollout-advance",
+                        "cli.command.dbvc.agency.framework-rollout-resume",
+                        "cli.command.dbvc.agency.framework-rollout-retry",
+                        "cli.command.dbvc.agency.framework-rollout-withdraw",
+                        "cli.command.dbvc.agency.environment-tag",
                         "cli.command.dbvc.agency.adopt-version",
                         "cli.command.dbvc.agency.override-approve",
                         "cli.command.dbvc.agency.override-detach",
@@ -8394,7 +8428,12 @@
                 "revoke/release: --environment=<id>",
                 "subscribe-framework: --environment --domain --instance --definition [--adopted-version] [--channel]",
                 "definition-publish: --definition --version [--agency] [--channel] [--domain --profile] [--hash | --from-environment --from-instance | --from-version] [--order] [--desired] [--note]",
+                "framework-publish: --source --version (--items=definition_uid:domain:instance:profile,... | --objects=<json>) [--agency] [--channel] [--no-desire] [--note] (stamps one version across a golden source's objects, each an immutable definition version, marked desired unless --no-desire; applies nothing)",
+                "framework-rollout-start: [--definitions] [--targets] [--cohorts=<json>] [--segment=<tag>] [--agency] [--channel] [--note] (enrol a fleet under one agency for a published framework version; each target rides its own override-aware release + single-target rollout; --cohorts is an ordered JSON array of target-id arrays for staged canary-first rollout, paused on a cohort failure; --segment targets every same-agency site carrying a tag; precedence cohorts > targets > segment > all subscribers); framework-rollout-advance / framework-rollout-resume / framework-rollout-withdraw: --campaign; framework-rollout-retry: --campaign --target",
+                "environment-tag: --environment --tags=<csv> [--mode=set|add|remove] (group a site into segments by tag slug [a-z0-9_-])",
                 "adopt-version: --id --version",
+                "link-proposals: --source --target [--domain] (read-only; proposes cross-site identity links by name/token match)",
+                "link-accept: --source --target (--all | --source-instance --target-instance --domain); only current proposals are created",
                 "override-approve: --environment --domain --instance --definition --rationale [--hash]",
                 "review-classify: [--environment] [--definition]",
                 "review-resolve: --id --note",

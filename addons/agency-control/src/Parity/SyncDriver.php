@@ -5,6 +5,7 @@ namespace Dbvc\AgencyControl\Parity;
 use Dbvc\AgencyControl\Comparison\ComparisonService;
 use Dbvc\AgencyControl\Release\ReleaseService;
 use Dbvc\AgencyControl\Release\RolloutService;
+use Dbvc\AgencyControl\Storage\OverrideStore;
 use Dbvc\AgencyControl\Storage\ReleaseStore;
 use Dbvc\AgencyControl\Storage\RolloutStore;
 
@@ -27,6 +28,12 @@ use Dbvc\AgencyControl\Storage\RolloutStore;
  * `source_wins`; deletions trash (never hard-delete) only with
  * `propagate_deletions`; new-object creation only with `create_new` (and remains
  * subject to the apply pipeline's creation support).
+ *
+ * An approved client override always takes precedence: an object the target has
+ * locked ({@see OverrideStore} state `approved` or `needs_rebase_review`) is never
+ * selected for overwrite — not even under `source_wins` — so a fleet push can
+ * never silently clobber approved client work. Unlocking (detach) lets the object
+ * rejoin parity and converge on the next push.
  */
 final class SyncDriver
 {
@@ -226,9 +233,12 @@ final class SyncDriver
         $include = array_fill_keys($policy['include_uids'], true);
         $exclude = array_fill_keys($policy['exclude_uids'], true);
         $source_wins = $policy['conflict_policy'] === 'source_wins';
+        // Approved client work on the target is protected: an object the target has
+        // locked is never proposed for overwrite, even under source_wins.
+        $locked = (new OverrideStore())->locked_for_environment((string) $policy['target_environment_id']);
 
         $proposed = [];
-        $skipped = ['held_conflict' => 0, 'deletion' => 0, 'new_object' => 0, 'incomplete' => 0, 'excluded' => 0, 'capped' => 0];
+        $skipped = ['held_conflict' => 0, 'deletion' => 0, 'new_object' => 0, 'incomplete' => 0, 'excluded' => 0, 'approved_override' => 0, 'capped' => 0];
 
         foreach ((array) ($comparison['rows'] ?? []) as $row) {
             $domain = (string) ($row['domain'] ?? '');
@@ -262,14 +272,24 @@ final class SyncDriver
                     $skipped['held_conflict']++;
                 }
             } elseif ($state === 'baseline_required' && $row['source_exists'] === true && $row['target_exists'] === false && ! empty($row['complete'])) {
-                // A source object the target has never had = a new object.
+                // A source object the target has never had = a new object: the guarded
+                // creation apply lands it (the connector allocates a local id, inserts
+                // into the collection and adopts the framework object's identity).
                 if ($policy['create_new']) {
-                    $operation = 'replace';
+                    $operation = 'create';
                 } else {
                     $skipped['new_object']++;
                 }
             }
             if ($operation === null) {
+                continue;
+            }
+            // Never overwrite (or trash) an object the target has locked — approved
+            // client work always wins, even under source_wins. The lock is keyed on
+            // the target's own (resolved) instance UID.
+            $target_uid = (string) ($row['target_instance_uid'] ?? '');
+            if ($target_uid !== '' && isset($locked[$domain . '|' . $target_uid])) {
+                $skipped['approved_override']++;
                 continue;
             }
             if ($include !== [] && ! isset($include[$uid])) {

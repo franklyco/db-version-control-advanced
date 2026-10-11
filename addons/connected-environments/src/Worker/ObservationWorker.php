@@ -241,7 +241,10 @@ final class ObservationWorker
             ];
 
             $existing = $this->objects->get_for_domain($context['domain'], $context['profile']);
-            $owns_identity = DomainRegistry::is_post_domain($context['domain']);
+            // Post domains (vf_object_uid) and whole-blob singletons (a deterministic
+            // per-domain id) carry their own portable identity; a sidecar id is never
+            // assigned for them.
+            $owns_identity = DomainRegistry::is_post_domain($context['domain']) || DomainRegistry::is_singleton_domain($context['domain']);
             $storage_keys = array_map(static function ($item) {
                 return $item['storage_key'];
             }, $inventory['items']);
@@ -541,16 +544,27 @@ final class ObservationWorker
         }
 
         $event_id = 'obs-' . str_pad((string) $sequence, 12, '0', STR_PAD_LEFT);
+        // Portable identity hint (M9 slice 0): the member's name/token, so the hub can
+        // align this object across environments whose site-local instance_uid differs.
+        // Optional and byte-bounded; a value that cannot be represented is simply omitted.
+        $object_body = [
+            'domain' => $context['domain'],
+            'instance_uid' => $object['instance_uid'],
+        ];
+        $match_key = trim((string) ($object['display_name'] ?? ''));
+        if ($match_key !== '' && mb_check_encoding($match_key, 'UTF-8')) {
+            $match_key = mb_strcut($match_key, 0, ObservationEvent::MATCH_KEY_MAX_BYTES, 'UTF-8');
+            if (ObservationEvent::isMatchKey($match_key)) {
+                $object_body['match_key'] = $match_key;
+            }
+        }
         $body = ObservationEvent::build([
             'event_id' => $event_id,
             'environment_id' => $context['environment_id'],
             'installation_epoch' => $context['epoch'],
             'sequence' => $sequence,
             'observed_at' => gmdate('Y-m-d\TH:i:s\Z'),
-            'object' => [
-                'domain' => $context['domain'],
-                'instance_uid' => $object['instance_uid'],
-            ],
+            'object' => $object_body,
             'projection' => [
                 'profile' => $context['profile'],
                 'hash' => $object['hash'],

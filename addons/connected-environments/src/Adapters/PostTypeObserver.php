@@ -136,6 +136,35 @@ class PostTypeObserver implements DomainObserver
     }
 
     /**
+     * Seam: rewrite portable cross-object reference tokens in the canonical body
+     * BEFORE it is hashed. The base writes no such references and returns the
+     * body unchanged; a Bricks-aware subclass (templates) overrides this. Because
+     * every post hash flows through the single snapshot projection, overriding
+     * here makes tokenization consistent at observe, prepare and verify.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    protected function tokenize_references(array $data)
+    {
+        return $data;
+    }
+
+    /**
+     * Seam: resolve portable reference tokens back to this site's local ids
+     * BEFORE writing. Base: no-op. A Bricks-aware subclass overrides it; because
+     * every write path funnels through apply_body, overriding here covers the
+     * forward apply, the compensation, and the reviewed rollback.
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    protected function detokenize_references(array $body)
+    {
+        return $body;
+    }
+
+    /**
      * @return string
      */
     public function post_type()
@@ -410,6 +439,11 @@ class PostTypeObserver implements DomainObserver
         // (M7). Apply reverses this to local references before writing.
         $data = MediaReferences::tokenize($data);
 
+        // Portable cross-object references (M9 slice 6d): a Bricks-aware subclass
+        // rewrites embedded global-class/component ids in the element-tree meta to
+        // name tokens here, so the projection hash is site-independent. Base: no-op.
+        $data = $this->tokenize_references($data);
+
         $projection = Canonicalizer::project($data);
         $complete = $projection['ok'] && $problems === [];
         if (! $projection['ok']) {
@@ -459,6 +493,10 @@ class PostTypeObserver implements DomainObserver
         // left as-is so the guarded re-snapshot fails rather than storing a broken
         // reference. Attachments are materialized before this point (M7 step 3b).
         $body = MediaReferences::detokenize($body);
+
+        // Reverse cross-object reference tokens to this site's local class/component
+        // ids (M9 slice 6d); base: no-op. Runs on every write (apply/compensate/rollback).
+        $body = $this->detokenize_references($body);
 
         $parent_id = 0;
         $parent_uid = (string) ($body['post_parent_uid'] ?? '');

@@ -377,7 +377,13 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 				}));
 			}
 			$result['returned'] = count($result['rows']);
-			$result['rows'] = array_map(static function ($row) {
+			// Annotate each row with the pair's approved-override ("locked") state so
+			// the Compare view can show which objects are protected and offer inline
+			// lock/unlock, resolving through the same identity the engine uses.
+			$override_store = new \Dbvc\AgencyControl\Storage\OverrideStore();
+			$source_locked = $override_store->locked_for_environment((string) ($assoc_args['source'] ?? ''));
+			$target_locked = $override_store->locked_for_environment((string) ($assoc_args['target'] ?? ''));
+			$result['rows'] = array_map(function ($row) use ($source_locked, $target_locked) {
 				$row['reasons'] = implode(',', (array) $row['reasons']);
 				$row['source_hash'] = $row['source_hash'] === null ? '' : substr($row['source_hash'], 0, 12);
 				$row['target_hash'] = $row['target_hash'] === null ? '' : substr($row['target_hash'], 0, 12);
@@ -388,6 +394,11 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 				$row['target_observed'] = $row['target_observed'] ? 'yes' : 'no';
 				$row['source_exists'] = $row['source_exists'] === null ? '' : ($row['source_exists'] ? 'yes' : 'no');
 				$row['target_exists'] = $row['target_exists'] === null ? '' : ($row['target_exists'] ? 'yes' : 'no');
+				$source_key = $row['domain'] . '|' . $row['source_instance_uid'];
+				$target_key = $row['domain'] . '|' . $row['target_instance_uid'];
+				$row['source_override'] = isset($source_locked[$source_key]) ? (string) $source_locked[$source_key]['state'] : '';
+				$row['target_override'] = isset($target_locked[$target_key]) ? (string) $target_locked[$target_key]['state'] : '';
+				$row['target_override_definition'] = isset($target_locked[$target_key]) ? (string) $target_locked[$target_key]['definition_uid'] : '';
 				return $row;
 			}, $result['rows']);
 
@@ -493,6 +504,61 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			$rows = (new \Dbvc\AgencyControl\Storage\InstanceLinkStore())->all(self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT));
 
 			return ['returned' => count($rows), 'links' => $rows];
+		}
+
+		/**
+		 * Propose cross-site identity links by name/token (M9 slice 0). Read-only.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function link_proposals(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Comparison\InstanceLinkProposer())->propose(
+				(string) ($assoc_args['source'] ?? ''),
+				(string) ($assoc_args['target'] ?? ''),
+				isset($assoc_args['domain']) ? (string) $assoc_args['domain'] : null
+			);
+		}
+
+		/**
+		 * Accept proposed identity links (M9 slice 0): --all, an explicit
+		 * --source-instance/--target-instance pair, or a `pairs` array (REST).
+		 * Only a pair that is still a current proposal is created.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function link_accept(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$domain = isset($assoc_args['domain']) && (string) $assoc_args['domain'] !== '' ? (string) $assoc_args['domain'] : null;
+			if (! empty($assoc_args['all'])) {
+				$pairs = 'all';
+			} elseif (isset($assoc_args['pairs']) && is_array($assoc_args['pairs'])) {
+				$pairs = $assoc_args['pairs'];
+			} elseif ((string) ($assoc_args['source-instance'] ?? '') !== '' && (string) ($assoc_args['target-instance'] ?? '') !== '') {
+				$pairs = [[
+					'domain' => (string) ($assoc_args['domain'] ?? ''),
+					'source_instance_uid' => (string) $assoc_args['source-instance'],
+					'target_instance_uid' => (string) $assoc_args['target-instance'],
+				]];
+			} else {
+				return new WP_Error('dbvc_agency_link_accept_no_pairs', 'Provide --all, a --source-instance/--target-instance pair (with --domain), or a pairs array.', ['status' => 400]);
+			}
+
+			return (new \Dbvc\AgencyControl\Comparison\InstanceLinkProposer())->accept(
+				(string) ($assoc_args['source'] ?? ''),
+				(string) ($assoc_args['target'] ?? ''),
+				$pairs,
+				$domain
+			);
 		}
 
 		/**
@@ -694,6 +760,277 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 		}
 
 		/**
+		 * Fleet rollup for the hub dashboard (M9 slice 3): one row per enrolled
+		 * client environment with a composed site status, framework version
+		 * distance, locked-override count and freshness. Read-only.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function fleet(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Fleet\FleetService())->overview(
+				isset($assoc_args['agency']) ? (string) $assoc_args['agency'] : null,
+				isset($assoc_args['client']) ? (string) $assoc_args['client'] : null,
+				isset($assoc_args['segment']) ? (string) $assoc_args['segment'] : null
+			);
+		}
+
+		/**
+		 * Set, add, or remove an environment's segment tags (M9 slice 5).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function environment_tag(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$environment = (string) ($assoc_args['environment'] ?? '');
+			$tags = array_filter(array_map('trim', explode(',', (string) ($assoc_args['tags'] ?? ''))), static function ($t) {
+				return $t !== '';
+			});
+			$mode = (string) ($assoc_args['mode'] ?? 'set');
+			$service = new \Dbvc\AgencyControl\Enrollment\SegmentService();
+			if ($mode === 'add') {
+				return $service->add_tags($environment, $tags);
+			}
+			if ($mode === 'remove') {
+				return $service->remove_tags($environment, $tags);
+			}
+
+			return $service->set_tags($environment, $tags);
+		}
+
+		/**
+		 * List segments (distinct environment tags) with their environment counts.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function segments(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Enrollment\SegmentService())->segments(
+				isset($assoc_args['agency']) ? (string) $assoc_args['agency'] : null,
+				isset($assoc_args['client']) ? (string) $assoc_args['client'] : null
+			);
+		}
+
+		/**
+		 * Publish a framework version (M9 slice 4b): stamp one version label
+		 * across a golden source's objects, each an immutable per-object
+		 * definition version read from the source's current projection, and
+		 * mark each desired unless --no-desire. Objects arrive as a structured
+		 * `objects` array (REST), a JSON `--objects`, or a compact
+		 * `--items=definition_uid:domain:instance_uid:profile,...`.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_publish(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$objects = self::parse_framework_objects($assoc_args);
+			if (is_wp_error($objects)) {
+				return $objects;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkPublishService())->publish([
+				'agency_id' => (string) ($assoc_args['agency'] ?? 'studio'),
+				'source_environment_id' => (string) ($assoc_args['source'] ?? ''),
+				'version' => (string) ($assoc_args['version'] ?? ''),
+				'channel' => (string) ($assoc_args['channel'] ?? 'stable'),
+				'note' => (string) ($assoc_args['note'] ?? ''),
+				'desire' => empty($assoc_args['no-desire']),
+				'objects' => $objects,
+			]);
+		}
+
+		/**
+		 * Read-only rollout plan for a framework version (M9 slice 4b): the
+		 * action a rollout of the given (or all desired) definitions would take
+		 * on each subscribing environment, honouring approved overrides. Applies
+		 * nothing.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_plan(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkPublishService())->plan([
+				'agency_id' => (string) ($assoc_args['agency'] ?? 'studio'),
+				'definitions' => isset($assoc_args['definitions']) ? $assoc_args['definitions'] : (isset($assoc_args['definition']) ? (string) $assoc_args['definition'] : ''),
+				'cohorts' => isset($assoc_args['cohorts']) ? $assoc_args['cohorts'] : '',
+				'client_id' => isset($assoc_args['client']) ? (string) $assoc_args['client'] : '',
+				'segment' => isset($assoc_args['segment']) ? (string) $assoc_args['segment'] : '',
+			]);
+		}
+
+		/**
+		 * Normalise the objects of a framework publish from a structured array
+		 * (REST), a JSON string, or a compact definition_uid:domain:instance:profile list.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		private static function parse_framework_objects(array $assoc_args) {
+			if (isset($assoc_args['objects']) && is_array($assoc_args['objects'])) {
+				return $assoc_args['objects'];
+			}
+			if (isset($assoc_args['objects']) && is_string($assoc_args['objects']) && trim((string) $assoc_args['objects']) !== '') {
+				$decoded = json_decode((string) $assoc_args['objects'], true);
+				if (! is_array($decoded)) {
+					return new WP_Error('dbvc_agency_invalid_objects', '--objects must be a JSON array of {definition_uid, domain, instance_uid, profile}.', ['status' => 400]);
+				}
+
+				return $decoded;
+			}
+			$objects = [];
+			foreach (array_filter(array_map('trim', explode(',', (string) ($assoc_args['items'] ?? '')))) as $spec) {
+				$parts = explode(':', $spec);
+				if (count($parts) !== 4) {
+					return new WP_Error('dbvc_agency_invalid_objects', 'Each item is definition_uid:domain:instance_uid:profile.', ['status' => 400]);
+				}
+				$objects[] = ['definition_uid' => $parts[0], 'domain' => $parts[1], 'instance_uid' => $parts[2], 'profile' => $parts[3]];
+			}
+
+			return $objects;
+		}
+
+		/**
+		 * Start a framework rollout campaign (M9 slice 4c): enrol the fleet for a
+		 * published framework version. Builds nothing yet — advance drives it.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_rollout_start(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkRolloutService())->start([
+				'agency_id' => (string) ($assoc_args['agency'] ?? 'studio'),
+				'definitions' => isset($assoc_args['definitions']) ? $assoc_args['definitions'] : '',
+				'channel' => (string) ($assoc_args['channel'] ?? 'stable'),
+				'targets' => isset($assoc_args['targets']) ? $assoc_args['targets'] : '',
+				'cohorts' => isset($assoc_args['cohorts']) ? $assoc_args['cohorts'] : '',
+				'segment' => isset($assoc_args['segment']) ? (string) $assoc_args['segment'] : '',
+				'note' => (string) ($assoc_args['note'] ?? ''),
+			]);
+		}
+
+		/**
+		 * Resume a paused framework rollout campaign (after retrying/accepting the failed targets).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_rollout_resume(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkRolloutService())->resume((string) ($assoc_args['campaign'] ?? ''));
+		}
+
+		/**
+		 * Reset a failed target in a framework rollout campaign to pending so the driver re-attempts it.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_rollout_retry(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkRolloutService())->retry((string) ($assoc_args['campaign'] ?? ''), (string) ($assoc_args['target'] ?? ''));
+		}
+
+		/**
+		 * Advance a framework rollout campaign one re-entrant step.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_rollout_advance(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkRolloutService())->advance((string) ($assoc_args['campaign'] ?? ''));
+		}
+
+		/**
+		 * Read one framework rollout campaign's status.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_rollout(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkRolloutService())->status((string) ($assoc_args['campaign'] ?? ''));
+		}
+
+		/**
+		 * List framework rollout campaigns.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_rollouts(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkRolloutService())->all(
+				isset($assoc_args['agency']) ? (string) $assoc_args['agency'] : null,
+				self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT)
+			);
+		}
+
+		/**
+		 * Withdraw a running framework rollout campaign (withdraws each target's
+		 * in-flight release/rollout; landed changes are not rolled back here).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function framework_rollout_withdraw(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Framework\FrameworkRolloutService())->withdraw((string) ($assoc_args['campaign'] ?? ''));
+		}
+
+		/**
 		 * @param array $assoc_args
 		 * @return array|WP_Error
 		 */
@@ -754,6 +1091,40 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			$rows = $store->all(isset($assoc_args['source']) ? (string) $assoc_args['source'] : null, self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT));
 
 			return ['counts' => $store->counts(), 'returned' => count($rows), 'releases' => array_map([self::class, 'release_row'], $rows)];
+		}
+
+		/**
+		 * M9 slice 7a: one JSON snapshot of the agency governance trail — the
+		 * event-sourced stores (environments, framework definitions, releases,
+		 * approvals, rollouts, framework rollouts, reviews, overrides), each section
+		 * scoped by the same per-read filters it accepts. Read-only audit/handoff
+		 * artifact; it never writes. (The main plugin's dbvc_activity_log is a
+		 * different, non-agency log and is deliberately not included.)
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function audit_export(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$sections = ['environments', 'definitions', 'releases', 'approvals', 'rollouts', 'framework_rollouts', 'reviews', 'overrides'];
+			$out = [];
+			foreach ($sections as $section) {
+				$result = self::$section($assoc_args);
+				$out[$section] = is_wp_error($result)
+					? ['error' => $result->get_error_code(), 'message' => $result->get_error_message()]
+					: $result;
+			}
+
+			return [
+				'package_type' => 'dbvc_agency_audit_export',
+				'package_schema_version' => 1,
+				'generated_at' => gmdate('c'),
+				'filters' => array_intersect_key($assoc_args, array_flip(['source', 'agency', 'client', 'environment', 'definition', 'release', 'target', 'state', 'limit'])),
+				'sections' => $out,
+			];
 		}
 
 		/**
@@ -997,11 +1368,124 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 				'receipt_digest' => substr((string) $row['receipt_digest'], 0, 12),
 			];
 			if ($with_receipt) {
-				$out['receipt'] = $row['receipt'];
+				$receipt = $row['receipt'];
+				if (is_array($receipt) && isset($row['release_id'])) {
+					$receipt = self::annotate_receipt_incoming_values($receipt, (int) $row['release_id']);
+				}
+				$out['receipt'] = $receipt;
 				$out['hub_notes'] = $row['hub_notes'];
 			}
 
 			return $out;
+		}
+
+		/**
+		 * Attach the incoming (source) value at each changed path of a prepare
+		 * receipt so the operator can review the actual values before approving
+		 * (M9 slice 2). Source-only: the hub holds the target's hash, not its
+		 * content, so the before side stays the hash the receipt already records.
+		 * Loads the sealed payload bodies for the release, then delegates to the
+		 * pure {@see apply_incoming_values()}.
+		 *
+		 * @param array $receipt
+		 * @param int   $release_id
+		 * @return array
+		 */
+		private static function annotate_receipt_incoming_values(array $receipt, $release_id) {
+			$bodies = [];
+			foreach ((new \Dbvc\AgencyControl\Storage\ReleaseStore())->items($release_id, true) as $item) {
+				$decoded = json_decode((string) ($item['payload'] ?? ''), true);
+				if (is_array($decoded)) {
+					$bodies[(string) $item['domain'] . '|' . (string) $item['instance_uid']] = $decoded;
+				}
+			}
+
+			return self::apply_incoming_values($receipt, $bodies);
+		}
+
+		/**
+		 * Pure enrichment: for each receipt item's `patch.changed_paths`, add the
+		 * incoming value from the matching payload body (keyed "domain|instance_uid").
+		 * Secret-ish keys are redacted and long/structured values truncated. Public
+		 * for unit testing; takes decoded bodies so it needs no database.
+		 *
+		 * @param array<string, mixed>              $receipt
+		 * @param array<string, array<string,mixed>> $bodies "domain|instance_uid" => decoded body
+		 * @return array<string, mixed>
+		 */
+		public static function apply_incoming_values(array $receipt, array $bodies) {
+			if (! isset($receipt['items']) || ! is_array($receipt['items'])) {
+				return $receipt;
+			}
+			foreach ($receipt['items'] as &$item) {
+				if (! is_array($item) || ! isset($item['patch']['changed_paths']) || ! is_array($item['patch']['changed_paths'])) {
+					continue;
+				}
+				$body = $bodies[(string) ($item['domain'] ?? '') . '|' . (string) ($item['instance_uid'] ?? '')] ?? null;
+				foreach ($item['patch']['changed_paths'] as &$changed) {
+					if (! is_array($changed) || ! isset($changed['path'])) {
+						continue;
+					}
+					$changed['after_value'] = $body === null
+						? null
+						: self::format_incoming_value(self::value_at_path($body, (string) $changed['path']), (string) $changed['path']);
+				}
+				unset($changed);
+			}
+			unset($item);
+
+			return $receipt;
+		}
+
+		/**
+		 * Read a dot-path (the shape the connector's patch records) out of a decoded
+		 * body; numeric segments index arrays. Returns null when any segment is absent.
+		 *
+		 * @param mixed  $body
+		 * @param string $path
+		 * @return mixed
+		 */
+		private static function value_at_path($body, $path) {
+			$node = $body;
+			foreach (explode('.', $path) as $segment) {
+				if (is_array($node) && array_key_exists($segment, $node)) {
+					$node = $node[$segment];
+					continue;
+				}
+				return null;
+			}
+
+			return $node;
+		}
+
+		/**
+		 * Render one incoming value for review: redact secret-ish keys, stringify
+		 * scalars/booleans, JSON-encode structures, and truncate long values (CSS
+		 * and element trees can be large).
+		 *
+		 * @param mixed  $value
+		 * @param string $path
+		 * @return string
+		 */
+		private static function format_incoming_value($value, $path) {
+			foreach (explode('.', strtolower($path)) as $segment) {
+				if (preg_match('/pass(word)?|secret|token|api[-_]?key|private[-_]?key|nonce|credential|(^|_)auth($|_)/', $segment)) {
+					return '[redacted]';
+				}
+			}
+			if ($value === null) {
+				return '(absent)';
+			}
+			if (is_bool($value)) {
+				return $value ? 'true' : 'false';
+			}
+			$string = is_scalar($value) ? (string) $value : (string) wp_json_encode($value);
+			$string = trim(preg_replace('/\s+/', ' ', $string));
+			if (mb_strlen($string) > 200) {
+				return mb_substr($string, 0, 200) . '… (' . mb_strlen($string) . ' chars)';
+			}
+
+			return $string;
 		}
 
 		/**
@@ -1130,6 +1614,145 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			}
 
 			return (new \Dbvc\AgencyControl\Enrollment\EnrollmentService())->hold((string) ($assoc_args['environment'] ?? ''), (string) ($assoc_args['reason'] ?? ''));
+		}
+
+		/**
+		 * M9 slice 7c: set a maintenance-freeze window on one environment.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function freeze_set(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Governance\FreezeService())->set(
+				(string) ($assoc_args['environment'] ?? ''),
+				(string) ($assoc_args['from'] ?? ''),
+				(string) ($assoc_args['until'] ?? ''),
+				(string) ($assoc_args['reason'] ?? '')
+			);
+		}
+
+		/**
+		 * M9 slice 7c: clear the maintenance-freeze window on one environment.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function freeze_clear(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Governance\FreezeService())->clear((string) ($assoc_args['environment'] ?? ''));
+		}
+
+		/**
+		 * M9 slice 7d: create/update an outbound notification channel.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function notification_channel_set(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$events = array_values(array_filter(array_map('trim', explode(',', (string) ($assoc_args['events'] ?? '')))));
+
+			return (new \Dbvc\AgencyControl\Notifications\NotificationService())->save_channel([
+				'channel_uid' => (string) ($assoc_args['channel'] ?? ''),
+				'type' => (string) ($assoc_args['type'] ?? 'webhook'),
+				'target' => (string) ($assoc_args['target'] ?? ''),
+				'agency_id' => (string) ($assoc_args['agency'] ?? ''),
+				'events' => $events,
+				'secret' => (string) ($assoc_args['secret'] ?? ''),
+				'enabled' => ! array_key_exists('disabled', $assoc_args),
+			]);
+		}
+
+		/**
+		 * M9 slice 7d: delete a notification channel.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function notification_channel_delete(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Notifications\NotificationService())->delete_channel((string) ($assoc_args['channel'] ?? ''));
+		}
+
+		/**
+		 * M9 slice 7d: list notification channels (secrets masked).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function notifications(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return ['channels' => (new \Dbvc\AgencyControl\Notifications\NotificationService())->channels(isset($assoc_args['agency']) ? (string) $assoc_args['agency'] : null)];
+		}
+
+		/**
+		 * M9 slice 7d: read the notification delivery log.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function notification_log(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return ['log' => (new \Dbvc\AgencyControl\Notifications\NotificationService())->log_entries(
+				self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT),
+				isset($assoc_args['status']) ? (string) $assoc_args['status'] : null
+			)];
+		}
+
+		/**
+		 * M9 slice 7d: send pending notifications now (also runs on the hourly tick).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function notification_flush(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Notifications\NotificationService())->flush(self::bounded_integer($assoc_args['limit'] ?? 25, 1, self::MAX_LIMIT));
+		}
+
+		/**
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function environment_reassign(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Enrollment\EnrollmentService())->reassign(
+				(string) ($assoc_args['environment'] ?? ''),
+				(string) ($assoc_args['client'] ?? ''),
+				(string) ($assoc_args['agency'] ?? '')
+			);
 		}
 
 		/**
@@ -1523,6 +2146,41 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		}
 
 		/**
+		 * Export the agency governance trail as one JSON snapshot (audit/handoff).
+		 *
+		 * Bundles the event-sourced stores (environments, definitions, releases,
+		 * approvals, rollouts, framework rollouts, reviews, overrides); each section
+		 * honours the same filters its own read accepts. Read-only.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--agency=<id>]
+		 * : Filter sections that support an agency scope.
+		 *
+		 * [--client=<id>]
+		 * : Filter sections that support a client scope.
+		 *
+		 * [--source=<env>]
+		 * : Filter releases by source environment.
+		 *
+		 * [--environment=<id>]
+		 * : Filter sections that support an environment scope.
+		 *
+		 * [--limit=<number>]
+		 * : Maximum rows per section. Default: 50; maximum: 500.
+		 *
+		 * @subcommand audit-export
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function audit_export($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::audit_export($assoc_args));
+		}
+
+		/**
 		 * List latest projections per environment object.
 		 *
 		 * ## OPTIONS
@@ -1913,6 +2571,63 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		}
 
 		/**
+		 * Propose cross-site identity links by name/token match (read-only).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<environment_id>
+		 * : Source environment.
+		 *
+		 * --target=<environment_id>
+		 * : Target environment (same agency and client as the source).
+		 *
+		 * [--domain=<domain>]
+		 * : Restrict to one domain (e.g. bricks.global_class). Default: all.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand link-proposals
+		 */
+		public function link_proposals($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::link_proposals($assoc_args));
+		}
+
+		/**
+		 * Accept proposed identity links; only current, unambiguous proposals are created.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<environment_id>
+		 * : Source environment.
+		 *
+		 * --target=<environment_id>
+		 * : Target environment.
+		 *
+		 * [--all]
+		 * : Accept every current proposal for the pair.
+		 *
+		 * [--domain=<domain>]
+		 * : Domain filter, and the domain of an explicit pair.
+		 *
+		 * [--source-instance=<uid>]
+		 * : Source instance UID of a single explicit pair (with --target-instance and --domain).
+		 *
+		 * [--target-instance=<uid>]
+		 * : Target instance UID of a single explicit pair.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand link-accept
+		 */
+		public function link_accept($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::link_accept($assoc_args));
+		}
+
+		/**
 		 * Publish an immutable framework definition version (hash supplied, read from one environment's current projection, or copied from a published version).
 		 *
 		 * ## OPTIONS
@@ -2148,6 +2863,289 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function framework_status($args, $assoc_args) {
 			unset($args);
 			$this->emit_rows(DBVC_Agency_CLI_Inspector::framework_status($assoc_args), 'rows', ['environment_id', 'domain', 'instance_uid', 'definition_uid', 'channel', 'adopted_version', 'desired_version', 'drift', 'version', 'override_state', 'fresh', 'reasons'], $assoc_args);
+		}
+
+		/**
+		 * Fleet rollup for the hub dashboard: one row per enrolled client environment
+		 * with a composed status, framework version distance, locked-override count and freshness.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--agency=<id>]
+		 * : Restrict to one agency.
+		 *
+		 * [--client=<id>]
+		 * : Restrict to one client.
+		 *
+		 * [--segment=<tag>]
+		 * : Restrict to sites carrying this segment tag.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand fleet
+		 */
+		public function fleet($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::fleet($assoc_args));
+		}
+
+		/**
+		 * Set, add, or remove an environment's segment tags (e.g. production, a vertical, a tier).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --environment=<id>
+		 * : Environment identifier.
+		 *
+		 * --tags=<list>
+		 * : Comma-separated tag slugs ([a-z0-9_-], lowercased).
+		 *
+		 * [--mode=<mode>]
+		 * : set (replace, default), add, or remove.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand environment-tag
+		 */
+		public function environment_tag($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::environment_tag($assoc_args));
+		}
+
+		/**
+		 * List segments (distinct environment tags) with their environment counts.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--agency=<id>]
+		 * : Restrict to one agency.
+		 *
+		 * [--client=<id>]
+		 * : Restrict to one client.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand segments
+		 */
+		public function segments($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::segments($assoc_args));
+		}
+
+		/**
+		 * Publish a framework version: stamp one version label across a golden source's objects and mark each desired.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<environment_id>
+		 * : Golden source environment the objects are read from.
+		 *
+		 * --version=<version>
+		 * : Version label stamped across every object (each object's own version history).
+		 *
+		 * --items=<list>
+		 * : Comma-separated definition_uid:domain:instance_uid:profile objects. Or pass --objects=<json>.
+		 *
+		 * [--objects=<json>]
+		 * : JSON array of {definition_uid, domain, instance_uid, profile}; overrides --items.
+		 *
+		 * [--agency=<id>]
+		 * : Agency identifier. Default: studio.
+		 *
+		 * [--channel=<channel>]
+		 * : Channel. Default: stable.
+		 *
+		 * [--no-desire]
+		 * : Publish without marking the versions desired on their channel.
+		 *
+		 * [--note=<text>]
+		 * : Short note.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-publish
+		 */
+		public function framework_publish($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_publish($assoc_args));
+		}
+
+		/**
+		 * Read-only rollout plan for a framework version: the action a rollout would take on each subscribing environment, honouring approved overrides. Applies nothing.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--definitions=<list>]
+		 * : Comma-separated definition UIDs to plan. Default: all definitions with a desired version.
+		 *
+		 * [--cohorts=<list>]
+		 * : Comma-separated environment IDs to restrict targets to. Default: all subscribers.
+		 *
+		 * [--agency=<id>]
+		 * : Agency identifier. Default: studio.
+		 *
+		 * [--client=<id>]
+		 * : Restrict to one client.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-plan
+		 */
+		public function framework_plan($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_plan($assoc_args));
+		}
+
+		/**
+		 * Start a framework rollout campaign: publish once, land everywhere. Enrols the same-client fleet for a published framework version; each target rides its own override-aware release + single-target rollout.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--definitions=<list>]
+		 * : Comma-separated definition UIDs. Default: all definitions with a desired version on the channel.
+		 *
+		 * [--targets=<list>]
+		 * : Comma-separated target environment IDs. Default: every subscriber under the agency.
+		 *
+		 * [--cohorts=<json>]
+		 * : Ordered staged rollout as a JSON array of target-id arrays, canary first, e.g. [["canary-env"],["env-a","env-b"]]. Overrides --targets; the fleet pauses if a cohort fails.
+		 *
+		 * [--agency=<id>]
+		 * : Agency identifier. Default: studio.
+		 *
+		 * [--channel=<channel>]
+		 * : Channel. Default: stable.
+		 *
+		 * [--note=<text>]
+		 * : Short note.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-rollout-start
+		 */
+		public function framework_rollout_start($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_rollout_start($assoc_args));
+		}
+
+		/**
+		 * Resume a paused framework rollout campaign (after retrying or accepting the failed targets).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --campaign=<uid>
+		 * : Campaign UID.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-rollout-resume
+		 */
+		public function framework_rollout_resume($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_rollout_resume($assoc_args));
+		}
+
+		/**
+		 * Reset a failed target in a framework rollout campaign to pending so the driver re-attempts it.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --campaign=<uid>
+		 * : Campaign UID.
+		 *
+		 * --target=<environment_id>
+		 * : The failed target environment to retry.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-rollout-retry
+		 */
+		public function framework_rollout_retry($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_rollout_retry($assoc_args));
+		}
+
+		/**
+		 * Advance a framework rollout campaign one re-entrant step (build → seal → rollout → verify per target).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --campaign=<uid>
+		 * : Campaign UID from framework-rollout-start.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-rollout-advance
+		 */
+		public function framework_rollout_advance($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_rollout_advance($assoc_args));
+		}
+
+		/**
+		 * Show one framework rollout campaign's status (per-target release/rollout state).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --campaign=<uid>
+		 * : Campaign UID.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-rollout
+		 */
+		public function framework_rollout($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_rollout($assoc_args));
+		}
+
+		/**
+		 * List framework rollout campaigns.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--agency=<id>]
+		 * : Restrict to one agency.
+		 *
+		 * [--limit=<number>]
+		 * : Maximum rows. Default: 50; maximum: 500.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-rollouts
+		 */
+		public function framework_rollouts($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_rollouts($assoc_args));
+		}
+
+		/**
+		 * Withdraw a running framework rollout campaign (withdraws each target's in-flight release/rollout; landed changes are not rolled back here — use reviewed rollback).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --campaign=<uid>
+		 * : Campaign UID.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand framework-rollout-withdraw
+		 */
+		public function framework_rollout_withdraw($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::framework_rollout_withdraw($assoc_args));
 		}
 
 		/**
@@ -2613,6 +3611,168 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		}
 
 		/**
+		 * Set a maintenance-freeze window on an environment (suppresses new applies
+		 * while active; the connector apply gate stays authoritative).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --environment=<id>
+		 * : Environment identifier.
+		 *
+		 * --from=<datetime>
+		 * : Window start, parsed as UTC (e.g. 2026-10-06T00:00:00Z).
+		 *
+		 * --until=<datetime>
+		 * : Window end (UTC); must be after --from.
+		 *
+		 * [--reason=<text>]
+		 * : Optional operator note.
+		 *
+		 * @subcommand freeze-set
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function freeze_set($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::freeze_set($assoc_args));
+		}
+
+		/**
+		 * Clear an environment's maintenance-freeze window.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --environment=<id>
+		 * : Environment identifier.
+		 *
+		 * @subcommand freeze-clear
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function freeze_clear($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::freeze_clear($assoc_args));
+		}
+
+		/**
+		 * Create or update an outbound notification channel (webhook or email).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --type=<type>
+		 * : webhook or email.
+		 *
+		 * --target=<target>
+		 * : An https URL (webhook, public host only) or an email address.
+		 *
+		 * [--channel=<uid>]
+		 * : Channel uid to update; a new channel is created when omitted.
+		 *
+		 * [--agency=<id>]
+		 * : Scope to one agency; omit for fleet-wide.
+		 *
+		 * [--events=<list>]
+		 * : Comma-separated event kinds; omit for all events.
+		 *
+		 * [--secret=<secret>]
+		 * : Optional webhook HMAC secret (signs the X-DBVC-Signature header).
+		 *
+		 * [--disabled]
+		 * : Create the channel disabled.
+		 *
+		 * @subcommand notification-channel-set
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function notification_channel_set($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::notification_channel_set($assoc_args));
+		}
+
+		/**
+		 * Delete a notification channel.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --channel=<uid>
+		 * : Channel uid.
+		 *
+		 * @subcommand notification-channel-delete
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function notification_channel_delete($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::notification_channel_delete($assoc_args));
+		}
+
+		/**
+		 * List notification channels (secrets masked).
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--agency=<id>]
+		 * : Filter by agency.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function notifications($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::notifications($assoc_args));
+		}
+
+		/**
+		 * Read the notification delivery log.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--status=<status>]
+		 * : Filter by status (pending|sent|failed|skipped).
+		 *
+		 * [--limit=<number>]
+		 * : Maximum rows. Default: 50; maximum: 500.
+		 *
+		 * @subcommand notification-log
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function notification_log($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::notification_log($assoc_args));
+		}
+
+		/**
+		 * Send pending notifications now.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--limit=<number>]
+		 * : Maximum rows to send. Default: 25; maximum: 500.
+		 *
+		 * @subcommand notification-flush
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function notification_flush($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::notification_flush($assoc_args));
+		}
+
+		/**
 		 * Release a held environment after review (revoked environments must re-enroll).
 		 *
 		 * ## OPTIONS
@@ -2647,6 +3807,34 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function hold($args, $assoc_args) {
 			unset($args);
 			$this->emit_json(DBVC_Agency_CLI_Inspector::hold($assoc_args));
+		}
+
+		/**
+		 * Move an environment to a different client (and optionally agency) so it can pair with that client's fleet.
+		 *
+		 * Two environments only compare and sync when they share the same agency AND client. Reassign before you
+		 * baseline or subscribe the environment; parity data keyed to the old client is left dormant, not migrated.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --environment=<id>
+		 * : Environment identifier.
+		 *
+		 * --client=<id>
+		 * : The client_id to move the environment to.
+		 *
+		 * [--agency=<id>]
+		 * : The agency_id to move to. Keeps the current agency when omitted.
+		 *
+		 * @subcommand environment-reassign
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function environment_reassign($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::environment_reassign($assoc_args));
 		}
 
 		/**

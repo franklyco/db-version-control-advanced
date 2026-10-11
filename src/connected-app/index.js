@@ -368,6 +368,67 @@ function Environments( { hub, notify, onChanged, onCompare } ) {
 		setBusy( '' );
 	};
 
+	const saveTags = async ( env ) => {
+		setBusy( `tags:${ env.environment_id }` );
+		try {
+			const result = await apiFetch( {
+				path: 'agency/environment-tag',
+				method: 'POST',
+				data: {
+					environment: env.environment_id,
+					tags: pending?.tags || '',
+					mode: 'set',
+				},
+			} );
+			notify(
+				'success',
+				sprintf(
+					/* translators: 1: environment id, 2: resulting tag list */
+					__( '%1$s tags: %2$s', 'dbvc' ),
+					result.environment_id || env.environment_id,
+					( result.tags || [] ).join( ', ' ) || __( '(none)', 'dbvc' )
+				)
+			);
+			setPending( null );
+			await load();
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const reassignClient = async ( env ) => {
+		const client = ( pending?.client || '' ).trim();
+		if ( ! client ) {
+			notify( 'error', __( 'Enter a client id.', 'dbvc' ) );
+			return;
+		}
+		setBusy( `reassign:${ env.environment_id }` );
+		try {
+			const result = await apiFetch( {
+				path: 'agency/environment-reassign',
+				method: 'POST',
+				data: { environment: env.environment_id, client },
+			} );
+			notify(
+				'success',
+				sprintf(
+					/* translators: 1: environment id, 2: client id */
+					__( '%1$s moved to client %2$s.', 'dbvc' ),
+					result.environment_id || env.environment_id,
+					result.client_id || client
+				)
+			);
+			setPending( null );
+			await load();
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
 	const createInvitation = async ( event ) => {
 		event.preventDefault();
 		if ( busy === 'invite' ) {
@@ -470,6 +531,89 @@ function Environments( { hub, notify, onChanged, onCompare } ) {
 					</div>
 				);
 			}
+			if ( pending.action === 'reassign' ) {
+				return (
+					<div className="dbvc-ce-rowconfirm">
+						<label
+							className="screen-reader-text"
+							htmlFor={ `dbvc-ce-client-${ env.environment_id }` }
+						>
+							{ __( 'New client id', 'dbvc' ) }
+						</label>
+						<input
+							id={ `dbvc-ce-client-${ env.environment_id }` }
+							type="text"
+							maxLength={ 64 }
+							placeholder={ __( 'client id', 'dbvc' ) }
+							value={ pending.client }
+							onChange={ ( e ) =>
+								setPending( {
+									...pending,
+									client: e.target.value,
+								} )
+							}
+						/>
+						<button
+							type="button"
+							className="btn btn--small btn--primary"
+							disabled={ busy === key( 'reassign' ) }
+							onClick={ () => reassignClient( env ) }
+						>
+							{ __( 'Reassign', 'dbvc' ) }
+						</button>
+						<button
+							type="button"
+							className="btn btn--small btn--ghost"
+							onClick={ () => setPending( null ) }
+						>
+							{ __( 'Cancel', 'dbvc' ) }
+						</button>
+					</div>
+				);
+			}
+			if ( pending.action === 'tags' ) {
+				return (
+					<div className="dbvc-ce-rowconfirm">
+						<label
+							className="screen-reader-text"
+							htmlFor={ `dbvc-ce-tags-${ env.environment_id }` }
+						>
+							{ __( 'Segment tags', 'dbvc' ) }
+						</label>
+						<input
+							id={ `dbvc-ce-tags-${ env.environment_id }` }
+							type="text"
+							maxLength={ 400 }
+							placeholder={ __(
+								'tags, comma-separated (e.g. production, dental)',
+								'dbvc'
+							) }
+							value={ pending.tags }
+							onChange={ ( e ) =>
+								setPending( {
+									...pending,
+									tags: e.target.value,
+								} )
+							}
+						/>
+						<button
+							type="button"
+							className="btn btn--small btn--primary"
+							disabled={ busy === key( 'tags' ) }
+							onClick={ () => saveTags( env ) }
+						>
+							{ __( 'Save tags', 'dbvc' ) }
+						</button>
+						<button
+							type="button"
+							className="btn btn--small btn--ghost"
+							onClick={ () => setPending( null ) }
+						>
+							{ __( 'Cancel', 'dbvc' ) }
+						</button>
+					</div>
+				);
+			}
 			return (
 				<div
 					className="dbvc-ce-rowconfirm"
@@ -548,11 +692,53 @@ function Environments( { hub, notify, onChanged, onCompare } ) {
 				<button
 					type="button"
 					className="btn btn--small btn--ghost"
+					onClick={ () =>
+						setPending( {
+							id: env.environment_id,
+							action: 'reassign',
+							client: env.client_id || '',
+						} )
+					}
+				>
+					{ __( 'Reassign client…', 'dbvc' ) }
+				</button>
+				<button
+					type="button"
+					className="btn btn--small btn--ghost"
 					onClick={ () => onCompare( env.environment_id ) }
 				>
 					{ __( 'Compare…', 'dbvc' ) }
 				</button>
+				<button
+					type="button"
+					className="btn btn--small btn--ghost"
+					onClick={ () =>
+						setPending( {
+							id: env.environment_id,
+							action: 'tags',
+							tags: ( env.tags || [] ).join( ', ' ),
+						} )
+					}
+				>
+					{ __( 'Tags…', 'dbvc' ) }
+				</button>
 			</>
+		);
+	};
+
+	const tagChips = ( env ) => {
+		const tags = env.tags || [];
+		if ( tags.length === 0 ) {
+			return <span className="subtle">—</span>;
+		}
+		return (
+			<span className="dbvc-ce-tagchips">
+				{ tags.map( ( tag ) => (
+					<span className="dbvc-ce-tag" key={ tag }>
+						{ tag }
+					</span>
+				) ) }
+			</span>
 		);
 	};
 
@@ -587,6 +773,7 @@ function Environments( { hub, notify, onChanged, onCompare } ) {
 							<tr>
 								<th>{ __( 'Environment', 'dbvc' ) }</th>
 								<th>{ __( 'Client', 'dbvc' ) }</th>
+								<th>{ __( 'Segments', 'dbvc' ) }</th>
 								<th>{ __( 'Status', 'dbvc' ) }</th>
 								<th>{ __( 'Epoch', 'dbvc' ) }</th>
 								<th>{ __( 'Last contact', 'dbvc' ) }</th>
@@ -623,6 +810,7 @@ function Environments( { hub, notify, onChanged, onCompare } ) {
 											) }
 										</td>
 										<td>{ env.client_id }</td>
+										<td>{ tagChips( env ) }</td>
 										<td>
 											<Badge state={ env.status } />{ ' ' }
 											{ env.hold_reason && (
@@ -1238,6 +1426,7 @@ function Compare( {
 	const [ filter, setFilter ] = useState( '' );
 	const [ busy, setBusy ] = useState( '' );
 	const [ linking, setLinking ] = useState( null ); // { key, target_uid }
+	const [ overriding, setOverriding ] = useState( null ); // { key } lock rationale form
 	const [ drawer, setDrawer ] = useState( null );
 	const [ selection, setSelection ] = useState( {} ); // key → { domain, instance_uid }
 	const [ releaseNote, setReleaseNote ] = useState( '' );
@@ -1611,6 +1800,31 @@ function Compare( {
 											</td>
 											<td>
 												<Badge state={ row.state } />
+												{ row.target_override && (
+													<span
+														style={ {
+															display: 'block',
+															marginTop: 2,
+														} }
+													>
+														<Badge
+															state={
+																row.target_override
+															}
+														>
+															{ row.target_override ===
+															'needs_rebase_review'
+																? __(
+																		'Locked · needs review',
+																		'dbvc'
+																  )
+																: __(
+																		'Locked · client customization',
+																		'dbvc'
+																  ) }
+														</Badge>
+													</span>
+												) }
 												{ row.reasons && (
 													<span
 														className="subtle"
@@ -1910,6 +2124,121 @@ function Compare( {
 																	) }
 																</button>
 															) }
+														{ ( row.target_override ===
+															'approved' ||
+															row.target_override ===
+																'needs_rebase_review' ) && (
+															<button
+																type="button"
+																className="btn btn--small btn--ghost"
+																disabled={
+																	busy ===
+																	`override:${ key }`
+																}
+																onClick={ () =>
+																	act(
+																		`override:${ key }`,
+																		'agency/override-detach',
+																		{
+																			environment:
+																				target,
+																			domain: row.domain,
+																			instance:
+																				row.target_instance_uid,
+																			definition:
+																				row.target_override_definition,
+																		},
+																		() =>
+																			__(
+																				'Unlocked — the object rejoins parity.',
+																				'dbvc'
+																			)
+																	)
+																}
+															>
+																{ __(
+																	'Unlock',
+																	'dbvc'
+																) }
+															</button>
+														) }
+														{ ! row.target_override &&
+															row.target_exists ===
+																'yes' &&
+															row.state !==
+																'synchronized' &&
+															row.state !==
+																'unknown' &&
+															( overriding &&
+															overriding.key ===
+																key ? (
+																<NoteConfirm
+																	id={ `dbvc-ce-lock-${ row.source_instance_uid }` }
+																	label={ __(
+																		'Why is this client customization allowed?',
+																		'dbvc'
+																	) }
+																	placeholder={ __(
+																		'rationale (required)',
+																		'dbvc'
+																	) }
+																	action={ __(
+																		'Lock',
+																		'dbvc'
+																	) }
+																	busy={
+																		busy ===
+																		`override:${ key }`
+																	}
+																	onConfirm={ async (
+																		note
+																	) => {
+																		await act(
+																			`override:${ key }`,
+																			'agency/override-approve',
+																			{
+																				environment:
+																					target,
+																				domain: row.domain,
+																				instance:
+																					row.target_instance_uid,
+																				rationale:
+																					note,
+																			},
+																			() =>
+																				__(
+																					'Locked — client customization protected.',
+																					'dbvc'
+																				)
+																		);
+																		setOverriding(
+																			null
+																		);
+																	} }
+																	onCancel={ () =>
+																		setOverriding(
+																			null
+																		)
+																	}
+																/>
+															) : (
+																<button
+																	type="button"
+																	className="btn btn--small btn--ghost"
+																	onClick={ () =>
+																		setOverriding(
+																			{
+																				key,
+																			}
+																		)
+																	}
+																>
+																	{ __(
+																		'Lock…',
+																		'dbvc'
+																	) }
+																</button>
+															) ) }
 													</>
 												) }
 											</td>
@@ -3500,25 +3829,57 @@ function ReceiptItem( { item } ) {
 							{ item.patch.strategy }
 							{ Array.isArray( item.patch.changed_paths ) &&
 								item.patch.changed_paths.length > 0 && (
-									<span className="subtle">
-										{ ' ' }
-										·{ ' ' }
+									<div style={ { marginTop: 4 } }>
 										{ item.patch.changed_paths
-											.slice( 0, 8 )
-											.map( ( p ) =>
-												typeof p === 'string'
-													? p
-													: `${ p.path }${
-															p.operation
-																? ` (${ p.operation })`
-																: ''
-													  }`
-											)
-											.join( ', ' ) }
-										{ item.patch.changed_paths.length > 8
-											? '…'
-											: '' }
-									</span>
+											.slice( 0, 12 )
+											.map( ( p, i ) => {
+												const path =
+													typeof p === 'string'
+														? p
+														: p.path;
+												const value =
+													typeof p === 'object'
+														? p.after_value
+														: undefined;
+												return (
+													<span
+														key={ i }
+														style={ {
+															display: 'block',
+														} }
+													>
+														<code>{ path }</code>
+														{ typeof p ===
+															'object' &&
+															p.operation && (
+																<span className="subtle">
+																	{ ' ' }
+																	({ ' ' }
+																	{
+																		p.operation
+																	}
+																	)
+																</span>
+															) }
+														{ value !== undefined &&
+															value !== null && (
+																<>
+																	{ ' → ' }
+																	<span className="subtle">
+																		{ String(
+																			value
+																		) }
+																	</span>
+																</>
+															) }
+													</span>
+												);
+											} ) }
+										{ item.patch.changed_paths.length >
+											12 && (
+											<span className="subtle">…</span>
+										) }
+									</div>
 								) }
 						</dd>
 					</>
@@ -7688,6 +8049,1248 @@ function Subscriptions( { notify, onChanged } ) {
 }
 /* ---------- App ---------- */
 
+// Fleet rollup states -> a Badge state token (for tone) + a plain-language label.
+const FLEET_STATE_BADGE = {
+	in_sync: 'synchronized',
+	update_available: 'behind_version',
+	protected: 'approved',
+	needs_review: 'needs_rebase_review',
+	not_reporting: 'offline',
+};
+
+function fleetStateLabel( state ) {
+	switch ( state ) {
+		case 'in_sync':
+			return __( 'In sync', 'dbvc' );
+		case 'update_available':
+			return __( 'Update available', 'dbvc' );
+		case 'protected':
+			return __( 'Client customization', 'dbvc' );
+		case 'needs_review':
+			return __( 'Needs review', 'dbvc' );
+		case 'not_reporting':
+			return __( 'Not reporting', 'dbvc' );
+		default:
+			return state;
+	}
+}
+
+// Framework version cell: adopted, "adopted → desired" when behind, or — when
+// the site has no framework subscription. Kept flat to avoid nested ternaries.
+function frameworkVersionCell( framework ) {
+	if ( ! framework ) {
+		return <span className="subtle">—</span>;
+	}
+	const adopted = framework.adopted_version || '—';
+	if ( ! framework.behind ) {
+		return adopted;
+	}
+	return (
+		<>
+			{ adopted }{ ' ' }
+			<span className="subtle">
+				→ { framework.desired_version || '—' }
+			</span>
+		</>
+	);
+}
+
+/**
+ * Hub Fleet dashboard: a read-only, per-site rollup of the whole fleet — summary
+ * tiles plus one row per enrolled client site with its framework version,
+ * composed status, protected (locked) client work and last contact. Composed
+ * from agency/fleet; visibility only (the push/resolve actions live on Compare
+ * and Framework, and light up with the publish→rollout slice).
+ *
+ * @param {Object}   props
+ * @param {Function} props.notify
+ * @param {Function} props.onCompare Open Compare with this site as the source.
+ */
+function Fleet( { notify, onCompare } ) {
+	const [ data, setData ] = useState( null );
+	const [ loading, setLoading ] = useState( true );
+	const [ segments, setSegments ] = useState( [] );
+	const [ segment, setSegment ] = useState( '' );
+
+	const load = useCallback( async () => {
+		setLoading( true );
+		try {
+			const path =
+				'agency/fleet' +
+				( segment
+					? `?segment=${ encodeURIComponent( segment ) }`
+					: '' );
+			setData( await apiFetch( { path } ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setLoading( false );
+	}, [ notify, segment ] );
+
+	useEffect( () => {
+		let active = true;
+		apiFetch( { path: 'agency/segments' } )
+			.then( ( res ) => {
+				if ( active ) {
+					setSegments( res.segments || [] );
+				}
+			} )
+			.catch( () => {} );
+		return () => {
+			active = false;
+		};
+	}, [] );
+
+	useEffect( () => {
+		load();
+	}, [ load ] );
+
+	const summary = data?.summary || {};
+	const sites = data?.sites || [];
+
+	return (
+		<div className="dbvc-ce">
+			<div className="dbvc-ce-panel__head">
+				<h2>{ __( 'Fleet', 'dbvc' ) }</h2>
+				<span className="spacer" />
+				<label
+					className="screen-reader-text"
+					htmlFor="dbvc-ce-fleet-segment"
+				>
+					{ __( 'Filter by segment', 'dbvc' ) }
+				</label>
+				<select
+					id="dbvc-ce-fleet-segment"
+					value={ segment }
+					onChange={ ( e ) => setSegment( e.target.value ) }
+				>
+					<option value="">{ __( 'All segments', 'dbvc' ) }</option>
+					{ segments.map( ( s ) => (
+						<option key={ s.tag } value={ s.tag }>
+							{ s.tag } ({ s.environments })
+						</option>
+					) ) }
+				</select>
+				<button
+					type="button"
+					className="btn btn--small btn--ghost"
+					onClick={ load }
+					disabled={ loading }
+				>
+					{ __( 'Refresh', 'dbvc' ) }
+				</button>
+			</div>
+			<p className="description">
+				{ __(
+					'Every connected client site at a glance — which are current with the framework, which carry protected client work, and which need attention.',
+					'dbvc'
+				) }
+			</p>
+
+			<div className="dbvc-ce-stats">
+				<StatCard
+					label={ __( 'Client sites', 'dbvc' ) }
+					value={ summary.sites || 0 }
+				/>
+				<StatCard
+					label={ __( 'In sync', 'dbvc' ) }
+					value={ summary.in_sync || 0 }
+				/>
+				<StatCard
+					label={ __( 'Update available', 'dbvc' ) }
+					value={ summary.update_available || 0 }
+				/>
+				<StatCard
+					label={ __( 'Protected customizations', 'dbvc' ) }
+					value={ summary.protected || 0 }
+				/>
+				<StatCard
+					label={ __( 'Needs review', 'dbvc' ) }
+					value={ summary.needs_review || 0 }
+				/>
+				<StatCard
+					label={ __( 'Not reporting', 'dbvc' ) }
+					value={ summary.not_reporting || 0 }
+				/>
+			</div>
+
+			{ loading && ! data && (
+				<p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>
+			) }
+			{ data && sites.length === 0 && (
+				<p className="dbvc-ce-empty">
+					{ __( 'No enrolled client sites yet.', 'dbvc' ) }
+				</p>
+			) }
+			{ sites.length > 0 && (
+				<div className="dbvc-tools-panel">
+					<div className="tablewrap">
+						<table className="widefat striped">
+							<thead>
+								<tr>
+									<th>{ __( 'Client site', 'dbvc' ) }</th>
+									<th>
+										{ __( 'Framework version', 'dbvc' ) }
+									</th>
+									<th>
+										{ __( 'Status', 'dbvc' ) }{ ' ' }
+										<span
+											className="tech"
+											title="framework + environment comparison state"
+										>
+											ⓘ
+										</span>
+									</th>
+									<th>
+										{ __(
+											'Client customizations',
+											'dbvc'
+										) }
+									</th>
+									<th>{ __( 'Last reported', 'dbvc' ) }</th>
+									<th></th>
+								</tr>
+							</thead>
+							<tbody>
+								{ sites.map( ( site ) => (
+									<tr key={ site.environment_id }>
+										<td>
+											<b>
+												{ site.label ||
+													site.environment_id }
+											</b>
+											<div className="subtle">
+												<code>
+													{ site.environment_id }
+												</code>{ ' ' }
+												· { site.client_id }
+											</div>
+											{ ( site.tags || [] ).length >
+												0 && (
+												<span className="dbvc-ce-tagchips">
+													{ site.tags.map(
+														( tag ) => (
+															<span
+																className="dbvc-ce-tag"
+																key={ tag }
+															>
+																{ tag }
+															</span>
+														)
+													) }
+												</span>
+											) }
+										</td>
+										<td>
+											{ frameworkVersionCell(
+												site.framework
+											) }
+										</td>
+										<td>
+											<Badge
+												state={
+													FLEET_STATE_BADGE[
+														site.state
+													] || 'unknown'
+												}
+											>
+												{ fleetStateLabel(
+													site.state
+												) }
+											</Badge>
+										</td>
+										<td>
+											{ site.locked > 0 ? (
+												<>
+													{ sprintf(
+														/* translators: %d: number of locked (approved-override) objects */
+														_n(
+															'%d locked',
+															'%d locked',
+															site.locked,
+															'dbvc'
+														),
+														site.locked
+													) }
+													{ site.needs_rebase_review >
+														0 && (
+														<span className="subtle">
+															{ ' ' }
+															·{ ' ' }
+															{ sprintf(
+																/* translators: %d: number of overrides needing rebase review */
+																__(
+																	'%d need review',
+																	'dbvc'
+																),
+																site.needs_rebase_review
+															) }
+														</span>
+													) }
+												</>
+											) : (
+												<span className="subtle">
+													—
+												</span>
+											) }
+										</td>
+										<td>
+											<span
+												title={ absoluteTime(
+													site.last_contact_at
+												) }
+											>
+												{ relative(
+													site.last_contact_at
+												) }
+											</span>
+											{ ! site.fresh && (
+												<span className="subtle">
+													{ ' ' }
+													· { __( 'stale', 'dbvc' ) }
+												</span>
+											) }
+										</td>
+										<td className="dbvc-ce-actions">
+											<button
+												type="button"
+												className="btn btn--small btn--ghost"
+												onClick={ () =>
+													onCompare(
+														site.environment_id
+													)
+												}
+											>
+												{ __( 'Compare', 'dbvc' ) }
+											</button>
+										</td>
+									</tr>
+								) ) }
+							</tbody>
+						</table>
+					</div>
+				</div>
+			) }
+			{ data && (
+				<p className="dbvc-ce-empty" style={ { paddingBottom: 0 } }>
+					{ data.note }
+				</p>
+			) }
+		</div>
+	);
+}
+
+// Plain-language labels for the publish flow (technical terms stay in the API).
+const PLAN_ACTION_BADGE = {
+	create: 'create',
+	replace: 'behind_version',
+	skip_override: 'approved',
+	up_to_date: 'synchronized',
+	blocked: 'offline',
+	attention: 'needs_rebase_review',
+};
+
+function planActionLabel( action ) {
+	switch ( action ) {
+		case 'create':
+			return __( 'New object', 'dbvc' );
+		case 'replace':
+			return __( 'Update', 'dbvc' );
+		case 'skip_override':
+			return __( 'Kept (locked)', 'dbvc' );
+		case 'up_to_date':
+			return __( 'In sync', 'dbvc' );
+		case 'blocked':
+			return __( 'Not reporting', 'dbvc' );
+		default:
+			return __( 'Needs attention', 'dbvc' );
+	}
+}
+
+const CAMPAIGN_STATE_BADGE = {
+	running: 'preparing',
+	paused: 'needs_rebase_review',
+	completed: 'synchronized',
+	failed: 'offline',
+	withdrawn: 'unknown',
+};
+
+function campaignStateLabel( state ) {
+	switch ( state ) {
+		case 'running':
+			return __( 'In progress', 'dbvc' );
+		case 'paused':
+			return __( 'Paused', 'dbvc' );
+		case 'completed':
+			return __( 'Complete', 'dbvc' );
+		case 'failed':
+			return __( 'Failed', 'dbvc' );
+		case 'withdrawn':
+			return __( 'Withdrawn', 'dbvc' );
+		default:
+			return state;
+	}
+}
+
+const CAMPAIGN_TARGET_BADGE = {
+	pending: 'unknown',
+	release_open: 'preparing',
+	awaiting_payloads: 'preparing',
+	rollout_running: 'preparing',
+	succeeded: 'synchronized',
+	skipped: 'approved',
+	failed: 'offline',
+};
+
+function campaignTargetLabel( state ) {
+	switch ( state ) {
+		case 'pending':
+			return __( 'Queued', 'dbvc' );
+		case 'release_open':
+		case 'awaiting_payloads':
+			return __( 'Preparing', 'dbvc' );
+		case 'rollout_running':
+			return __( 'Applying', 'dbvc' );
+		case 'succeeded':
+			return __( 'Done', 'dbvc' );
+		case 'skipped':
+			return __( 'Skipped', 'dbvc' );
+		case 'failed':
+			return __( 'Failed', 'dbvc' );
+		default:
+			return state;
+	}
+}
+
+const PUBLISH_STEPS = [
+	{ n: 1, label: __( 'What changed', 'dbvc' ) },
+	{ n: 2, label: __( 'Who gets it', 'dbvc' ) },
+	{ n: 3, label: __( 'Impact preview', 'dbvc' ) },
+	{ n: 4, label: __( 'Review & push', 'dbvc' ) },
+];
+
+/**
+ * Hub "Publish to fleet" wizard: pick a published framework version's objects,
+ * choose the fleet (all at once or staged canary-first), preview the impact via
+ * agency/framework-plan (approved client work is kept, never overwritten), then
+ * push through agency/framework-rollout-start and watch the campaign. Wires the
+ * publish→plan→rollout endpoints; it applies nothing until the operator pushes.
+ *
+ * @param {Object}   props
+ * @param {Function} props.notify
+ * @param {Function} props.onChanged
+ */
+function Publish( { notify, onChanged } ) {
+	const [ step, setStep ] = useState( 1 );
+	const [ definitions, setDefinitions ] = useState( [] );
+	const [ selected, setSelected ] = useState( {} );
+	const [ loading, setLoading ] = useState( true );
+	const [ plan, setPlan ] = useState( null );
+	const [ staged, setStaged ] = useState( false );
+	const [ cohortOf, setCohortOf ] = useState( {} );
+	const [ segment, setSegment ] = useState( '' );
+	const [ segments, setSegments ] = useState( [] );
+	const [ campaignUid, setCampaignUid ] = useState( '' );
+	const [ campaign, setCampaign ] = useState( null );
+	const [ busy, setBusy ] = useState( '' );
+
+	useEffect( () => {
+		let active = true;
+		apiFetch( { path: 'agency/segments' } )
+			.then( ( res ) => {
+				if ( active ) {
+					setSegments( res.segments || [] );
+				}
+			} )
+			.catch( () => {} );
+		return () => {
+			active = false;
+		};
+	}, [] );
+
+	const loadDefinitions = useCallback( async () => {
+		setLoading( true );
+		try {
+			const res = await apiFetch( {
+				path: 'agency/definitions?limit=200',
+			} );
+			setDefinitions(
+				( res.definitions || [] ).filter(
+					( def ) => def.desired === 'yes'
+				)
+			);
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setLoading( false );
+	}, [ notify ] );
+
+	useEffect( () => {
+		loadDefinitions();
+	}, [ loadDefinitions ] );
+
+	const selectedUids = Object.keys( selected ).filter(
+		( uid ) => selected[ uid ]
+	);
+
+	const run = async ( key, path, data, message, onOk ) => {
+		setBusy( key );
+		try {
+			const res = await apiFetch( { path, method: 'POST', data } );
+			notify( 'success', message( res ) );
+			if ( onOk ) {
+				onOk( res );
+			}
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const loadPlan = async () => {
+		setBusy( 'plan' );
+		try {
+			const res = await apiFetch( {
+				path:
+					`agency/framework-plan?definitions=${ encodeURIComponent(
+						selectedUids.join( ',' )
+					) }` +
+					( segment
+						? `&segment=${ encodeURIComponent( segment ) }`
+						: '' ),
+			} );
+			setPlan( res );
+			setStep( 3 );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const orderedCohorts = () => {
+		const targets = plan?.targets || [];
+		const byIndex = {};
+		targets.forEach( ( target ) => {
+			const idx = Number( cohortOf[ target.environment_id ] || 0 );
+			byIndex[ idx ] = byIndex[ idx ] || [];
+			byIndex[ idx ].push( target.environment_id );
+		} );
+		return Object.keys( byIndex )
+			.map( Number )
+			.sort( ( a, b ) => a - b )
+			.map( ( i ) => byIndex[ i ] );
+	};
+
+	const push = () => {
+		const data = { definitions: selectedUids.join( ',' ) };
+		if ( staged ) {
+			data.cohorts = JSON.stringify( orderedCohorts() );
+		} else if ( segment ) {
+			data.segment = segment;
+		}
+		run(
+			'push',
+			'agency/framework-rollout-start',
+			data,
+			( res ) =>
+				sprintf(
+					/* translators: %d: number of target sites */
+					_n(
+						'Publishing to %d site…',
+						'Publishing to %d sites…',
+						res.summary?.targets || 0,
+						'dbvc'
+					),
+					res.summary?.targets || 0
+				),
+			( res ) => {
+				setCampaignUid( res.campaign_uid );
+				setCampaign( res );
+				setStep( 5 );
+			}
+		);
+	};
+
+	const loadCampaign = async () => {
+		if ( ! campaignUid ) {
+			return;
+		}
+		try {
+			setCampaign(
+				await apiFetch( {
+					path: `agency/framework-rollout?campaign=${ encodeURIComponent(
+						campaignUid
+					) }`,
+				} )
+			);
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+
+	const campaignAction = ( key, path, data, message ) =>
+		run( key, path, { campaign: campaignUid, ...data }, message, () =>
+			loadCampaign()
+		);
+
+	const summary = plan?.summary || {};
+	const restart = () => {
+		setStep( 1 );
+		setSelected( {} );
+		setPlan( null );
+		setStaged( false );
+		setCohortOf( {} );
+		setCampaignUid( '' );
+		setCampaign( null );
+		loadDefinitions();
+	};
+
+	return (
+		<div className="dbvc-ce">
+			<div className="dbvc-ce-panel__head">
+				<h2>{ __( 'Publish to fleet', 'dbvc' ) }</h2>
+				{ step === 5 && (
+					<button
+						type="button"
+						className="btn btn--small btn--ghost"
+						onClick={ restart }
+					>
+						{ __( 'New publish', 'dbvc' ) }
+					</button>
+				) }
+			</div>
+			<p className="description">
+				{ __(
+					'Push an official framework version to every connected site under this agency in one pass. Approved client customizations are kept and flagged for review — never overwritten.',
+					'dbvc'
+				) }
+			</p>
+
+			{ step < 5 && (
+				<ol
+					className="dbvc-ce-steps"
+					aria-label={ __( 'Steps', 'dbvc' ) }
+				>
+					{ PUBLISH_STEPS.map( ( item ) => (
+						<li
+							key={ item.n }
+							aria-current={
+								step === item.n ? 'step' : undefined
+							}
+							className={ publishStepClass( step, item.n ) }
+						>
+							<span className="num">{ item.n }</span>
+							{ item.label }
+						</li>
+					) ) }
+				</ol>
+			) }
+
+			{ loading && step === 1 && (
+				<p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>
+			) }
+
+			{ step === 1 && ! loading && (
+				<PublishStepObjects
+					definitions={ definitions }
+					selected={ selected }
+					setSelected={ setSelected }
+					onNext={ () => setStep( 2 ) }
+				/>
+			) }
+
+			{ step === 2 && (
+				<PublishStepAudience
+					staged={ staged }
+					setStaged={ setStaged }
+					segment={ segment }
+					setSegment={ setSegment }
+					segments={ segments }
+					onBack={ () => setStep( 1 ) }
+					onNext={ loadPlan }
+					busy={ busy }
+				/>
+			) }
+
+			{ step === 3 && plan && (
+				<PublishStepImpact
+					plan={ plan }
+					summary={ summary }
+					staged={ staged }
+					cohortOf={ cohortOf }
+					setCohortOf={ setCohortOf }
+					onBack={ () => setStep( 2 ) }
+					onNext={ () => setStep( 4 ) }
+				/>
+			) }
+
+			{ step === 4 && plan && (
+				<PublishStepReview
+					summary={ summary }
+					busy={ busy }
+					onBack={ () => setStep( 3 ) }
+					onPush={ push }
+				/>
+			) }
+
+			{ step === 5 && (
+				<PublishProgress
+					campaign={ campaign }
+					busy={ busy }
+					onReload={ loadCampaign }
+					onAdvance={ () =>
+						campaignAction(
+							'advance',
+							'agency/framework-rollout-advance',
+							{},
+							() => __( 'Advanced.', 'dbvc' )
+						)
+					}
+					onResume={ () =>
+						campaignAction(
+							'resume',
+							'agency/framework-rollout-resume',
+							{},
+							() => __( 'Resumed.', 'dbvc' )
+						)
+					}
+					onRetry={ ( target ) =>
+						campaignAction(
+							`retry:${ target }`,
+							'agency/framework-rollout-retry',
+							{ target },
+							() =>
+								sprintf(
+									/* translators: %s: target environment id */
+									__( 'Target %s reset to queued.', 'dbvc' ),
+									target
+								)
+						)
+					}
+					onWithdraw={ () =>
+						campaignAction(
+							'withdraw',
+							'agency/framework-rollout-withdraw',
+							{},
+							() => __( 'Campaign withdrawn.', 'dbvc' )
+						)
+					}
+				/>
+			) }
+		</div>
+	);
+}
+
+function publishStepClass( step, n ) {
+	if ( step === n ) {
+		return 'is-active';
+	}
+	return step > n ? 'is-done' : '';
+}
+
+function PublishStepObjects( { definitions, selected, setSelected, onNext } ) {
+	const toggle = ( uid ) =>
+		setSelected( { ...selected, [ uid ]: ! selected[ uid ] } );
+	const count = Object.keys( selected ).filter(
+		( uid ) => selected[ uid ]
+	).length;
+	return (
+		<div className="dbvc-tools-panel">
+			<h3>{ __( 'What changed', 'dbvc' ) }</h3>
+			<p className="sub">
+				{ __(
+					'Pick the framework objects to include. Only versions marked desired are shown; new objects are created on sites that lack them.',
+					'dbvc'
+				) }
+			</p>
+			{ definitions.length === 0 && (
+				<p className="dbvc-ce-empty">
+					{ __(
+						'No framework version is marked desired yet. Publish and desire one on the Framework tab first.',
+						'dbvc'
+					) }
+				</p>
+			) }
+			{ definitions.map( ( def ) => (
+				<label
+					className="dbvc-ce-objrow"
+					key={ def.definition_uid }
+					htmlFor={ `dbvc-pub-obj-${ def.definition_uid }` }
+				>
+					<input
+						id={ `dbvc-pub-obj-${ def.definition_uid }` }
+						type="checkbox"
+						checked={ !! selected[ def.definition_uid ] }
+						onChange={ () => toggle( def.definition_uid ) }
+					/>
+					<b>{ def.definition_uid }</b>
+					<small>
+						{ def.domain } · v{ def.version } · { def.profile }
+					</small>
+				</label>
+			) ) }
+			<div className="dbvc-ce-wizfoot">
+				<span className="spacer" />
+				<button
+					type="button"
+					className="btn btn--primary"
+					disabled={ count === 0 }
+					onClick={ onNext }
+				>
+					{ __( 'Continue', 'dbvc' ) } →
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function PublishStepAudience( {
+	staged,
+	setStaged,
+	segment,
+	setSegment,
+	segments,
+	onBack,
+	onNext,
+	busy,
+} ) {
+	const bySegment = ! staged && segment !== '';
+	return (
+		<div className="dbvc-tools-panel">
+			<h3>{ __( 'Who gets it', 'dbvc' ) }</h3>
+			<p className="sub">
+				{ __(
+					'The push reaches subscribing sites under this agency. Choose whether to send it all at once, by segment, or in stages.',
+					'dbvc'
+				) }
+			</p>
+			<label className="dbvc-ce-aud" htmlFor="dbvc-pub-aud-all">
+				<input
+					id="dbvc-pub-aud-all"
+					type="radio"
+					name="dbvc-aud"
+					checked={ ! staged && ! bySegment }
+					onChange={ () => {
+						setStaged( false );
+						setSegment( '' );
+					} }
+				/>
+				<b>{ __( 'All sites at once', 'dbvc' ) }</b>
+				<small>
+					{ __( 'One cohort — every subscriber together.', 'dbvc' ) }
+				</small>
+			</label>
+			<label className="dbvc-ce-aud" htmlFor="dbvc-pub-aud-segment">
+				<input
+					id="dbvc-pub-aud-segment"
+					type="radio"
+					name="dbvc-aud"
+					checked={ bySegment }
+					disabled={ segments.length === 0 }
+					onChange={ () => {
+						setStaged( false );
+						setSegment( segments[ 0 ] ? segments[ 0 ].tag : '' );
+					} }
+				/>
+				<b>{ __( 'By segment', 'dbvc' ) }</b>
+				<small>
+					{ segments.length === 0
+						? __(
+								'No segments yet — tag sites on the Environments tab.',
+								'dbvc'
+						  )
+						: __(
+								'Every site carrying a tag, across clients.',
+								'dbvc'
+						  ) }
+				</small>
+				{ bySegment && (
+					<select
+						value={ segment }
+						onChange={ ( e ) => setSegment( e.target.value ) }
+						style={ { marginLeft: 22, marginTop: 4 } }
+					>
+						{ segments.map( ( s ) => (
+							<option key={ s.tag } value={ s.tag }>
+								{ s.tag } ({ s.environments })
+							</option>
+						) ) }
+					</select>
+				) }
+			</label>
+			<label className="dbvc-ce-aud" htmlFor="dbvc-pub-aud-staged">
+				<input
+					id="dbvc-pub-aud-staged"
+					type="radio"
+					name="dbvc-aud"
+					checked={ staged }
+					onChange={ () => {
+						setStaged( true );
+						setSegment( '' );
+					} }
+				/>
+				<b>{ __( 'Staged rollout (canary first)', 'dbvc' ) }</b>
+				<small>
+					{ __(
+						'Assign sites to ordered cohorts on the next step; the fleet pauses if a cohort fails.',
+						'dbvc'
+					) }
+				</small>
+			</label>
+			<div className="dbvc-ce-wizfoot">
+				<button
+					type="button"
+					className="btn btn--ghost"
+					onClick={ onBack }
+				>
+					← { __( 'Back', 'dbvc' ) }
+				</button>
+				<span className="spacer" />
+				<button
+					type="button"
+					className="btn btn--primary"
+					disabled={ busy === 'plan' }
+					onClick={ onNext }
+				>
+					{ busy === 'plan'
+						? __( 'Checking…', 'dbvc' )
+						: __( 'Preview impact', 'dbvc' ) }{ ' ' }
+					→
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function PublishStepImpact( {
+	plan,
+	summary,
+	staged,
+	cohortOf,
+	setCohortOf,
+	onBack,
+	onNext,
+} ) {
+	const targets = plan.targets || [];
+	return (
+		<div className="dbvc-tools-panel">
+			<h3>{ __( 'Impact preview', 'dbvc' ) }</h3>
+			<p className="sub">
+				{ __(
+					'A dry run across the targeted sites — nothing is applied yet.',
+					'dbvc'
+				) }
+			</p>
+			<div className="dbvc-ce-stats">
+				<StatCard
+					label={ __( 'Sites', 'dbvc' ) }
+					value={ summary.targets || 0 }
+				/>
+				<StatCard
+					label={ __( 'Updates', 'dbvc' ) }
+					value={ summary.replace || 0 }
+				/>
+				<StatCard
+					label={ __( 'New objects', 'dbvc' ) }
+					value={ summary.create || 0 }
+				/>
+				<StatCard
+					label={ __( 'Kept (locked)', 'dbvc' ) }
+					value={ summary.skip_override || 0 }
+				/>
+			</div>
+			{ ( summary.skip_override || 0 ) > 0 && (
+				<div className="dbvc-inline-notice">
+					<p>
+						🛡{ ' ' }
+						{ sprintf(
+							/* translators: %d: number of protected objects */
+							_n(
+								'%d site keeps a protected client customization; its version stays as-is and is flagged Needs review. It will not be overwritten by this push.',
+								'%d sites keep a protected client customization; their versions stay as-is and are flagged Needs review. They will not be overwritten by this push.',
+								summary.skip_override || 0,
+								'dbvc'
+							),
+							summary.skip_override || 0
+						) }
+					</p>
+				</div>
+			) }
+			<div className="tablewrap">
+				<table className="widefat striped">
+					<thead>
+						<tr>
+							<th>{ __( 'Site', 'dbvc' ) }</th>
+							<th>{ __( 'What happens', 'dbvc' ) }</th>
+							{ staged && <th>{ __( 'Cohort', 'dbvc' ) }</th> }
+						</tr>
+					</thead>
+					<tbody>
+						{ targets.map( ( target ) => (
+							<tr key={ target.environment_id }>
+								<td>
+									<b>
+										{ target.label ||
+											target.environment_id }
+									</b>
+									<div className="subtle">
+										<code>{ target.environment_id }</code> ·{ ' ' }
+										{ target.client_id }
+									</div>
+								</td>
+								<td>
+									<PublishTargetActions target={ target } />
+								</td>
+								{ staged && (
+									<td>
+										<input
+											type="number"
+											min="0"
+											className="dbvc-ce-cohort-input"
+											value={
+												cohortOf[
+													target.environment_id
+												] || 0
+											}
+											onChange={ ( event ) =>
+												setCohortOf( {
+													...cohortOf,
+													[ target.environment_id ]:
+														event.target.value,
+												} )
+											}
+										/>
+									</td>
+								) }
+							</tr>
+						) ) }
+					</tbody>
+				</table>
+			</div>
+			<div className="dbvc-ce-wizfoot">
+				<button
+					type="button"
+					className="btn btn--ghost"
+					onClick={ onBack }
+				>
+					← { __( 'Back', 'dbvc' ) }
+				</button>
+				<span className="spacer" />
+				<button
+					type="button"
+					className="btn btn--primary"
+					onClick={ onNext }
+				>
+					{ __( 'Review & push', 'dbvc' ) } →
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function PublishTargetActions( { target } ) {
+	const items = ( target.items || [] ).filter(
+		( item ) => item.action !== 'up_to_date'
+	);
+	if ( items.length === 0 ) {
+		return <Badge state="synchronized">{ __( 'In sync', 'dbvc' ) }</Badge>;
+	}
+	return (
+		<span className="dbvc-ce-actionlist">
+			{ items.map( ( item ) => (
+				<Badge
+					key={ item.definition_uid }
+					state={ PLAN_ACTION_BADGE[ item.action ] || 'unknown' }
+				>
+					{ planActionLabel( item.action ) }
+				</Badge>
+			) ) }
+		</span>
+	);
+}
+
+function PublishStepReview( { summary, busy, onBack, onPush } ) {
+	const sites = summary.targets || 0;
+	return (
+		<div className="dbvc-tools-panel">
+			<h3>{ __( 'Review & push', 'dbvc' ) }</h3>
+			<p className="sub">
+				{ sprintf(
+					/* translators: 1: updates, 2: new objects, 3: kept */
+					__(
+						'%1$d updates · %2$d new objects · %3$d kept (locked). Approved client work is not touched.',
+						'dbvc'
+					),
+					summary.replace || 0,
+					summary.create || 0,
+					summary.skip_override || 0
+				) }
+			</p>
+			<div className="dbvc-ce-wizfoot">
+				<button
+					type="button"
+					className="btn btn--ghost"
+					onClick={ onBack }
+				>
+					← { __( 'Back', 'dbvc' ) }
+				</button>
+				<span className="spacer" />
+				<button
+					type="button"
+					className="btn btn--primary"
+					disabled={ busy === 'push' || sites === 0 }
+					onClick={ onPush }
+				>
+					{ busy === 'push'
+						? __( 'Pushing…', 'dbvc' )
+						: sprintf(
+								/* translators: %d: number of sites */
+								_n(
+									'Push to %d site',
+									'Push to %d sites',
+									sites,
+									'dbvc'
+								),
+								sites
+						  ) }
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function PublishProgress( {
+	campaign,
+	busy,
+	onReload,
+	onAdvance,
+	onResume,
+	onRetry,
+	onWithdraw,
+} ) {
+	if ( ! campaign ) {
+		return <p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>;
+	}
+	const targets = campaign.targets || [];
+	const isRunning = campaign.state === 'running';
+	const isPaused = campaign.state === 'paused';
+	return (
+		<div className="dbvc-tools-panel">
+			<div className="dbvc-ce-panel__head">
+				<h3>
+					{ __( 'Campaign', 'dbvc' ) }{ ' ' }
+					<Badge
+						state={
+							CAMPAIGN_STATE_BADGE[ campaign.state ] || 'unknown'
+						}
+					>
+						{ campaignStateLabel( campaign.state ) }
+					</Badge>
+				</h3>
+				<button
+					type="button"
+					className="btn btn--small btn--ghost"
+					onClick={ onReload }
+				>
+					{ __( 'Refresh', 'dbvc' ) }
+				</button>
+			</div>
+			<p className="subtle">
+				<code>{ campaign.campaign_uid }</code> · v{ campaign.version }
+			</p>
+			<div className="dbvc-ce-btnrow">
+				{ ( isRunning || isPaused ) && (
+					<button
+						type="button"
+						className="btn btn--small"
+						disabled={ busy === 'advance' }
+						onClick={ onAdvance }
+					>
+						{ __( 'Advance', 'dbvc' ) }
+					</button>
+				) }
+				{ isPaused && (
+					<button
+						type="button"
+						className="btn btn--small btn--primary"
+						disabled={ busy === 'resume' }
+						onClick={ onResume }
+					>
+						{ __( 'Resume', 'dbvc' ) }
+					</button>
+				) }
+				{ ( isRunning || isPaused ) && (
+					<button
+						type="button"
+						className="btn btn--small btn--ghost"
+						disabled={ busy === 'withdraw' }
+						onClick={ onWithdraw }
+					>
+						{ __( 'Withdraw', 'dbvc' ) }
+					</button>
+				) }
+			</div>
+			<div className="tablewrap">
+				<table className="widefat striped">
+					<thead>
+						<tr>
+							<th>{ __( 'Site', 'dbvc' ) }</th>
+							<th>{ __( 'Cohort', 'dbvc' ) }</th>
+							<th>{ __( 'State', 'dbvc' ) }</th>
+							<th>{ __( 'Detail', 'dbvc' ) }</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{ targets.map( ( target ) => (
+							<tr key={ target.target_environment_id }>
+								<td>
+									<code>
+										{ target.target_environment_id }
+									</code>
+								</td>
+								<td>{ target.cohort }</td>
+								<td>
+									<Badge
+										state={
+											CAMPAIGN_TARGET_BADGE[
+												target.state
+											] || 'unknown'
+										}
+									>
+										{ campaignTargetLabel( target.state ) }
+									</Badge>
+								</td>
+								<td className="subtle">{ target.detail }</td>
+								<td>
+									{ target.state === 'failed' && (
+										<button
+											type="button"
+											className="btn btn--small btn--ghost"
+											disabled={
+												busy ===
+												`retry:${ target.target_environment_id }`
+											}
+											onClick={ () =>
+												onRetry(
+													target.target_environment_id
+												)
+											}
+										>
+											{ __( 'Retry', 'dbvc' ) }
+										</button>
+									) }
+								</td>
+							</tr>
+						) ) }
+					</tbody>
+				</table>
+			</div>
+		</div>
+	);
+}
+
 function Sync( { notify } ) {
 	const [ environments, setEnvironments ] = useState( [] );
 	const [ pair, setPair ] = useState( { source: '', target: '' } );
@@ -8627,6 +10230,7 @@ function App() {
 		{ key: 'overview', label: __( 'Overview', 'dbvc' ) },
 		...( overview?.roles?.hub
 			? [
+					{ key: 'fleet', label: __( 'Fleet', 'dbvc' ) },
 					{
 						key: 'environments',
 						label: __( 'Environments', 'dbvc' ),
@@ -8638,6 +10242,7 @@ function App() {
 					{ key: 'sync', label: __( 'Sync', 'dbvc' ) },
 					{ key: 'compare', label: __( 'Compare', 'dbvc' ) },
 					{ key: 'framework', label: __( 'Framework', 'dbvc' ) },
+					{ key: 'publish', label: __( 'Publish', 'dbvc' ) },
 					{ key: 'releases', label: __( 'Releases', 'dbvc' ) },
 					{ key: 'rollouts', label: __( 'Rollouts', 'dbvc' ) },
 			  ]
@@ -8707,6 +10312,15 @@ function App() {
 					) }
 				</>
 			) }
+			{ overview && overview.roles.hub && view === 'fleet' && (
+				<Fleet
+					notify={ notify }
+					onCompare={ ( source ) => {
+						setComparePreset( { source } );
+						setView( 'compare' );
+					} }
+				/>
+			) }
 			{ overview && overview.roles.hub && view === 'environments' && (
 				<Environments
 					hub={ overview.hub }
@@ -8742,6 +10356,9 @@ function App() {
 					notify={ notify }
 					onChanged={ load }
 				/>
+			) }
+			{ overview && overview.roles.hub && view === 'publish' && (
+				<Publish notify={ notify } onChanged={ load } />
 			) }
 			{ overview && overview.roles.hub && view === 'releases' && (
 				<Releases

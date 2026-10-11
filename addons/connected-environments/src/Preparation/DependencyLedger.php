@@ -2,6 +2,7 @@
 
 namespace Dbvc\Connected\Preparation;
 
+use Dbvc\Connected\Adapters\BricksComponentObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
 use Dbvc\Connected\Adapters\PostTypeObserver;
 
@@ -44,6 +45,24 @@ final class DependencyLedger
                     break;
                 case DomainRegistry::DOMAIN_BRICKS_VARIABLE:
                     $entries = self::bricks_member($after, $release_items, 'bricks_global_variables_categories', 'bricks.variable_category');
+                    break;
+                case DomainRegistry::DOMAIN_BRICKS_COLOR_PALETTE:
+                case DomainRegistry::DOMAIN_BRICKS_PSEUDO_CLASSES:
+                case DomainRegistry::DOMAIN_BRICKS_CLASS_CATEGORIES:
+                case DomainRegistry::DOMAIN_BRICKS_VARIABLE_CATEGORIES:
+                case DomainRegistry::DOMAIN_BRICKS_BREAKPOINTS:
+                case DomainRegistry::DOMAIN_BRICKS_THEME_STYLES:
+                    // Self-contained collections and whole-blob singletons: the
+                    // member/blob carries no hard reference to another object
+                    // (variable `var(--name)` tokens resolve by name, not by a
+                    // pushed dependency), so nothing blocks.
+                    $entries = [];
+                    break;
+                case DomainRegistry::DOMAIN_BRICKS_COMPONENTS:
+                    // Slice 6c: a component's element tree references global classes
+                    // (and nested components) by portable name token; each must be
+                    // present on the target or supplied by this release, or it blocks.
+                    $entries = self::reference_dependencies($after, $release_items);
                     break;
                 default:
                     return ['entries' => [], 'complete' => false, 'blocking' => ['dependency_discovery_unsupported:' . $domain]];
@@ -96,6 +115,118 @@ final class DependencyLedger
         }
 
         return $entries;
+    }
+
+    /**
+     * Cross-object reference tokens (global classes, nested components) embedded
+     * anywhere in a body — a component collection member or a Bricks template
+     * post's element-tree meta — resolved against the target and the release:
+     * each must be present on the target or supplied by this release, else it
+     * blocks. A body with no such tokens yields no entries (a plain post is a
+     * no-op), so this is safe to run for every post domain too.
+     *
+     * @param array<string, mixed>             $after
+     * @param array<int, array<string, mixed>> $release_items
+     * @return array<int, array<string, mixed>>
+     */
+    private static function reference_dependencies(array $after, array $release_items)
+    {
+        $self_name = BricksComponentObserver::component_name($after);
+        $class_present = self::option_names('bricks_global_classes');
+        $component_present = self::component_names_on_target();
+        $class_selected = self::names_in_release($release_items, DomainRegistry::DOMAIN_BRICKS_GLOBAL_CLASS);
+        $component_selected = self::component_names_in_release($release_items);
+
+        $entries = [];
+        foreach (ReferenceTokens::tokens_in_body($after) as $ref) {
+            if ($ref['kind'] === ReferenceTokens::KIND_CLASS) {
+                $status = isset($class_selected[$ref['name']]) ? self::STATUS_SELECTED : (isset($class_present[$ref['name']]) ? self::STATUS_PRESENT : self::STATUS_UNRESOLVED);
+                $entries[] = self::entry('bricks.global_class', $ref['name'], $status, isset($class_selected[$ref['name']]) ? 'release:' . $class_selected[$ref['name']] : 'option:bricks_global_classes');
+                continue;
+            }
+            // A nested-component reference; a component referencing itself never blocks.
+            if ($ref['name'] === $self_name) {
+                continue;
+            }
+            $status = isset($component_selected[$ref['name']]) ? self::STATUS_SELECTED : (isset($component_present[$ref['name']]) ? self::STATUS_PRESENT : self::STATUS_UNRESOLVED);
+            $entries[] = self::entry('wp.bricks:components', $ref['name'], $status, isset($component_selected[$ref['name']]) ? 'release:' . $component_selected[$ref['name']] : 'option:bricks_components');
+        }
+
+        return $entries;
+    }
+
+    /**
+     * @param string $option
+     * @return array<string, true> `name` of every record in a Bricks collection option present on this site.
+     */
+    private static function option_names($option)
+    {
+        $names = [];
+        foreach ((array) get_option($option, []) as $record) {
+            if (is_array($record) && isset($record['name']) && is_scalar($record['name'])) {
+                $names[(string) $record['name']] = true;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @return array<string, true> Component display names present on this site.
+     */
+    private static function component_names_on_target()
+    {
+        $names = [];
+        foreach ((array) get_option('bricks_components', []) as $record) {
+            $name = is_array($record) ? BricksComponentObserver::component_name($record) : '';
+            if ($name !== '') {
+                $names[$name] = true;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $release_items
+     * @param string                           $domain
+     * @return array<string, string> record name => supplying instance uid.
+     */
+    private static function names_in_release(array $release_items, $domain)
+    {
+        $names = [];
+        foreach ($release_items as $item) {
+            if (($item['domain'] ?? '') !== $domain || ! is_string($item['body'] ?? null)) {
+                continue;
+            }
+            $decoded = json_decode($item['body'], true);
+            if (is_array($decoded) && isset($decoded['name']) && is_scalar($decoded['name'])) {
+                $names[(string) $decoded['name']] = (string) ($item['instance_uid'] ?? '');
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $release_items
+     * @return array<string, string> component name => supplying instance uid.
+     */
+    private static function component_names_in_release(array $release_items)
+    {
+        $names = [];
+        foreach ($release_items as $item) {
+            if (($item['domain'] ?? '') !== DomainRegistry::DOMAIN_BRICKS_COMPONENTS || ! is_string($item['body'] ?? null)) {
+                continue;
+            }
+            $decoded = json_decode($item['body'], true);
+            $name = is_array($decoded) ? BricksComponentObserver::component_name($decoded) : '';
+            if ($name !== '') {
+                $names[$name] = (string) ($item['instance_uid'] ?? '');
+            }
+        }
+
+        return $names;
     }
 
     /**
@@ -161,7 +292,10 @@ final class DependencyLedger
             }
         }
 
-        return $entries;
+        // Bricks-aware posts (templates) embed global-class/component reference
+        // tokens in their element-tree meta; resolve them too. A plain post carries
+        // none, so this adds nothing for ordinary post types.
+        return array_merge($entries, self::reference_dependencies($after, $release_items));
     }
 
     /**

@@ -263,3 +263,27 @@
 .dbvc-ce-evidence__renders h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
 .dbvc-ce-warnings { margin: 0; padding-left: 18px; font-size: 12px; }
 .dbvc-ce-warnings li { margin: 2px 0; }
+
+/* ---- Publish to fleet wizard — M9 slice 4f ---- */
+.dbvc-ce-steps li { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dbvc-ce-color-border-strong); background: var(--dbvc-ce-color-surface); border-radius: 20px; padding: 4px 12px; font-size: 12px; }
+.dbvc-ce-steps li.is-active { background: var(--dbvc-ce-color-text); color: #fff; border-color: var(--dbvc-ce-color-text); }
+.dbvc-ce-steps li.is-done { border-color: var(--dbvc-ce-color-accent); }
+.dbvc-ce-steps .num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--dbvc-ce-color-surface-muted); color: var(--dbvc-ce-color-text); font-size: 11px; font-weight: 600; }
+.dbvc-ce-steps li.is-active .num { background: rgba(255,255,255,.24); color: #fff; }
+.dbvc-ce-objrow { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--dbvc-ce-color-border-strong); border-radius: var(--dbvc-ce-radius); padding: 10px 12px; margin: 0 0 8px; cursor: pointer; }
+.dbvc-ce-objrow input { margin-top: 3px; }
+.dbvc-ce-objrow b { display: block; }
+.dbvc-ce-objrow small { color: var(--dbvc-ce-color-text-muted); }
+.dbvc-ce-aud { display: block; border: 1px solid var(--dbvc-ce-color-border-strong); border-radius: var(--dbvc-ce-radius); padding: 10px 12px; margin: 0 0 8px; cursor: pointer; }
+.dbvc-ce-aud b { margin-left: 6px; }
+.dbvc-ce-aud small { display: block; color: var(--dbvc-ce-color-text-muted); margin: 2px 0 0 22px; }
+.dbvc-ce-wizfoot { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.dbvc-ce-wizfoot .spacer { flex: 1; }
+.dbvc-ce-cohort-input { width: 64px; }
+.dbvc-ce-actionlist { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dbvc-ce-btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.dbvc-tools-panel .sub { color: var(--dbvc-ce-color-text-muted); margin: 0 0 12px; }
+
+/* ---- Segments / tags — M9 slice 5b ---- */
+.dbvc-ce-tagchips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.dbvc-ce-tag { display: inline-flex; align-items: center; border: 1px solid var(--dbvc-ce-color-border-strong); background: var(--dbvc-ce-color-surface-muted); border-radius: 12px; padding: 1px 8px; font-size: 11px; line-height: 1.6; color: var(--dbvc-ce-color-text); }

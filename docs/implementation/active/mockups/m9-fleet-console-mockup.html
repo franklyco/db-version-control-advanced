@@ -1,0 +1,575 @@
+<title>Fleet Console Mockups</title>
+<meta name="description" content="Interactive M9 design mockups: the fleet dashboard and the publish-to-fleet flow, with plain-language labels.">
+<style>
+  :root {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #f6f8fb;
+    --ink: #1a1d24;
+    --muted: #5b6470;
+    --faint: #8a94a6;
+    --line: #dfe3ea;
+    --line-strong: #c9d0da;
+    --accent: #3a52d6;
+    --accent-soft: #e7ebfb;
+    --ok: #1f9d55;        --ok-soft: #e2f4ea;
+    --warn: #b9770a;      --warn-soft: #fbf0da;
+    --push: #2570b8;      --push-soft: #e2eefa;
+    --protected: #6b40e0; --protected-soft: #ece5fc;
+    --stale: #7b8698;     --stale-soft: #eceff3;
+    --fail: #cf3b31;      --fail-soft: #fbe6e4;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(20,25,40,.06), 0 4px 16px rgba(20,25,40,.05);
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #12141a;
+      --surface: #1b1e26;
+      --surface-2: #21252f;
+      --ink: #e8eaef;
+      --muted: #a3acbb;
+      --faint: #7a8496;
+      --line: #2c313d;
+      --line-strong: #3a4150;
+      --accent: #8098ff;
+      --accent-soft: #23294a;
+      --ok: #48c98a;        --ok-soft: #163527;
+      --warn: #e0a94a;      --warn-soft: #3a2c14;
+      --push: #67aaf0;      --push-soft: #14293f;
+      --protected: #a98cff; --protected-soft: #2a2247;
+      --stale: #9aa4b4;     --stale-soft: #262b34;
+      --fail: #ef6d63;      --fail-soft: #3a1f1d;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #12141a;
+    --surface: #1b1e26;
+    --surface-2: #21252f;
+    --ink: #e8eaef;
+    --muted: #a3acbb;
+    --faint: #7a8496;
+    --line: #2c313d;
+    --line-strong: #3a4150;
+    --accent: #8098ff;
+    --accent-soft: #23294a;
+    --ok: #48c98a;        --ok-soft: #163527;
+    --warn: #e0a94a;      --warn-soft: #3a2c14;
+    --push: #67aaf0;      --push-soft: #14293f;
+    --protected: #a98cff; --protected-soft: #2a2247;
+    --stale: #9aa4b4;     --stale-soft: #262b34;
+    --fail: #ef6d63;      --fail-soft: #3a1f1d;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,h2,h3 { text-wrap: balance; margin: 0; }
+  a { color: var(--accent); }
+  .mono { font-family: var(--mono); }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ---- App shell ---- */
+  .app { display: grid; grid-template-columns: 216px 1fr; min-height: 100%; }
+  .rail {
+    background: var(--surface); border-right: 1px solid var(--line);
+    padding: 16px 12px; display: flex; flex-direction: column; gap: 2px;
+    position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; height: 100vh;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; }
+  .brand .dot { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,var(--accent),#6b40e0); flex: 0 0 auto; }
+  .brand b { font-weight: 700; letter-spacing: -.01em; }
+  .brand small { display:block; color: var(--faint); font-size: 11px; font-weight: 500; }
+  .navitem {
+    display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px;
+    color: var(--muted); font-weight: 500; font-size: 13px; cursor: default; border: 1px solid transparent;
+  }
+  .navitem .ic { width: 15px; text-align: center; opacity: .8; }
+  .navitem.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .navitem .new { margin-left: auto; font-size: 9.5px; font-weight: 700; letter-spacing: .05em;
+    background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 999px; }
+  :root[data-theme="dark"] .navitem.active .new, :root:not([data-theme="light"]) .navitem.active .new { color: #12141a; }
+  .rail hr { border: none; border-top: 1px solid var(--line); margin: 10px 4px; }
+
+  .main { min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 22px; border-bottom: 1px solid var(--line); background: var(--surface);
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  }
+  .topbar .env { display:flex; align-items:center; gap:8px; color: var(--muted); font-size: 12.5px; }
+  .topbar .env b { color: var(--ink); font-weight: 600; }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 2px; }
+  .seg button {
+    font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer;
+    background: transparent; border: 0; padding: 6px 12px; border-radius: 6px;
+  }
+  .seg button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .mockchip { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--warn);
+    background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+    padding: 3px 9px; border-radius: 999px; }
+
+  .wrap { padding: 22px; padding-block: 22px; display: flex; flex-direction: column; gap: 18px; max-width: 1180px; }
+  .screen[hidden] { display: none !important; }
+
+  .head h1 { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+  .head p { margin: 4px 0 0; color: var(--muted); max-width: 68ch; }
+
+  /* ---- Stat tiles ---- */
+  .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 14px; box-shadow: var(--shadow); }
+  .tile .n { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .tile .l { font-size: 11.5px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .tile .l span { display:block; color: var(--faint); font-size: 10.5px; }
+  .tile.hl-ok .n { color: var(--ok); } .tile.hl-warn .n { color: var(--warn); }
+  .tile.hl-protected .n { color: var(--protected); } .tile.hl-stale .n { color: var(--stale); }
+  .tile.hl-fail .n { color: var(--fail); }
+
+  /* ---- Filter row ---- */
+  .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .filters .lbl { font-size: 12px; color: var(--faint); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-right: 2px; }
+  .chip { font-size: 12.5px; font-weight: 500; color: var(--muted); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+  .filters .grow { flex: 1; }
+  .search { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; color: var(--muted); font-size: 12.5px; min-width: 150px; }
+
+  /* ---- Fleet matrix table ---- */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .tablewrap { overflow-x: auto; }
+  table.fleet { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 720px; }
+  table.fleet th, table.fleet td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.fleet thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 600; background: var(--surface-2); position: sticky; top: 0; }
+  table.fleet tbody tr:last-child td { border-bottom: 0; }
+  table.fleet tbody tr:hover { background: var(--surface-2); }
+  .site b { font-weight: 600; }
+  .site small { display:block; color: var(--faint); font-size: 11.5px; }
+  .ver { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .ver .behind { color: var(--warn); }
+
+  /* status pill */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+    padding: 3px 9px 3px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+  .pill.ok { color: var(--ok); background: var(--ok-soft); }
+  .pill.warn { color: var(--warn); background: var(--warn-soft); }
+  .pill.push { color: var(--push); background: var(--push-soft); }
+  .pill.protected { color: var(--protected); background: var(--protected-soft); }
+  .pill.stale { color: var(--stale); background: var(--stale-soft); }
+  .pill.fail { color: var(--fail); background: var(--fail-soft); }
+  .tech { color: var(--faint); font-size: 11px; font-family: var(--mono); cursor: help; border-bottom: 1px dotted var(--line-strong); }
+
+  .rowact { display: inline-flex; gap: 6px; }
+  .btn { font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 7px; padding: 6px 12px;
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .btn.primary, :root:not([data-theme="light"]) .btn.primary { color: #12141a; }
+  .btn.primary:hover { filter: brightness(1.06); color: #fff; }
+  :root[data-theme="dark"] .btn.primary:hover, :root:not([data-theme="light"]) .btn.primary:hover { color:#12141a; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 9px; }
+  .btn.sm { padding: 4px 9px; font-size: 12px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ---- Publish wizard ---- */
+  .stepper { display: flex; gap: 6px; flex-wrap: wrap; }
+  .step { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; flex: 1; min-width: 150px; }
+  .step .num { width: 21px; height: 21px; border-radius: 50%; display: grid; place-items: center; font-size: 12px;
+    background: var(--surface-2); color: var(--muted); border: 1px solid var(--line-strong); flex: 0 0 auto; }
+  .step.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .step.active .num { background: var(--accent); color: #fff; border-color: var(--accent); }
+  :root[data-theme="dark"] .step.active .num, :root:not([data-theme="light"]) .step.active .num { color:#12141a; }
+  .step.done .num { background: var(--ok); color: #fff; border-color: var(--ok); }
+  :root[data-theme="dark"] .step.done .num, :root:not([data-theme="light"]) .step.done .num { color:#12141a; }
+  .step small { display:block; color: var(--faint); font-weight: 500; font-size: 11px; }
+
+  .panel { padding: 18px; }
+  .panel h2 { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+  .panel .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .wizstep[hidden] { display: none !important; }
+
+  .objrow { display: flex; align-items: center; gap: 12px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; margin-bottom: 8px; background: var(--surface-2); }
+  .objrow input { width: 16px; height: 16px; accent-color: var(--accent); flex: 0 0 auto; }
+  .objrow .meta { min-width: 0; }
+  .objrow .meta b { font-family: var(--mono); font-weight: 600; font-size: 13px; }
+  .objrow .meta small { display:block; color: var(--muted); font-size: 12px; }
+  .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; padding: 2px 7px; border-radius: 999px; margin-left: auto; flex: 0 0 auto; }
+  .tag.new { background: var(--ok-soft); color: var(--ok); }
+  .tag.upd { background: var(--push-soft); color: var(--push); }
+
+  .aud { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+  .aud label { display: block; border: 1px solid var(--line); border-radius: 10px; padding: 13px; cursor: pointer; background: var(--surface-2); }
+  .aud label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .aud input { position: absolute; opacity: 0; pointer-events: none; }
+  .aud b { font-size: 13.5px; } .aud small { display:block; color: var(--muted); margin-top: 3px; font-size: 12px; }
+
+  .impact { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .imp { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface-2); }
+  .imp .n { font-size: 20px; font-weight: 700; }
+  .imp .l { font-size: 11.5px; color: var(--muted); }
+  .imp.protected .n { color: var(--protected); }
+  .imp.ok .n { color: var(--ok); }
+  .callout { display: flex; gap: 10px; padding: 12px 13px; border-radius: 10px; font-size: 13px;
+    background: var(--protected-soft); border: 1px solid color-mix(in srgb, var(--protected) 25%, transparent); color: var(--ink); }
+  .callout .ic { color: var(--protected); font-weight: 700; flex: 0 0 auto; }
+
+  /* value diff */
+  .diff { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-family: var(--mono); font-size: 12.5px; }
+  .diff .dh { background: var(--surface-2); padding: 8px 12px; font-family: var(--sans); font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .diff .dl { padding: 5px 12px; display: grid; grid-template-columns: 22px 1fr; gap: 8px; }
+  .diff .dl.del { background: var(--fail-soft); color: color-mix(in srgb, var(--fail) 78%, var(--ink)); }
+  .diff .dl.add { background: var(--ok-soft); color: color-mix(in srgb, var(--ok) 72%, var(--ink)); }
+  .diff .dl .g { color: var(--faint); user-select: none; }
+
+  .wizfoot { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--line); }
+  .wizfoot .spacer { flex: 1; }
+  .cohorts { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .cohort { border: 1px dashed var(--line-strong); border-radius: 9px; padding: 9px 12px; font-size: 12.5px; background: var(--surface-2); }
+  .cohort b { display:block; font-size: 12.5px; } .cohort small { color: var(--faint); }
+
+  /* ---- Legend screen ---- */
+  .legend-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; align-items: start; }
+  table.map { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.map th, table.map td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  table.map thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
+  table.map td code { font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--surface-2); padding: 1px 6px; border-radius: 5px; }
+  .own { display: flex; flex-direction: column; gap: 10px; }
+  .owncard { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 13px 14px; background: var(--surface); }
+  .owncard.c1 { border-left-color: var(--ok); }
+  .owncard.c2 { border-left-color: var(--protected); }
+  .owncard.c3 { border-left-color: var(--stale); }
+  .owncard b { font-size: 13.5px; } .owncard p { margin: 5px 0 0; color: var(--muted); font-size: 12.5px; }
+
+  .note { font-size: 12px; color: var(--faint); }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
+    .rail hr, .brand small { display: none; }
+    .brand { padding: 4px 8px; }
+    .tiles { grid-template-columns: repeat(3, 1fr); }
+    .impact { grid-template-columns: repeat(2,1fr); }
+    .aud { grid-template-columns: 1fr; }
+    .legend-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 16px; }
+    .tiles { grid-template-columns: repeat(2, 1fr); }
+    .topbar { padding: 12px 16px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .screen, .wizstep { animation: fade .18s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+
+<div class="app">
+  <aside class="rail" aria-label="Hub navigation (illustrative)">
+    <div class="brand"><span class="dot"></span><span><b>DBVC Hub</b><small>Agency control</small></span></div>
+    <div class="navitem"><span class="ic">▤</span> Overview</div>
+    <div class="navitem"><span class="ic">◈</span> Environments</div>
+    <div class="navitem"><span class="ic">⇄</span> Sync</div>
+    <div class="navitem"><span class="ic">≋</span> Compare</div>
+    <div class="navitem"><span class="ic">◇</span> Framework</div>
+    <div class="navitem active"><span class="ic">▦</span> Fleet <span class="new">NEW</span></div>
+    <hr>
+    <div class="navitem"><span class="ic">↗</span> Releases</div>
+    <div class="navitem"><span class="ic">⛭</span> Rollouts</div>
+    <div class="navitem"><span class="ic">☰</span> Activity</div>
+    <div class="navitem"><span class="ic">⚙</span> Settings</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="env">Hub <b>dbvc-codexchanges</b> · client <b>studio / all</b></span>
+      <div class="seg" role="tablist" aria-label="Mockup screen">
+        <button role="tab" aria-selected="true" data-screen="dash">Fleet dashboard</button>
+        <button role="tab" aria-selected="false" data-screen="publish">Publish to fleet</button>
+        <button role="tab" aria-selected="false" data-screen="legend">Labels &amp; states</button>
+      </div>
+      <span class="mockchip">Design mockup · M9</span>
+    </div>
+
+    <!-- ========================= SCREEN 1: FLEET DASHBOARD ========================= -->
+    <div class="wrap screen" id="screen-dash">
+      <div class="head">
+        <h1>Fleet</h1>
+        <p>Every connected client site at a glance — which are current with the framework, which carry protected client work, and which need attention — so you can push official changes without opening each site.</p>
+      </div>
+
+      <div class="tiles">
+        <div class="tile"><div class="n tnum">8</div><div class="l">Client sites</div></div>
+        <div class="tile hl-ok"><div class="n tnum">4</div><div class="l">In sync <span>on VerticalFramework 2.1</span></div></div>
+        <div class="tile hl-warn"><div class="n tnum">2</div><div class="l">Update available <span>behind the framework</span></div></div>
+        <div class="tile hl-protected"><div class="n tnum">3</div><div class="l">Protected customizations</div></div>
+        <div class="tile hl-warn"><div class="n tnum">1</div><div class="l">Needs review <span>after an update</span></div></div>
+        <div class="tile hl-stale"><div class="n tnum">1</div><div class="l">Not reporting</div></div>
+      </div>
+
+      <div class="filters">
+        <span class="lbl">Segment</span>
+        <button class="chip" aria-pressed="true">All</button>
+        <button class="chip" aria-pressed="false">Dental</button>
+        <button class="chip" aria-pressed="false">Ortho</button>
+        <button class="chip" aria-pressed="false">Production</button>
+        <span class="grow"></span>
+        <span class="search">Filter sites…</span>
+        <button class="btn primary" data-goto="publish">Publish framework →</button>
+      </div>
+
+      <div class="card">
+        <div class="tablewrap">
+          <table class="fleet">
+            <thead>
+              <tr>
+                <th>Client site</th>
+                <th>Framework version</th>
+                <th>Status <span class="tech" title="Environment comparison state">ⓘ</span></th>
+                <th>Client customizations</th>
+                <th>Last reported</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="site"><b>Bright Dental</b><small>connectedsite-a · Dental</small></td>
+                <td class="ver">2.0 <span class="behind">→ 2.1</span></td>
+                <td><span class="pill protected" title="approved_override — a locked client change on a framework object">Client customization</span></td>
+                <td>1 locked <span class="tech" title="fw-container variable, locked at 1280px">fw-container</span></td>
+                <td class="tnum">3 min ago</td>
+                <td><div class="rowact"><button class="btn sm">Review</button><button class="btn sm primary">Push update</button></div></td>
+              </tr>
+              <tr>
+                <td class="site"><b>Butler &amp; Co</b><small>connectedsite-butler · Production</small></td>
+                <td class="ver">2.1</td>
+                <td><span class="pill ok" title="synchronized">In sync</span></td>
+                <td>—</td>
+                <td class="tnum">1 min ago</td>
+                <td><div class="rowact"><button class="btn sm ghost">Open</button></div></td>
+              </tr>
+              <tr>
+                <td class="site"><b>Cedar Family Dental</b><small>cedar-fam · Dental</small></td>
+                <td class="ver">2.0 <span class="behind">→ 2.1</span></td>
+                <td><span class="pill warn" title="outgoing — the framework is ahead of this site">Update available</span></td>
+                <td>—</td>
+                <td class="tnum">12 min ago</td>
+                <td><div class="rowact"><button class="btn sm primary">Push update</button></div></td>
+              </tr>
+              <tr>
+                <td class="site"><b>Northgate Ortho</b><small>northgate · Ortho</small></td>
+                <td class="ver">2.1</td>
+                <td><span class="pill warn" title="needs_rebase_review — a locked change conflicts with the new framework version">Needs review</span></td>
+                <td>1 locked <span class="tech" title="fw-button class, locked with a custom radius">fw-button</span></td>
+                <td class="tnum">28 min ago</td>
+                <td><div class="rowact"><button class="btn sm primary">Resolve</button></div></td>
+              </tr>
+              <tr>
+                <td class="site"><b>Summit Physio</b><small>summit-phys · Production</small></td>
+                <td class="ver">2.1</td>
+                <td><span class="pill ok" title="synchronized">In sync</span></td>
+                <td>2 locked <span class="tech" title="c-hero-badge class, c-intake template — client-owned, out of framework scope">client-owned</span></td>
+                <td class="tnum">6 min ago</td>
+                <td><div class="rowact"><button class="btn sm ghost">Open</button></div></td>
+              </tr>
+              <tr>
+                <td class="site"><b>Harbor Vet</b><small>harbor-vet · Production</small></td>
+                <td class="ver">2.1</td>
+                <td><span class="pill ok" title="synchronized">In sync</span></td>
+                <td>—</td>
+                <td class="tnum">2 min ago</td>
+                <td><div class="rowact"><button class="btn sm ghost">Open</button></div></td>
+              </tr>
+              <tr>
+                <td class="site"><b>Lakeside Derm</b><small>lakeside · Production</small></td>
+                <td class="ver">1.9 <span class="behind">→ 2.1</span></td>
+                <td><span class="pill push" title="outgoing — two versions behind">Ready to push</span></td>
+                <td>—</td>
+                <td class="tnum">40 min ago</td>
+                <td><div class="rowact"><button class="btn sm primary">Push update</button></div></td>
+              </tr>
+              <tr>
+                <td class="site"><b>Vertex Chiro</b><small>vertex · Production</small></td>
+                <td class="ver">2.1</td>
+                <td><span class="pill stale" title="stale — no observation received within the freshness window">Not reporting</span></td>
+                <td>—</td>
+                <td class="tnum">6 days ago</td>
+                <td><div class="rowact"><button class="btn sm">Check site</button></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="note">Hover any grey monospace label to see the underlying technical term (state, object id). Toggle your OS light/dark theme to preview both.</p>
+    </div>
+
+    <!-- ========================= SCREEN 2: PUBLISH TO FLEET ========================= -->
+    <div class="wrap screen" id="screen-publish" hidden>
+      <div class="head">
+        <h1>Publish framework to the fleet</h1>
+        <p>Push an official VerticalFramework version to every connected site in one pass. Approved client customizations are kept and flagged for review — never overwritten.</p>
+      </div>
+
+      <div class="stepper" id="stepper">
+        <div class="step active" data-step="1"><span class="num">1</span><span>What changed<small>the framework update</small></span></div>
+        <div class="step" data-step="2"><span class="num">2</span><span>Who gets it<small>sites &amp; cohorts</small></span></div>
+        <div class="step" data-step="3"><span class="num">3</span><span>Impact preview<small>what will happen</small></span></div>
+        <div class="step" data-step="4"><span class="num">4</span><span>Review &amp; push<small>see the changes</small></span></div>
+      </div>
+
+      <div class="card">
+        <!-- Step 1 -->
+        <div class="panel wizstep" data-panel="1">
+          <h2>What changed in VerticalFramework 2.1</h2>
+          <p class="sub">Pick the framework objects to include in this push. New objects are created on sites that don't have them yet.</p>
+          <div class="objrow"><input type="checkbox" checked><div class="meta"><b>fw-container</b><small>Global variable · max width 1200px → 1240px</small></div><span class="tag upd">Updated</span></div>
+          <div class="objrow"><input type="checkbox" checked><div class="meta"><b>fw-button</b><small>Global class · padding &amp; radius refined</small></div><span class="tag upd">Updated</span></div>
+          <div class="objrow"><input type="checkbox" checked><div class="meta"><b>fw-card</b><small>Global class · brand-new component style</small></div><span class="tag new">New</span></div>
+          <div class="objrow"><input type="checkbox" checked><div class="meta"><b>fw-testimonial</b><small>Component · brand-new reusable block</small></div><span class="tag new">New</span></div>
+          <div class="wizfoot"><span class="spacer"></span><button class="btn primary" data-next="2">Continue →</button></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="panel wizstep" data-panel="2" hidden>
+          <h2>Who gets this update</h2>
+          <p class="sub">Choose which sites receive the push. You can target the whole fleet, a segment, or a staged rollout.</p>
+          <div class="aud">
+            <label><input type="radio" name="aud" checked><b>All connected sites</b><small>8 sites across every client</small></label>
+            <label><input type="radio" name="aud"><b>By segment</b><small>Dental (4) · Ortho (1) · Production (7)</small></label>
+            <label><input type="radio" name="aud"><b>Staged rollout</b><small>Canary first, then groups</small></label>
+          </div>
+          <div class="cohorts">
+            <div class="cohort"><b>Canary</b><small>1 site · Butler &amp; Co</small></div>
+            <div class="cohort"><b>Group A</b><small>3 sites</small></div>
+            <div class="cohort"><b>Rest</b><small>4 sites</small></div>
+          </div>
+          <p class="note" style="margin-top:10px">Staged rollout pauses automatically if any site fails to apply — the rest of the fleet is held until you resolve it.</p>
+          <div class="wizfoot"><button class="btn ghost" data-next="1">← Back</button><span class="spacer"></span><button class="btn primary" data-next="3">Continue →</button></div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="panel wizstep" data-panel="3" hidden>
+          <h2>Impact preview</h2>
+          <p class="sub">A dry run across the 8 targeted sites — nothing is applied yet.</p>
+          <div class="impact">
+            <div class="imp ok"><div class="n tnum">6</div><div class="l">will update <b class="mono">fw-container</b></div></div>
+            <div class="imp protected"><div class="n tnum">2</div><div class="l">kept &amp; flagged (locked)</div></div>
+            <div class="imp ok"><div class="n tnum">8</div><div class="l">will get <b class="mono">fw-card</b> (new)</div></div>
+            <div class="imp ok"><div class="n tnum">8</div><div class="l">will get <b class="mono">fw-testimonial</b> (new)</div></div>
+          </div>
+          <div class="callout"><span class="ic">🛡</span><div><b>2 sites have a protected customization on fw-container</b> (Bright Dental, Northgate Ortho). Their version stays as-is and each gets a <b>Needs review</b> item so you can keep it, re-apply the new default, or unlock it later. It will not be overwritten by this push.</div></div>
+          <div class="wizfoot"><button class="btn ghost" data-next="2">← Back</button><span class="spacer"></span><button class="btn primary" data-next="4">Review changes →</button></div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="panel wizstep" data-panel="4" hidden>
+          <h2>Review the actual changes</h2>
+          <p class="sub">The exact before → after for each object, taken from the finalized change set. Accept the framework value or keep the site's current one.</p>
+          <div class="diff" style="margin-bottom:12px">
+            <div class="dh"><b class="mono" style="color:var(--ink)">fw-container</b> · global variable · <span>applies to 6 sites</span></div>
+            <div class="dl del"><span class="g">−</span><span>--fw-container-max: 1200px;</span></div>
+            <div class="dl add"><span class="g">+</span><span>--fw-container-max: 1240px;</span></div>
+          </div>
+          <div class="diff">
+            <div class="dh"><b class="mono" style="color:var(--ink)">fw-button</b> · global class · <span>applies to 8 sites</span></div>
+            <div class="dl del"><span class="g">−</span><span>padding: 12px 20px; border-radius: 4px;</span></div>
+            <div class="dl add"><span class="g">+</span><span>padding: 14px 24px; border-radius: 8px;</span></div>
+          </div>
+          <div class="callout" style="margin-top:12px;background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 25%,transparent)"><span class="ic" style="color:var(--warn)">⚑</span><div><b>Bright Dental &amp; Northgate Ortho</b> keep their locked <b class="mono">fw-container</b> (1280px). This diff will not be applied there.</div></div>
+          <div class="wizfoot">
+            <button class="btn ghost" data-next="3">← Back</button>
+            <span class="spacer"></span>
+            <span class="note" style="margin-right:6px">6 updates · 2 kept · 16 new-object creates</span>
+            <button class="btn primary" id="pushbtn">Push to 8 sites</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================= SCREEN 3: LABELS & STATES ========================= -->
+    <div class="wrap screen" id="screen-legend" hidden>
+      <div class="head">
+        <h1>Labels &amp; states</h1>
+        <p>The plain-language vocabulary this console shows to users. Technical terms stay in the code, CLI, and API — the UI presents the friendly label and reveals the technical term on hover.</p>
+      </div>
+
+      <div class="legend-grid">
+        <div class="card" style="padding:4px 4px 8px">
+          <table class="map">
+            <thead><tr><th>Plain-language label</th><th>Technical term</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill ok">In sync</span></td><td><code>synchronized / converged</code></td></tr>
+              <tr><td><span class="pill warn">Update available</span></td><td><code>outgoing</code> (framework ahead)</td></tr>
+              <tr><td><span class="pill push">Ready to push</span></td><td><code>outgoing</code></td></tr>
+              <tr><td><span class="pill protected">Client customization</span></td><td><code>approved_override</code> (locked)</td></tr>
+              <tr><td><span class="pill warn">Needs review</span></td><td><code>needs_rebase_review</code></td></tr>
+              <tr><td><span class="pill stale">Not reporting</span></td><td><code>stale</code></td></tr>
+              <tr><td><span class="pill fail">Push failed</span></td><td><code>apply failed / conflict</code></td></tr>
+              <tr><td>Finalize the change set</td><td><code>seal a release</code></td></tr>
+              <tr><td>Fleet push</td><td><code>rollout</code></td></tr>
+              <tr><td>Sync status</td><td><code>parity</code></td></tr>
+              <tr><td>Object type · item</td><td><code>domain · instance_uid</code></td></tr>
+              <tr><td>Lock / Unlock</td><td><code>approve / detach override</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="own">
+          <div class="owncard c1"><b>1 · Framework object, unchanged by the client</b><p>The official version wins. The push brings the site up to date. <span class="note mono">In sync ← synchronized</span></p></div>
+          <div class="owncard c2"><b>2 · Framework object the client locked</b><p>The client's version wins on their site; the push skips it. If the update changes that same object, it's flagged <b>Needs review</b> — keep, re-apply, or unlock. Never silently overwritten. <span class="note mono">Client customization ← approved_override</span></p></div>
+          <div class="owncard c3"><b>3 · Client-owned original object</b><p>Their own class or template, never part of the framework. Never touched, never flagged as drift. <span class="note mono">client-owned ← out of scope</span></p></div>
+          <p class="note">This ownership model is what lets one hub push update the whole network while every site keeps its approved custom work.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  (function () {
+    var screens = { dash: 'screen-dash', publish: 'screen-publish', legend: 'screen-legend' };
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.seg [data-screen]'));
+    function show(name) {
+      Object.keys(screens).forEach(function (k) {
+        var el = document.getElementById(screens[k]);
+        if (el) el.hidden = (k !== name);
+      });
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.screen === name)); });
+      try { document.querySelector('.main').scrollIntoView({ block: 'start' }); } catch (e) {}
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.dataset.screen); }); });
+    document.querySelectorAll('[data-goto]').forEach(function (b) {
+      b.addEventListener('click', function () { show(b.dataset.goto); });
+    });
+
+    // Wizard
+    var steps = Array.prototype.slice.call(document.querySelectorAll('#stepper .step'));
+    var panels = Array.prototype.slice.call(document.querySelectorAll('[data-panel]'));
+    function goStep(n) {
+      panels.forEach(function (p) { p.hidden = (p.dataset.panel !== String(n)); });
+      steps.forEach(function (s) {
+        var sn = Number(s.dataset.step);
+        s.classList.toggle('active', sn === n);
+        s.classList.toggle('done', sn < n);
+      });
+    }
+    steps.forEach(function (s) { s.addEventListener('click', function () { goStep(Number(s.dataset.step)); }); });
+    document.querySelectorAll('[data-next]').forEach(function (b) {
+      b.addEventListener('click', function () { goStep(Number(b.dataset.next)); });
+    });
+    var push = document.getElementById('pushbtn');
+    if (push) push.addEventListener('click', function () {
+      push.textContent = '✓ Queued — canary first';
+      push.disabled = true;
+    });
+  })();
+</script>

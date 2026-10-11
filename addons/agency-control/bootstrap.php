@@ -188,8 +188,9 @@ if (! class_exists('DBVC_Agency_Control_Addon')) {
                     $errors[] = __('Hub tables could not be created; the module is held in migration_required.', 'dbvc');
                 }
             } elseif ($enabled === '0') {
-                // Disabling: stop the auto-parity cron (the schema/policies stay, additive and harmless).
+                // Disabling: stop the auto-parity + framework-rollout crons (the schema/data stay, additive and harmless).
                 \Dbvc\AgencyControl\Parity\ParityScheduler::unschedule();
+                \Dbvc\AgencyControl\Framework\FrameworkRolloutScheduler::unschedule();
             }
 
             self::refresh_runtime_registration();

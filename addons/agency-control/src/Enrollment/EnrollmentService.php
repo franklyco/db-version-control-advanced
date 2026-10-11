@@ -260,6 +260,53 @@ final class EnrollmentService
     }
 
     /**
+     * Administrator action: move an environment to a different client (and,
+     * optionally, agency) so it can pair with that client's fleet — two
+     * environments only compare and sync when they share the same agency AND
+     * client. Refuses a revoked environment and any identifier that is not a
+     * bounded ASCII slug. Parity data already keyed to the old client (baselines,
+     * subscriptions, policies) is left in place, so it becomes dormant rather than
+     * cross-client: reassign an environment before you baseline or subscribe it.
+     *
+     * @param string $environment_id
+     * @param string $client_id
+     * @param string $agency_id Optional; the current agency is kept when empty.
+     * @return array<string, mixed>|\WP_Error
+     */
+    public function reassign($environment_id, $client_id, $agency_id = '')
+    {
+        $environment = $this->environments->find((string) $environment_id);
+        if ($environment === null) {
+            return new \WP_Error('dbvc_agency_environment_not_found', 'Environment not found.', ['status' => 404]);
+        }
+        if ($environment['status'] === EnvironmentRegistry::STATUS_REVOKED) {
+            return new \WP_Error('dbvc_agency_environment_revoked', 'A revoked environment must re-enroll.', ['status' => 409]);
+        }
+        $client_id = (string) $client_id;
+        if (! ObservationEvent::isIdentifier($client_id)) {
+            return new \WP_Error('dbvc_agency_invalid_client_id', 'client_id must be a bounded ASCII identifier.', ['status' => 400]);
+        }
+        $agency_id = (string) $agency_id;
+        if ($agency_id === '') {
+            $agency_id = (string) $environment['agency_id'];
+        } elseif (! ObservationEvent::isIdentifier($agency_id)) {
+            return new \WP_Error('dbvc_agency_invalid_agency_id', 'agency_id must be a bounded ASCII identifier.', ['status' => 400]);
+        }
+
+        $this->environments->update($environment['environment_id'], [
+            'agency_id' => $agency_id,
+            'client_id' => $client_id,
+        ]);
+
+        return [
+            'environment_id' => $environment['environment_id'],
+            'agency_id' => $agency_id,
+            'client_id' => $client_id,
+            'status' => $environment['status'],
+        ];
+    }
+
+    /**
      * @param int $user_id
      * @return void
      */

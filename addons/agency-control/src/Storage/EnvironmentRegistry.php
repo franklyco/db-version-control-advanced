@@ -158,6 +158,34 @@ final class EnvironmentRegistry
     }
 
     /**
+     * True when the environment is inside an active maintenance-freeze window
+     * (both bounds set and `now` in [from, until)). This is an advisory hub-side
+     * gate at prepare/approve; the connector apply gate stays authoritative
+     * downstream, so a freeze suppresses new applies without being the sole
+     * control.
+     *
+     * @param array<string, mixed> $environment
+     * @param int|null             $now Unix timestamp (UTC); defaults to the current time.
+     * @return bool
+     */
+    public static function is_frozen(array $environment, $now = null)
+    {
+        $from = isset($environment['freeze_from']) ? (string) $environment['freeze_from'] : '';
+        $until = isset($environment['freeze_until']) ? (string) $environment['freeze_until'] : '';
+        if ($from === '' || $until === '') {
+            return false;
+        }
+        $from_ts = strtotime($from . ' UTC');
+        $until_ts = strtotime($until . ' UTC');
+        if ($from_ts === false || $until_ts === false) {
+            return false;
+        }
+        $now = $now === null ? time() : (int) $now;
+
+        return $from_ts <= $now && $now < $until_ts;
+    }
+
+    /**
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
@@ -166,6 +194,8 @@ final class EnvironmentRegistry
         $row['principal_user_id'] = (int) $row['principal_user_id'];
         $row['max_received_sequence'] = (int) $row['max_received_sequence'];
         $row['received_events'] = (int) $row['received_events'];
+        $decoded = isset($row['tags']) ? json_decode((string) $row['tags'], true) : [];
+        $row['tags'] = is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
 
         return $row;
     }

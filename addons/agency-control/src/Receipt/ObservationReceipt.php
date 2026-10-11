@@ -144,6 +144,8 @@ final class ObservationReceipt
             'instance_uid' => $candidate['object']['instance_uid'],
             'profile' => $candidate['projection']['profile'],
             'semantic_hash' => $candidate['projection']['hash'],
+            // Optional cross-site identity token (M9 slice 0); absent on older connectors and lineage-portable domains.
+            'match_key' => isset($candidate['object']['match_key']) ? (string) $candidate['object']['match_key'] : '',
             'object_exists' => $candidate['projection']['exists'],
             'snapshot_complete' => $candidate['projection']['complete'],
             'observed_sequence' => (int) $candidate['sequence'],

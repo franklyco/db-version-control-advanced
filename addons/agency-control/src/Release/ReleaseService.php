@@ -83,9 +83,11 @@ final class ReleaseService
             }
             $seen[$domain . '|' . $instance_uid] = true;
             $operation = (string) ($selection['operation'] ?? ReleaseStore::OPERATION_REPLACE);
-            if (! in_array($operation, [ReleaseStore::OPERATION_REPLACE, ReleaseStore::OPERATION_DELETE], true)) {
-                return new \WP_Error('dbvc_agency_invalid_operation', 'operation must be replace or delete.', ['status' => 400]);
+            if (! in_array($operation, [ReleaseStore::OPERATION_REPLACE, ReleaseStore::OPERATION_DELETE, ReleaseStore::OPERATION_CREATE], true)) {
+                return new \WP_Error('dbvc_agency_invalid_operation', 'operation must be replace, delete or create.', ['status' => 400]);
             }
+            // A create pushes an object the source has (the framework object) to a target that lacks it,
+            // so its source projection must exist exactly like a replace; only the target side is absent.
             $projection = $this->current_object_projection($source, $domain, $instance_uid, $operation === ReleaseStore::OPERATION_DELETE);
             if (is_wp_error($projection)) {
                 return $projection;

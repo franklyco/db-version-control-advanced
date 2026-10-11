@@ -46,6 +46,7 @@ final class RolloutStore
                 'release_id' => (int) $data['release_id'],
                 'release_uid' => (string) $data['release_uid'],
                 'source_environment_id' => (string) $data['source_environment_id'],
+                'scope' => (string) ($data['scope'] ?? 'client'),
                 'state' => self::STATE_RUNNING,
                 'current_cohort' => 0,
                 'cohort_count' => (int) $data['cohort_count'],
@@ -55,7 +56,7 @@ final class RolloutStore
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-            ['%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%d', '%s', '%s']
+            ['%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%d', '%s', '%s']
         );
         if ($inserted !== 1) {
             return null;

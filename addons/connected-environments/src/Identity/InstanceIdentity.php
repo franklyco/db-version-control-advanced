@@ -139,6 +139,55 @@ final class InstanceIdentity
     }
 
     /**
+     * Explicit writer for a SUPPLIED portable identity — used by guarded creation
+     * apply so a newly created local object adopts the framework object's own
+     * `instance_uid` (rather than a fresh one), making it align across the fleet
+     * by shared UID from the moment it is created. Both keys are unique per
+     * domain: a storage key already mapped, or that UID already taken by another
+     * local object, is a conflict and is refused rather than silently rebound.
+     *
+     * @param string $domain
+     * @param string $storage_key
+     * @param string $instance_uid
+     * @param string $display_name
+     * @return string bound|exists|conflict|error
+     */
+    public function bind($domain, $storage_key, $instance_uid, $display_name = '')
+    {
+        global $wpdb;
+
+        $by_key = $this->lookup_many($domain, [$storage_key]);
+        if (isset($by_key[$storage_key])) {
+            return $by_key[$storage_key]['instance_uid'] === (string) $instance_uid ? 'exists' : 'conflict';
+        }
+        if ($this->find_by_instance_uid($domain, $instance_uid) !== null) {
+            // The UID already names a different local object: never rebind it.
+            return 'conflict';
+        }
+
+        $suppress = $wpdb->suppress_errors();
+        $inserted = $wpdb->insert(
+            Schema::table('identity'),
+            [
+                'domain' => (string) $domain,
+                'storage_key' => (string) $storage_key,
+                'instance_uid' => (string) $instance_uid,
+                'display_name' => mb_substr((string) $display_name, 0, 191),
+                'created_at' => current_time('mysql', true),
+            ],
+            ['%s', '%s', '%s', '%s', '%s']
+        );
+        $wpdb->suppress_errors($suppress);
+        if ($inserted === 1) {
+            return 'bound';
+        }
+        // A concurrent writer took one of the keys between the checks above.
+        $by_key = $this->lookup_many($domain, [$storage_key]);
+
+        return isset($by_key[$storage_key]) && $by_key[$storage_key]['instance_uid'] === (string) $instance_uid ? 'exists' : 'conflict';
+    }
+
+    /**
      * @return int
      */
     public function count()

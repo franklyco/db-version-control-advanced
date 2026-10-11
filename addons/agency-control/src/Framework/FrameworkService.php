@@ -171,6 +171,21 @@ final class FrameworkService
             }
         }
 
+        if ($flagged > 0) {
+            // M9 slice 7d: a new framework version flagged approved overrides for
+            // rebase review — notify (best-effort; never affects set_desired).
+            try {
+                (new \Dbvc\AgencyControl\Notifications\NotificationService())->enqueue(
+                    (string) $definition['agency_id'],
+                    'override.needs_rebase',
+                    (string) $definition['definition_uid'] . ':' . (string) $definition['version'],
+                    ['definition_uid' => (string) $definition['definition_uid'], 'channel' => (string) $definition['channel'], 'version' => (string) $definition['version'], 'rebase_reviews' => $flagged]
+                );
+            } catch (\Throwable $e) {
+                unset($e);
+            }
+        }
+
         return [
             'definition_uid' => $definition['definition_uid'],
             'channel' => $definition['channel'],

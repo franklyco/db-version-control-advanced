@@ -16,12 +16,37 @@ final class DomainRegistry
     public const DOMAIN_WP_SERVICE = 'wp.service';
     public const COLLECTION_KEY = 'collection';
 
+    // M9 slice 6a: additional self-contained / name-referenced Bricks collection
+    // domains under the `wp.bricks:` namespace (no id reference-remap needed).
+    public const DOMAIN_BRICKS_COLOR_PALETTE = 'wp.bricks:color_palette';
+    public const DOMAIN_BRICKS_PSEUDO_CLASSES = 'wp.bricks:pseudo_classes';
+    public const DOMAIN_BRICKS_CLASS_CATEGORIES = 'wp.bricks:class_categories';
+    public const DOMAIN_BRICKS_VARIABLE_CATEGORIES = 'wp.bricks:variable_categories';
+
+    // M9 slice 6b: whole-blob Bricks singletons (one logical object per option,
+    // no keyed members, no id reference-remap) under the same `wp.bricks:`
+    // namespace. Only design-owned singletons live here: `bricks_global_settings`
+    // is deliberately excluded because it mixes site-operational config
+    // (post types, login page, remote templates) with design and needs
+    // field-level policy, not a whole-blob replace.
+    public const DOMAIN_BRICKS_BREAKPOINTS = 'wp.bricks:breakpoints';
+    public const DOMAIN_BRICKS_THEME_STYLES = 'wp.bricks:theme_styles';
+
+    // M9 slice 6c: the components collection. A member is keyed by its own id
+    // (like a class) but its element tree carries cross-object references to
+    // global classes and nested components; the component observer rewrites
+    // those to portable name tokens before hashing (see BricksComponentObserver
+    // + ReferenceTokens). Slice 6c-1 observes it; 6c-2 adds the guarded apply.
+    public const DOMAIN_BRICKS_COMPONENTS = 'wp.bricks:components';
+
     /** Address prefix for a universal post domain and its profile. */
     public const DOMAIN_POST_PREFIX = 'wp.post:';
     public const POST_PROFILE_PREFIX = 'wp-post:';
 
     /** Opt-in allow-list of post-type slugs observed as `wp.post:<type>` domains. */
     public const OPTION_POST_DOMAINS = 'dbvc_connected_post_domains';
+    /** Opt-in allow-list of extra Bricks domain slugs (M9 slice 6) observed as `wp.bricks:<slug>`. */
+    public const OPTION_BRICKS_DOMAINS = 'dbvc_connected_bricks_domains';
     /** Subset of the observe list this connector will also let approved releases apply. */
     public const OPTION_POST_APPLY_DOMAINS = 'dbvc_connected_post_apply_domains';
     /** Per-type meta allow/deny + create-missing-terms policy, keyed by post-type slug. */
@@ -80,6 +105,15 @@ final class DomainRegistry
                 'label' => 'Service posts',
             ],
         ];
+
+        // M9 slice 6: additional Bricks domains, opt-in per site (default none) so
+        // a connector only observes/delivers them when the operator asks. Each is a
+        // self-contained / name-referenced collection that rides the existing
+        // collection observer + apply path (no id reference-remap).
+        $catalog = self::bricks_domain_catalog();
+        foreach (self::opted_in_bricks_domains() as $slug) {
+            $definitions[$catalog[$slug]['domain']] = $catalog[$slug];
+        }
 
         // Universal post-type coverage: one `wp.post:<type>` domain per opted-in
         // custom post type. `wp.service` remains the alias for the service type, so
@@ -147,6 +181,118 @@ final class DomainRegistry
                 continue;
             }
             $out[$type] = true;
+        }
+
+        return array_keys($out);
+    }
+
+    /**
+     * The catalog of opt-in Bricks domains (M9 slice 6), keyed by slug. Each is a
+     * self-contained / name-referenced collection that rides the existing
+     * collection observer; adding one to {@see OPTION_BRICKS_DOMAINS} registers it.
+     *
+     * @return array<string, array<string, mixed>> slug => definition
+     */
+    public static function bricks_domain_catalog()
+    {
+        return [
+            'color_palette' => [
+                'domain' => self::DOMAIN_BRICKS_COLOR_PALETTE,
+                'profile' => 'bricks-color-palette-v1',
+                'option' => 'bricks_color_palette',
+                'key_field' => 'id',
+                'name_field' => 'name',
+                'volatile_top_level_keys' => [],
+                'label' => 'Bricks color palettes',
+            ],
+            'pseudo_classes' => [
+                'domain' => self::DOMAIN_BRICKS_PSEUDO_CLASSES,
+                'profile' => 'bricks-pseudo-classes-v1',
+                'option' => 'bricks_global_pseudo_classes',
+                'key_field' => 'id',
+                'name_field' => 'name',
+                'volatile_top_level_keys' => [],
+                'label' => 'Bricks pseudo-classes',
+            ],
+            'class_categories' => [
+                'domain' => self::DOMAIN_BRICKS_CLASS_CATEGORIES,
+                'profile' => 'bricks-class-categories-v1',
+                'option' => 'bricks_global_classes_categories',
+                'key_field' => 'id',
+                'name_field' => 'name',
+                'volatile_top_level_keys' => [],
+                'label' => 'Bricks class categories',
+            ],
+            'variable_categories' => [
+                'domain' => self::DOMAIN_BRICKS_VARIABLE_CATEGORIES,
+                'profile' => 'bricks-variable-categories-v1',
+                'option' => 'bricks_global_variables_categories',
+                'key_field' => 'id',
+                'name_field' => 'name',
+                'volatile_top_level_keys' => [],
+                'label' => 'Bricks variable categories',
+            ],
+            // Slice 6b: whole-blob singletons (shape=singleton rides the
+            // BricksOptionSingletonObserver + singleton apply branch, not the
+            // member-keyed collection path). Design-owned only.
+            'breakpoints' => [
+                'domain' => self::DOMAIN_BRICKS_BREAKPOINTS,
+                'profile' => 'bricks-breakpoints-v1',
+                'option' => 'bricks_breakpoints',
+                'shape' => 'singleton',
+                'volatile_top_level_keys' => [],
+                'label' => 'Bricks breakpoints',
+            ],
+            'theme_styles' => [
+                'domain' => self::DOMAIN_BRICKS_THEME_STYLES,
+                'profile' => 'bricks-theme-styles-v1',
+                'option' => 'bricks_theme_styles',
+                'shape' => 'singleton',
+                'volatile_top_level_keys' => [],
+                'label' => 'Bricks theme styles',
+            ],
+            // Slice 6c: components (shape=component → BricksComponentObserver,
+            // which tokenizes embedded class/component references before hashing).
+            'components' => [
+                'domain' => self::DOMAIN_BRICKS_COMPONENTS,
+                'profile' => 'bricks-components-v1',
+                'option' => 'bricks_components',
+                'shape' => 'component',
+                'key_field' => 'id',
+                // The name is the root element's label; the observer extracts it.
+                'name_field' => 'name',
+                'volatile_top_level_keys' => [],
+                'label' => 'Bricks components',
+            ],
+        ];
+    }
+
+    /**
+     * Opt-in Bricks domain slugs this connector observes (default none). Resolved
+     * from {@see OPTION_BRICKS_DOMAINS} and the `dbvc_connected_bricks_domains`
+     * filter, kept to the catalog's known slugs.
+     *
+     * @return array<int, string>
+     */
+    public static function opted_in_bricks_domains()
+    {
+        $stored = get_option(self::OPTION_BRICKS_DOMAINS, []);
+        $stored = is_array($stored) ? $stored : [];
+        /**
+         * Opt-in list of Bricks domain slugs observed as `wp.bricks:<slug>` domains.
+         *
+         * @param array<int, string> $slugs
+         */
+        $slugs = (array) apply_filters('dbvc_connected_bricks_domains', $stored);
+
+        $catalog = self::bricks_domain_catalog();
+        $out = [];
+        foreach ($slugs as $slug) {
+            $slug = sanitize_key((string) $slug);
+            if ($slug === '' || ! isset($catalog[$slug]) || isset($out[$slug])) {
+                continue;
+            }
+            $out[$slug] = true;
         }
 
         return array_keys($out);
@@ -256,6 +402,19 @@ final class DomainRegistry
     }
 
     /**
+     * @param string $domain
+     * @return bool True when the domain is a whole-blob singleton (slice 6b): it
+     *              owns a deterministic, site-independent identity (no sidecar)
+     *              and is applied as one option, not member by member.
+     */
+    public static function is_singleton_domain($domain)
+    {
+        $definitions = self::definitions();
+
+        return isset($definitions[(string) $domain]) && ($definitions[(string) $domain]['shape'] ?? '') === 'singleton';
+    }
+
+    /**
      * @return array<int, string>
      */
     public static function domains()
@@ -284,10 +443,22 @@ final class DomainRegistry
             foreach (self::definitions() as $domain => $definition) {
                 if (($definition['kind'] ?? 'option') === 'post') {
                     // The `wp.service` alias keeps its dedicated back-compat observer;
-                    // every other post type uses the parameterized PostTypeObserver.
-                    self::$observers[$domain] = $domain === self::DOMAIN_WP_SERVICE
-                        ? new ServicePostObserver()
-                        : new PostTypeObserver($definition);
+                    // `bricks_template` gets the Bricks-aware observer (element-tree
+                    // reference tokenization); every other post type uses the generic
+                    // parameterized PostTypeObserver.
+                    if ($domain === self::DOMAIN_WP_SERVICE) {
+                        self::$observers[$domain] = new ServicePostObserver();
+                    } elseif (($definition['post_type'] ?? '') === BricksTemplatePostObserver::POST_TYPE) {
+                        self::$observers[$domain] = new BricksTemplatePostObserver($definition);
+                    } else {
+                        self::$observers[$domain] = new PostTypeObserver($definition);
+                    }
+                } elseif (($definition['shape'] ?? '') === 'singleton') {
+                    // Slice 6b: a whole-blob option with a deterministic identity.
+                    self::$observers[$domain] = new BricksOptionSingletonObserver($definition);
+                } elseif (($definition['shape'] ?? '') === 'component') {
+                    // Slice 6c: a collection whose members carry cross-object references.
+                    self::$observers[$domain] = new BricksComponentObserver($definition);
                 } else {
                     self::$observers[$domain] = new BricksOptionCollectionObserver($definition);
                 }

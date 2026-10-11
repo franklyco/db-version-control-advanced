@@ -22,6 +22,14 @@ use Dbvc\AgencyControl\Storage\RolloutStore;
  */
 final class RolloutService
 {
+    /**
+     * Same-client (parity) is the default and unchanged. Agency scope relaxes
+     * the client match so a framework rollout can reach every client's sites
+     * under one agency; it never crosses agencies. Callers opt in explicitly.
+     */
+    public const SCOPE_CLIENT = 'client';
+    public const SCOPE_AGENCY = 'agency';
+
     /** @var array<int, string> Execution outcomes that count a target verified. */
     private const SUCCESS_OUTCOMES = ['applied', 'noop'];
 
@@ -90,7 +98,7 @@ final class RolloutService
      * @param string                    $note
      * @return array<string, mixed>|\WP_Error
      */
-    public function create($release_uid, array $cohorts, $note = '')
+    public function create($release_uid, array $cohorts, $note = '', $scope = self::SCOPE_CLIENT)
     {
         $release = $this->releases->find((string) $release_uid);
         if ($release === null) {
@@ -99,6 +107,7 @@ final class RolloutService
         if ($release['state'] !== ReleaseStore::STATE_SEALED) {
             return new \WP_Error('dbvc_agency_release_not_sealed', 'Only a sealed release (every payload verified) can be rolled out.', ['status' => 409]);
         }
+        $scope = $scope === self::SCOPE_AGENCY ? self::SCOPE_AGENCY : self::SCOPE_CLIENT;
 
         $normalized = [];
         foreach ($cohorts as $cohort) {
@@ -128,8 +137,8 @@ final class RolloutService
                 if ($target['environment_id'] === $release['source_environment_id']) {
                     return new \WP_Error('dbvc_agency_self_release', 'A release is not rolled out onto its own source.', ['status' => 400]);
                 }
-                if ($target['agency_id'] !== $release['agency_id'] || $target['client_id'] !== $release['client_id']) {
-                    return new \WP_Error('dbvc_agency_scope_mismatch', 'A rollout stays within one agency and client.', ['status' => 403]);
+                if ($target['agency_id'] !== $release['agency_id'] || ($scope !== self::SCOPE_AGENCY && $target['client_id'] !== $release['client_id'])) {
+                    return new \WP_Error('dbvc_agency_scope_mismatch', $scope === self::SCOPE_AGENCY ? 'A rollout stays within one agency.' : 'A rollout stays within one agency and client.', ['status' => 403]);
                 }
                 if ($target['status'] !== EnvironmentRegistry::STATUS_ENABLED) {
                     return new \WP_Error('dbvc_agency_environment_not_enabled', 'Target environment is not enabled: ' . $environment_id, ['status' => 409]);
@@ -149,6 +158,7 @@ final class RolloutService
             'release_id' => $release['release_id'],
             'release_uid' => $release['release_uid'],
             'source_environment_id' => $release['source_environment_id'],
+            'scope' => $scope,
             'cohort_count' => count($normalized),
             'note' => (string) $note,
             'created_by' => get_current_user_id(),
@@ -242,7 +252,7 @@ final class RolloutService
      */
     private function request_prepare(array $rollout, array $target)
     {
-        $result = $this->preparation_service->request($rollout['release_uid'], $target['target_environment_id']);
+        $result = $this->preparation_service->request($rollout['release_uid'], $target['target_environment_id'], (string) ($rollout['scope'] ?? self::SCOPE_CLIENT));
         if (is_wp_error($result)) {
             $this->rollouts->update_target($target['rollout_target_id'], [
                 'state' => RolloutStore::TARGET_FAILED,

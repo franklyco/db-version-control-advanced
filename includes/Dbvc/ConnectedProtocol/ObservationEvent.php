@@ -30,6 +30,8 @@ final class ObservationEvent
     public const DOMAINS = ['bricks.global_class', 'bricks.variable', 'wp.service'];
     /** A universal post domain: `wp.post:` followed by a post-type slug. */
     public const DOMAIN_POST_PATTERN = '/^wp\.post:[a-z0-9_-]+$/';
+    /** A parameterized Bricks domain: `wp.bricks:` followed by a collection/singleton slug (M9 slice 6). */
+    public const DOMAIN_BRICKS_PATTERN = '/^wp\.bricks:[a-z0-9_]+$/';
     public const ORIGINS = ['human', 'apply', 'rollback', 'reconciliation'];
 
     private const TOP_LEVEL_KEYS = [
@@ -37,7 +39,20 @@ final class ObservationEvent
         'observed_at', 'object', 'projection', 'origin', 'causation_id',
     ];
     private const OBJECT_KEYS = ['domain', 'instance_uid'];
+    /**
+     * Optional object keys. `match_key` is a portable identity token (a Bricks
+     * object's name/token/slug) that lets the hub align the same framework
+     * object across environments whose site-local `instance_uid` differs
+     * (M9 slice 0). It is optional and backward-compatible: an event that omits
+     * it stays valid under this same v0.2 schema, so a connector that has not
+     * upgraded still validates — only its objects will not auto-link. Because
+     * {@see validate()} pins `schema_version` by equality, bumping the version
+     * would reject every not-yet-upgraded connector; an optional field does not.
+     */
+    private const OBJECT_OPTIONAL_KEYS = ['match_key'];
     private const PROJECTION_KEYS = ['profile', 'hash', 'exists', 'complete'];
+    /** Max byte length of a match key (matches the hub `projections.match_key` column). */
+    public const MATCH_KEY_MAX_BYTES = 191;
 
     /**
      * Build a body in the schema's key order. Missing fields are left absent so
@@ -63,6 +78,12 @@ final class ObservationEvent
         $body['object'] = [];
         foreach (self::OBJECT_KEYS as $key) {
             if (array_key_exists($key, $object)) {
+                $body['object'][$key] = $object[$key];
+            }
+        }
+        // Optional identity hint: included only when the caller supplies a non-empty value.
+        foreach (self::OBJECT_OPTIONAL_KEYS as $key) {
+            if (array_key_exists($key, $object) && $object[$key] !== null && $object[$key] !== '') {
                 $body['object'][$key] = $object[$key];
             }
         }
@@ -130,8 +151,9 @@ final class ObservationEvent
                         $errors[] = 'missing:object.' . $key;
                     }
                 }
+                $allowed_object_keys = array_merge(self::OBJECT_KEYS, self::OBJECT_OPTIONAL_KEYS);
                 foreach (array_keys($object) as $key) {
-                    if (! in_array((string) $key, self::OBJECT_KEYS, true)) {
+                    if (! in_array((string) $key, $allowed_object_keys, true)) {
                         $errors[] = 'unknown:object.' . $key;
                     }
                 }
@@ -140,6 +162,9 @@ final class ObservationEvent
                 }
                 if (array_key_exists('instance_uid', $object) && ! self::isIdentifier($object['instance_uid'])) {
                     $errors[] = 'invalid:object.instance_uid';
+                }
+                if (array_key_exists('match_key', $object) && ! self::isMatchKey($object['match_key'])) {
+                    $errors[] = 'invalid:object.match_key';
                 }
             }
         }
@@ -218,6 +243,25 @@ final class ObservationEvent
     }
 
     /**
+     * A portable identity token (a Bricks object name/token/slug). Unlike an
+     * identifier it may carry spaces or non-ASCII (display names are arbitrary),
+     * so it is bounded by byte length and valid UTF-8 rather than the strict ID
+     * pattern; control characters are rejected. Never used as an instance UID —
+     * only to align the same object across environments.
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    public static function isMatchKey($value)
+    {
+        return is_string($value)
+            && $value !== ''
+            && strlen($value) <= self::MATCH_KEY_MAX_BYTES
+            && mb_check_encoding($value, 'UTF-8')
+            && preg_match('/[\x00-\x1F\x7F]/', $value) !== 1;
+    }
+
+    /**
      * A valid observation domain: one of the fixed base domains, or a universal
      * `wp.post:<type>` post domain whose `<type>` is a bounded post-type slug.
      * The hub stores keyed on domain+profile+instance_uid, so this is the only
@@ -235,6 +279,7 @@ final class ObservationEvent
             return true;
         }
 
-        return preg_match(self::DOMAIN_POST_PATTERN, $value) === 1;
+        return preg_match(self::DOMAIN_POST_PATTERN, $value) === 1
+            || preg_match(self::DOMAIN_BRICKS_PATTERN, $value) === 1;
     }
 }

@@ -24,6 +24,7 @@ final class ReleaseStore
 
     public const OPERATION_REPLACE = 'replace';
     public const OPERATION_DELETE = 'delete';
+    public const OPERATION_CREATE = 'create';
 
     /**
      * @param array<string, mixed>              $release
@@ -119,12 +120,76 @@ final class ReleaseStore
         $columns = $with_payload ? '*' : 'release_item_id, release_id, domain, instance_uid, profile, operation, after_hash, source_sequence, payload_state, payload_reason, payload_received_at';
         $rows = $wpdb->get_results($wpdb->prepare("SELECT {$columns} FROM {$table} WHERE release_id = %d ORDER BY domain, profile, instance_uid", (int) $release_id), ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
-        return array_map(static function ($row) {
+        $items = array_map(static function ($row) {
             $row['release_item_id'] = (int) $row['release_item_id'];
             $row['release_id'] = (int) $row['release_id'];
             $row['source_sequence'] = (int) $row['source_sequence'];
             return $row;
         }, is_array($rows) ? $rows : []);
+
+        // Topological dependency order so a referenced object seals, delivers and
+        // applies before the object that references it (categories -> variables/
+        // classes -> self-contained collections -> components -> templates/posts).
+        // The comparator is a TOTAL order — rank first, then the lexical
+        // (domain, profile, instance_uid) key the SQL already sorted by — so the
+        // result is deterministic regardless of PHP's sort stability (usort is not
+        // stable on PHP 7.4, the plugin's floor). Because seal() hashes the manifest
+        // in this order and delivery/apply read through here too, the digest and the
+        // apply order stay consistent. New releases pick this up; an already-sealed
+        // release keeps its stored (opaque) digest and only its item ORDER differs,
+        // which the per-item guards tolerate.
+        usort($items, static function ($a, $b) {
+            $rank = self::domain_rank((string) $a['domain']) <=> self::domain_rank((string) $b['domain']);
+            if ($rank !== 0) {
+                return $rank;
+            }
+
+            return [(string) $a['domain'], (string) $a['profile'], (string) $a['instance_uid']]
+                <=> [(string) $b['domain'], (string) $b['profile'], (string) $b['instance_uid']];
+        });
+
+        return $items;
+    }
+
+    /**
+     * Dependency rank for a release item's domain: lower applies first. A
+     * referenced object (a class a component uses, a category a class uses) must
+     * rank below its referrer. Unknown/new domains rank last so they never jump
+     * ahead of a dependency they might reference. Operators with custom domains
+     * can adjust the map via the `dbvc_agency_release_domain_ranks` filter.
+     *
+     * @param string $domain
+     * @return int
+     */
+    private static function domain_rank($domain)
+    {
+        /**
+         * @param array<string, int> $ranks domain => rank (lower applies first).
+         */
+        $ranks = (array) apply_filters('dbvc_agency_release_domain_ranks', [
+            'wp.bricks:variable_categories' => 10,
+            'bricks.variable'               => 20,
+            'wp.bricks:class_categories'    => 30,
+            'bricks.global_class'           => 40,
+            // Self-contained collections + whole-blob singletons (order among them is free).
+            'wp.bricks:color_palette'       => 50,
+            'wp.bricks:pseudo_classes'      => 50,
+            'wp.bricks:breakpoints'         => 50,
+            'wp.bricks:theme_styles'        => 50,
+            // Components reference classes; templates reference classes + components.
+            'wp.bricks:components'          => 60,
+            'wp.post:bricks_template'       => 70,
+        ]);
+        if (isset($ranks[$domain]) && is_numeric($ranks[$domain])) {
+            return (int) $ranks[$domain];
+        }
+        // Other posts (wp.service, generic wp.post:<type>) carry no framework
+        // cross-references, but rank before unknown domains.
+        if ($domain === 'wp.service' || strpos($domain, 'wp.post:') === 0) {
+            return 80;
+        }
+
+        return 100;
     }
 
     /**

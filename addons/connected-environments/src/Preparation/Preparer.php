@@ -3,6 +3,7 @@
 namespace Dbvc\Connected\Preparation;
 
 use Dbvc\Connected\Adapters\BricksOptionCollectionObserver;
+use Dbvc\Connected\Adapters\BricksOptionSingletonObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
 use Dbvc\Connected\Adapters\PostTypeObserver;
 use Dbvc\Connected\Identity\InstanceIdentity;
@@ -114,7 +115,7 @@ final class Preparer
             'dependencies' => null,
         ];
 
-        if (! in_array($operation, ['replace', 'delete'], true) || ! ObservationEvent::isIdentifier($instance_uid) || ! ObservationEvent::isIdentifier($target_uid) || ! is_string($body) || $body === '' || ! preg_match('/^[a-f0-9]{64}$/', $after_hash)) {
+        if (! in_array($operation, ['replace', 'delete', 'create'], true) || ! ObservationEvent::isIdentifier($instance_uid) || ! ObservationEvent::isIdentifier($target_uid) || ! is_string($body) || $body === '' || ! preg_match('/^[a-f0-9]{64}$/', $after_hash)) {
             $result['blockers'][] = 'invalid_manifest_item';
             return $result;
         }
@@ -143,6 +144,18 @@ final class Preparer
 
         // Identity: portable UID → local storage key, or an explicit creation decision.
         $resolved = $this->resolve_identity($domain, $target_uid, $observer);
+        // Guarded creation is idempotent by name: if the target already carries a member
+        // with this framework object's name (under a different or not-yet-linked id), the
+        // create becomes a replace of that member rather than adding a duplicate.
+        if ($operation === 'create' && $resolved['blocker'] === 'identity_unmatched:creation_requires_decision' && $observer instanceof BricksOptionCollectionObserver) {
+            $decoded = json_decode($body, true);
+            // name_of() is name-field based for plain collections and label-based for components.
+            $name = is_array($decoded) ? $observer->name_of($decoded) : '';
+            $existing_key = $name !== '' ? $observer->find_storage_key_by_name($name) : null;
+            if ($existing_key !== null) {
+                $resolved = ['storage_key' => $existing_key, 'source' => 'name', 'blocker' => null];
+            }
+        }
         $result['identity'] = ['storage_key' => $resolved['storage_key'], 'source' => $resolved['source'] . ($target_uid !== $instance_uid ? '+link' : '')];
         if ($resolved['blocker'] !== null) {
             $result['before_hash'] = BricksOptionCollectionObserver::absent_hash();
@@ -153,6 +166,10 @@ final class Preparer
                 $result['complete'] = true;
                 $result['outcome'] = self::OUTCOME_NOOP;
                 return $result;
+            }
+            if ($operation === 'create' && $resolved['blocker'] === 'identity_unmatched:creation_requires_decision') {
+                // Genuine creation: the target has neither the id nor the name — ready to add.
+                return $this->prepare_create_ready($result, $domain, $body, $manifest_items, $observer);
             }
             $result['blockers'][] = $resolved['blocker'];
             return $result;
@@ -177,6 +194,10 @@ final class Preparer
             if ($operation === 'delete') {
                 $result['outcome'] = self::OUTCOME_NOOP;
                 return $result;
+            }
+            if ($operation === 'create') {
+                // The mapping exists but the object was removed since: re-create it.
+                return $this->prepare_create_ready($result, $domain, $body, $manifest_items, $observer);
             }
             $result['blockers'][] = 'target_object_absent';
             return $result;
@@ -240,6 +261,50 @@ final class Preparer
     }
 
     /**
+     * A guarded creation is ready when the target genuinely lacks the object: the
+     * before image is verified-absent, the whole body is an addition, and every
+     * dependency the new object references (a variable by `--name`, a category)
+     * resolves. The connector allocates the local id and inserts at apply time;
+     * nothing is written here.
+     *
+     * @param array<string, mixed>                     $result
+     * @param string                                   $domain
+     * @param string                                   $body   Canonical JSON of the object to create.
+     * @param array<int, array<string, mixed>>         $manifest_items
+     * @param \Dbvc\ConnectedProtocol\DomainObserver   $observer
+     * @return array<string, mixed>
+     */
+    private function prepare_create_ready(array $result, $domain, $body, array $manifest_items, $observer)
+    {
+        $after = json_decode((string) $body, true);
+        if (! is_array($after)) {
+            $result['blockers'][] = 'canonical_unreadable';
+            return $result;
+        }
+        $result['before_hash'] = BricksOptionCollectionObserver::absent_hash();
+        $result['exists'] = false;
+        $result['complete'] = true;
+        // The insert is guarded at apply by the container's fingerprint, so the receipt must
+        // carry the collection's current fingerprint (the member is absent, but the option is not).
+        if ($observer instanceof BricksOptionCollectionObserver) {
+            $container = $observer->read_container();
+            $result['storage_fingerprint'] = $container['present'] ? $container['fingerprint'] : null;
+        }
+        $patch = self::patch([], $after);
+        $patch['strategy'] = 'add_object';
+        $result['patch'] = $patch;
+        $ledger = DependencyLedger::build($domain, $after, $manifest_items, $observer, []);
+        $result['dependencies'] = $ledger;
+        if ($ledger['blocking'] !== [] || ! $ledger['complete']) {
+            $result['blockers'] = array_merge($result['blockers'], $ledger['blocking'] !== [] ? $ledger['blocking'] : ['dependency_discovery_incomplete']);
+            return $result;
+        }
+        $result['outcome'] = self::OUTCOME_READY;
+
+        return $result;
+    }
+
+    /**
      * @param string                                   $domain
      * @param string                                   $instance_uid
      * @param \Dbvc\ConnectedProtocol\DomainObserver   $observer
@@ -247,6 +312,13 @@ final class Preparer
      */
     private function resolve_identity($domain, $instance_uid, $observer)
     {
+        if ($observer instanceof BricksOptionSingletonObserver) {
+            // One deterministic, site-independent object per singleton domain:
+            // the local storage key is always the same sentinel, so there is no
+            // sidecar lookup and no cross-site link to resolve. Absence is
+            // surfaced later by snapshot(), not here.
+            return ['storage_key' => BricksOptionSingletonObserver::SINGLETON_KEY, 'source' => 'singleton', 'blocker' => null];
+        }
         if ($observer instanceof PostTypeObserver) {
             $ids = get_posts([
                 'post_type' => $observer->post_type(),

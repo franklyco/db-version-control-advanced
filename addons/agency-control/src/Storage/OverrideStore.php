@@ -118,6 +118,45 @@ final class OverrideStore
     }
 
     /**
+     * Active ("locked") overrides for one environment, keyed "domain|instance_uid".
+     * Both `approved` and `needs_rebase_review` take precedence over a framework
+     * push — a rebase-flagged lock is pending an operator decision, never a silent
+     * overwrite — while a `detached` override does not block. An object carrying
+     * more than one active override (different definitions) still resolves to locked.
+     *
+     * @param string      $environment_id
+     * @param string|null $domain Optional domain filter.
+     * @return array<string, array<string, mixed>> "domain|instance_uid" => override row
+     */
+    public function locked_for_environment($environment_id, $domain = null)
+    {
+        global $wpdb;
+
+        $table = Schema::table('overrides');
+        // The state list is built from class constants, never user input.
+        $states = "'" . self::STATE_APPROVED . "','" . self::STATE_NEEDS_REBASE_REVIEW . "'";
+        if ($domain !== null && $domain !== '') {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$table} WHERE environment_id = %s AND domain = %s AND state IN ({$states})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                (string) $environment_id,
+                (string) $domain
+            ), ARRAY_A);
+        } else {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$table} WHERE environment_id = %s AND state IN ({$states})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                (string) $environment_id
+            ), ARRAY_A);
+        }
+
+        $map = [];
+        foreach ((array) $rows as $row) {
+            $map[$row['domain'] . '|' . $row['instance_uid']] = $this->normalize($row);
+        }
+
+        return $map;
+    }
+
+    /**
      * @param int $limit
      * @return array<int, array<string, mixed>>
      */

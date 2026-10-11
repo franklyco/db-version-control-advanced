@@ -80,6 +80,9 @@ final class ApprovalService
         if ($target === null || $target['status'] !== EnvironmentRegistry::STATUS_ENABLED) {
             return new \WP_Error('dbvc_agency_environment_not_enabled', 'The target environment is not enabled.', ['status' => 409]);
         }
+        if (EnvironmentRegistry::is_frozen($target)) {
+            return new \WP_Error('dbvc_agency_environment_frozen', 'The target environment is in a maintenance-freeze window.', ['status' => 409]);
+        }
         if ($target['current_epoch'] !== $preparation['target_epoch']) {
             return new \WP_Error('dbvc_agency_target_epoch_changed', 'The target re-enrolled since the receipt was taken; prepare again.', ['status' => 409]);
         }

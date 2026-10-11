@@ -60,9 +60,11 @@ final class PreparationService
     /**
      * @param string $release_uid
      * @param string $target_environment_id
+     * @param string $scope 'client' (default, same-client parity) or 'agency' (a framework
+     *                       rollout may reach another client's site under the same agency).
      * @return array<string, mixed>|\WP_Error
      */
-    public function request($release_uid, $target_environment_id)
+    public function request($release_uid, $target_environment_id, $scope = 'client')
     {
         $release = $this->releases->find((string) $release_uid);
         if ($release === null) {
@@ -78,11 +80,14 @@ final class PreparationService
         if ($target['environment_id'] === $release['source_environment_id']) {
             return new \WP_Error('dbvc_agency_self_release', 'A release is not prepared on its own source.', ['status' => 400]);
         }
-        if ($target['agency_id'] !== $release['agency_id'] || $target['client_id'] !== $release['client_id']) {
-            return new \WP_Error('dbvc_agency_scope_mismatch', 'Releases stay within one agency and client.', ['status' => 403]);
+        if ($target['agency_id'] !== $release['agency_id'] || ($scope !== 'agency' && $target['client_id'] !== $release['client_id'])) {
+            return new \WP_Error('dbvc_agency_scope_mismatch', $scope === 'agency' ? 'Releases stay within one agency.' : 'Releases stay within one agency and client.', ['status' => 403]);
         }
         if ($target['status'] !== EnvironmentRegistry::STATUS_ENABLED) {
             return new \WP_Error('dbvc_agency_environment_not_enabled', 'The target environment is not enabled.', ['status' => 409]);
+        }
+        if (EnvironmentRegistry::is_frozen($target)) {
+            return new \WP_Error('dbvc_agency_environment_frozen', 'The target environment is in a maintenance-freeze window.', ['status' => 409]);
         }
         foreach ($this->preparations->all($release['release_uid'], $target['environment_id'], 50) as $existing) {
             if ($existing['state'] === PreparationStore::STATE_REQUESTED) {
