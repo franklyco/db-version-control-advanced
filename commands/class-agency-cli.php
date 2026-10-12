@@ -902,11 +902,22 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			}
 			$objects = [];
 			foreach (array_filter(array_map('trim', explode(',', (string) ($assoc_args['items'] ?? '')))) as $spec) {
+				// definition_uid:domain:instance_uid:profile, where the domain may itself
+				// contain a colon (wp.bricks:components, wp.post:page). definition_uid,
+				// instance_uid and profile never do, so anchor on the ends and treat
+				// everything between as the (possibly multi-segment) domain.
 				$parts = explode(':', $spec);
-				if (count($parts) !== 4) {
+				if (count($parts) < 4) {
 					return new WP_Error('dbvc_agency_invalid_objects', 'Each item is definition_uid:domain:instance_uid:profile.', ['status' => 400]);
 				}
-				$objects[] = ['definition_uid' => $parts[0], 'domain' => $parts[1], 'instance_uid' => $parts[2], 'profile' => $parts[3]];
+				$definition_uid = (string) array_shift($parts);
+				$profile = (string) array_pop($parts);
+				$instance_uid = (string) array_pop($parts);
+				$domain = implode(':', $parts);
+				if ($definition_uid === '' || $domain === '' || $instance_uid === '' || $profile === '') {
+					return new WP_Error('dbvc_agency_invalid_objects', 'Each item is definition_uid:domain:instance_uid:profile.', ['status' => 400]);
+				}
+				$objects[] = ['definition_uid' => $definition_uid, 'domain' => $domain, 'instance_uid' => $instance_uid, 'profile' => $profile];
 			}
 
 			return $objects;
@@ -1039,15 +1050,9 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			if (is_wp_error($ready)) {
 				return $ready;
 			}
-			$selections = [];
-			foreach (['items' => 'replace', 'delete' => 'delete'] as $key => $operation) {
-				foreach (array_filter(array_map('trim', explode(',', (string) ($assoc_args[$key] ?? '')))) as $spec) {
-					$parts = explode(':', $spec, 2);
-					if (count($parts) !== 2) {
-						return new WP_Error('dbvc_agency_invalid_selection', 'Each item is domain:instance_uid, for example bricks.global_class:bricks-global-class-abcd1234.');
-					}
-					$selections[] = ['domain' => $parts[0], 'instance_uid' => $parts[1], 'operation' => $operation];
-				}
+			$selections = self::parse_release_selections($assoc_args);
+			if (is_wp_error($selections)) {
+				return $selections;
 			}
 			$result = (new \Dbvc\AgencyControl\Release\ReleaseService())->create((string) ($assoc_args['source'] ?? ''), $selections, (string) ($assoc_args['note'] ?? ''));
 			if (is_wp_error($result)) {
@@ -1055,6 +1060,33 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			}
 
 			return ['release' => self::release_row($result['release']), 'items' => array_map([self::class, 'release_item_row'], $result['items'])];
+		}
+
+		/**
+		 * Parse a release's --items (replace) and --delete selection lists into
+		 * {domain, instance_uid, operation} rows. The spec is domain:instance_uid,
+		 * but a domain may itself contain a colon (wp.bricks:components, wp.post:page),
+		 * so the instance_uid is the final colon-separated segment and the domain is
+		 * everything before it — never a naive split on the first colon.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		private static function parse_release_selections(array $assoc_args) {
+			$selections = [];
+			foreach (['items' => 'replace', 'delete' => 'delete'] as $key => $operation) {
+				foreach (array_filter(array_map('trim', explode(',', (string) ($assoc_args[$key] ?? '')))) as $spec) {
+					$parts = explode(':', $spec);
+					$instance_uid = count($parts) >= 2 ? (string) array_pop($parts) : '';
+					$domain = implode(':', $parts);
+					if ($domain === '' || $instance_uid === '') {
+						return new WP_Error('dbvc_agency_invalid_selection', 'Each item is domain:instance_uid, for example bricks.global_class:bricks-global-class-abcd1234 or wp.bricks:components:wp-bricks-components-abcd1234.');
+					}
+					$selections[] = ['domain' => $domain, 'instance_uid' => $instance_uid, 'operation' => $operation];
+				}
+			}
+
+			return $selections;
 		}
 
 		/**
@@ -2947,7 +2979,7 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		 * : Version label stamped across every object (each object's own version history).
 		 *
 		 * --items=<list>
-		 * : Comma-separated definition_uid:domain:instance_uid:profile objects. Or pass --objects=<json>.
+		 * : Comma-separated definition_uid:domain:instance_uid:profile objects (the domain may itself contain a colon, e.g. wp.bricks:components). Or pass --objects=<json>.
 		 *
 		 * [--objects=<json>]
 		 * : JSON array of {definition_uid, domain, instance_uid, profile}; overrides --items.
@@ -3199,10 +3231,10 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		 * : Source environment identifier.
 		 *
 		 * [--items=<list>]
-		 * : Comma-separated domain:instance_uid selections to replace on targets.
+		 * : Comma-separated domain:instance_uid selections to replace on targets. The domain may itself contain a colon (e.g. wp.bricks:components:wp-bricks-components-abcd1234); the instance_uid is the final colon-separated segment.
 		 *
 		 * [--delete=<list>]
-		 * : Comma-separated domain:instance_uid selections whose verified absence on the source is released as a deletion.
+		 * : Comma-separated domain:instance_uid selections whose verified absence on the source is released as a deletion. Same domain:instance_uid form as --items (colon-bearing domains supported).
 		 *
 		 * [--note=<text>]
 		 * : Short note.

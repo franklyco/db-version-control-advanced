@@ -4,7 +4,7 @@
     "repository": {
         "scope": "repository_only",
         "source_file_count": 481,
-        "source_fingerprint": "sha256:d5bc73a7c9dbe04133061a8a4d737692378e75621829f2a56c12fbc06370c39c",
+        "source_fingerprint": "sha256:a0d90d3079548316f297b0b707cbae632b29fd88c5198ff3ff3f9e5a443d3083",
         "live_runtime_verified": false
     },
     "counts": {
@@ -22,7 +22,7 @@
         "scheduled_hooks": 3,
         "settings": 51,
         "source_reference_documentation": 13,
-        "tests": 169
+        "tests": 170
     },
     "collections": {
         "admin_handlers": [
@@ -1948,7 +1948,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2750
+                    "line": 2782
                 }
             },
             {
@@ -1967,7 +1967,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3587
+                    "line": 3619
                 }
             },
             {
@@ -1982,7 +1982,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3343
+                    "line": 3375
                 }
             },
             {
@@ -2001,7 +2001,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2178
+                    "line": 2210
                 }
             },
             {
@@ -2019,7 +2019,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2468
+                    "line": 2500
                 }
             },
             {
@@ -2037,7 +2037,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2494
+                    "line": 2526
                 }
             },
             {
@@ -2055,7 +2055,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2431
+                    "line": 2463
                 }
             },
             {
@@ -2070,7 +2070,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2703
+                    "line": 2735
                 }
             },
             {
@@ -2095,7 +2095,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2679
+                    "line": 2711
                 }
             },
             {
@@ -2113,7 +2113,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2729
+                    "line": 2761
                 }
             },
             {
@@ -2131,7 +2131,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2367
+                    "line": 2399
                 }
             },
             {
@@ -2144,7 +2144,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2298
+                    "line": 2330
                 }
             },
             {
@@ -2159,7 +2159,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3835
+                    "line": 3867
                 }
             },
             {
@@ -2174,7 +2174,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2912
+                    "line": 2944
                 }
             },
             {
@@ -2192,7 +2192,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2114
+                    "line": 2146
                 }
             },
             {
@@ -2211,7 +2211,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2143
+                    "line": 2175
                 }
             },
             {
@@ -2228,7 +2228,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2888
+                    "line": 2920
                 }
             },
             {
@@ -2246,7 +2246,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2999
+                    "line": 3031
                 }
             },
             {
@@ -2265,7 +2265,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2972
+                    "line": 3004
                 }
             },
             {
@@ -2278,7 +2278,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3107
+                    "line": 3139
                 }
             },
             {
@@ -2291,7 +2291,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3089
+                    "line": 3121
                 }
             },
             {
@@ -2304,7 +2304,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3050
+                    "line": 3082
                 }
             },
             {
@@ -2317,7 +2317,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3071
+                    "line": 3103
                 }
             },
             {
@@ -2337,7 +2337,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3032
+                    "line": 3064
                 }
             },
             {
@@ -2350,7 +2350,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3146
+                    "line": 3178
                 }
             },
             {
@@ -2366,7 +2366,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3128
+                    "line": 3160
                 }
             },
             {
@@ -2385,7 +2385,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2863
+                    "line": 2895
                 }
             },
             {
@@ -2398,7 +2398,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3656
+                    "line": 3688
                 }
             },
             {
@@ -2413,7 +2413,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3637
+                    "line": 3669
                 }
             },
             {
@@ -2428,7 +2428,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3807
+                    "line": 3839
                 }
             },
             {
@@ -2446,7 +2446,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3861
+                    "line": 3893
                 }
             },
             {
@@ -2464,7 +2464,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2088
+                    "line": 2120
                 }
             },
             {
@@ -2482,7 +2482,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2625
+                    "line": 2657
                 }
             },
             {
@@ -2497,7 +2497,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2527
+                    "line": 2559
                 }
             },
             {
@@ -2512,7 +2512,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2592
+                    "line": 2624
                 }
             },
             {
@@ -2529,7 +2529,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2568
+                    "line": 2600
                 }
             },
             {
@@ -2542,7 +2542,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3712
+                    "line": 3744
                 }
             },
             {
@@ -2561,7 +2561,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3693
+                    "line": 3725
                 }
             },
             {
@@ -2576,7 +2576,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3770
+                    "line": 3802
                 }
             },
             {
@@ -2592,7 +2592,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3751
+                    "line": 3783
                 }
             },
             {
@@ -2607,7 +2607,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3729
+                    "line": 3761
                 }
             },
             {
@@ -2622,7 +2622,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2783
+                    "line": 2815
                 }
             },
             {
@@ -2635,7 +2635,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2810
+                    "line": 2842
                 }
             },
             {
@@ -2652,7 +2652,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2833
+                    "line": 2865
                 }
             },
             {
@@ -2665,7 +2665,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3991
+                    "line": 4023
                 }
             },
             {
@@ -2685,7 +2685,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3319
+                    "line": 3351
                 }
             },
             {
@@ -2698,7 +2698,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3287
+                    "line": 3319
                 }
             },
             {
@@ -2717,7 +2717,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2207
+                    "line": 2239
                 }
             },
             {
@@ -2730,7 +2730,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3787
+                    "line": 3819
                 }
             },
             {
@@ -2747,7 +2747,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3215
+                    "line": 3247
                 }
             },
             {
@@ -2760,7 +2760,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3233
+                    "line": 3265
                 }
             },
             {
@@ -2779,7 +2779,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3262
+                    "line": 3294
                 }
             },
             {
@@ -2795,7 +2795,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3167
+                    "line": 3199
                 }
             },
             {
@@ -2808,7 +2808,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3188
+                    "line": 3220
                 }
             },
             {
@@ -2828,7 +2828,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2399
+                    "line": 2431
                 }
             },
             {
@@ -2841,7 +2841,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3608
+                    "line": 3640
                 }
             },
             {
@@ -2856,7 +2856,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3558
+                    "line": 3590
                 }
             },
             {
@@ -2871,7 +2871,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3363
+                    "line": 3395
                 }
             },
             {
@@ -2884,7 +2884,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3405
+                    "line": 3437
                 }
             },
             {
@@ -2899,7 +2899,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3387
+                    "line": 3419
                 }
             },
             {
@@ -2914,7 +2914,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3426
+                    "line": 3458
                 }
             },
             {
@@ -2930,7 +2930,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3537
+                    "line": 3569
                 }
             },
             {
@@ -2943,7 +2943,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3444
+                    "line": 3476
                 }
             },
             {
@@ -2956,7 +2956,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3465
+                    "line": 3497
                 }
             },
             {
@@ -2969,7 +2969,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3483
+                    "line": 3515
                 }
             },
             {
@@ -2988,7 +2988,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3512
+                    "line": 3544
                 }
             },
             {
@@ -3003,7 +3003,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2341
+                    "line": 2373
                 }
             },
             {
@@ -3019,7 +3019,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2933
+                    "line": 2965
                 }
             },
             {
@@ -3032,7 +3032,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2059
+                    "line": 2091
                 }
             },
             {
@@ -3047,7 +3047,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2230
+                    "line": 2262
                 }
             },
             {
@@ -3063,7 +3063,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2263
+                    "line": 2295
                 }
             },
             {
@@ -3081,7 +3081,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2324
+                    "line": 2356
                 }
             },
             {
@@ -3094,7 +3094,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4038
+                    "line": 4070
                 }
             },
             {
@@ -3109,7 +3109,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4016
+                    "line": 4048
                 }
             },
             {
@@ -3128,7 +3128,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3947
+                    "line": 3979
                 }
             },
             {
@@ -3141,7 +3141,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3969
+                    "line": 4001
                 }
             },
             {
@@ -3166,7 +3166,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3916
+                    "line": 3948
                 }
             },
             {
@@ -3179,7 +3179,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2545
+                    "line": 2577
                 }
             },
             {
@@ -3192,7 +3192,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2280
+                    "line": 2312
                 }
             },
             {
@@ -3941,7 +3941,7 @@
                 "class": "DBVC_WP_CLI_Agency",
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4082
+                    "line": 4114
                 }
             },
             {
@@ -12978,6 +12978,7 @@
             "tests/phpunit/ConnectedPostTypeConfigTest.php",
             "tests/phpunit/ConnectedPostTypeCoverageTest.php",
             "tests/phpunit/ConnectedProtocolContractsTest.php",
+            "tests/phpunit/ConnectedReleaseItemSpecTest.php",
             "tests/phpunit/ConnectedReleaseOrderingTest.php",
             "tests/phpunit/ConnectedReleaseTest.php",
             "tests/phpunit/ConnectedRolesTest.php",
