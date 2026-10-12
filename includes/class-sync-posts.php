@@ -3448,6 +3448,21 @@ HT;
             ]);
         }
 
+        // Third-party entities import FIRST. Posts can carry references to them
+        // (for example a WS Form form ID in post meta), and those references are
+        // resolved during the post import by portable uid. If the referenced
+        // form is not present yet, the reference is reported unresolved and only
+        // converges on a later import run.
+        $third_party_stats = [
+            'processed' => 0,
+            'imported'  => 0,
+            'skipped'   => 0,
+            'errors'    => [],
+        ];
+        if (class_exists('DBVC_Third_Party_Portability')) {
+            $third_party_stats = DBVC_Third_Party_Portability::import_selected_entities_from_sync();
+        }
+
         self::$suppress_export_on_import = true;
         try {
         foreach ($supported_types as $post_type) {
@@ -3516,16 +3531,6 @@ $acf_relationship_fields = [
         ];
 
         self::remap_relationship_fields($acf_relationship_fields); */
-
-        $third_party_stats = [
-            'processed' => 0,
-            'imported'  => 0,
-            'skipped'   => 0,
-            'errors'    => [],
-        ];
-        if (class_exists('DBVC_Third_Party_Portability')) {
-            $third_party_stats = DBVC_Third_Party_Portability::import_selected_entities_from_sync();
-        }
 
         $result = [
             'processed'   => $processed,
@@ -4208,6 +4213,34 @@ $acf_relationship_fields = [
             return self::IMPORT_RESULT_SKIPPED;
         }
 
+        // Resolve portable WS Form references recorded at export time.
+        $wsform_reference_remap = ['remapped' => [], 'unresolved' => [], 'unchanged' => []];
+        if ($post_id && class_exists('DBVC_WSForm_Reference_Remap')) {
+            $wsform_refs = $json[DBVC_WSForm_Reference_Remap::PAYLOAD_KEY] ?? [];
+            if (is_array($wsform_refs) && ! empty($wsform_refs)) {
+                if (! isset($json['meta']) || ! is_array($json['meta'])) {
+                    $json['meta'] = [];
+                }
+                $wsform_reference_remap = DBVC_WSForm_Reference_Remap::apply_import_refs(
+                    (int) $post_id,
+                    $wsform_refs,
+                    $json['meta']
+                );
+
+                if (
+                    class_exists('DBVC_Sync_Logger')
+                    && DBVC_Sync_Logger::is_import_logging_enabled()
+                    && (! empty($wsform_reference_remap['remapped']) || ! empty($wsform_reference_remap['unresolved']))
+                ) {
+                    DBVC_Sync_Logger::log_import('WS Form reference remap', [
+                        'post_id'    => (int) $post_id,
+                        'remapped'   => $wsform_reference_remap['remapped'],
+                        'unresolved' => $wsform_reference_remap['unresolved'],
+                    ]);
+                }
+            }
+        }
+
         // Save import hash
         if ($post_id) {
             $meta = $json['meta'] ?? [];
@@ -4231,6 +4264,9 @@ $acf_relationship_fields = [
         ];
         if (! empty($bricks_reference_localization)) {
             $post_history['bricks_reference_localization'] = $bricks_reference_localization;
+        }
+        if (! empty($wsform_reference_remap['remapped']) || ! empty($wsform_reference_remap['unresolved'])) {
+            $post_history['wsform_reference_remap'] = $wsform_reference_remap;
         }
         update_post_meta($post_id, 'dbvc_post_history', $post_history);
         $json['meta']['dbvc_post_history'] = $post_history;

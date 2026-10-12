@@ -27,6 +27,33 @@ add_filter('dbvc_export_post_data', function($data, $post_id, $post) {
 	return $data;
 }, 20, 3);
 
+/* Record portable WS Form references alongside the exported meta.
+ *
+ * Runs after masking (priority 20) so a reference removed from the payload
+ * produces no sidecar entry. The raw form ID stays in meta; this only adds the
+ * uid needed to resolve it on another site.
+ *
+ * @since  2.1.0
+ */
+add_filter('dbvc_export_post_data', function ($data, $post_id, $post) {
+	if (! class_exists('DBVC_WSForm_Reference_Remap')) {
+		return $data;
+	}
+
+	if (! isset($data['meta']) || ! is_array($data['meta'])) {
+		return $data;
+	}
+
+	$refs = DBVC_WSForm_Reference_Remap::build_export_refs($data['meta']);
+	if (! empty($refs)) {
+		$data[DBVC_WSForm_Reference_Remap::PAYLOAD_KEY] = $refs;
+	} else {
+		unset($data[DBVC_WSForm_Reference_Remap::PAYLOAD_KEY]);
+	}
+
+	return $data;
+}, 30, 3);
+
 if (class_exists('DBVC_Options_Groups')) {
 	add_action('dbvc_after_export_options', function() {
 		$enabled = get_option('dbvc_export_options_groups', '1');

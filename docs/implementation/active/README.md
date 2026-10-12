@@ -6,5 +6,6 @@ These docs may guide current work, but verify against code before editing behavi
 - `configuration-portability-tool-guide.md` - implemented configuration portability workflow with active P3-P7 completion work.
 - `connected-environments-agency-control.md` - Connected Environments connector (M1 local observation) and Agency Control hub gate; M0 record, reuse map, verification, next task.
 - `term-entity-polish.md` - term entity polish notes; status needs review.
+- `wsform-reference-portability.md` - WS Form post-meta reference portability; design of record, slice ledger, and the cross-site live-verify exit gate.
 
 Visual Editor and Content Migration active docs remain module-local and are linked from `docs/agent-entrypoints.md`.

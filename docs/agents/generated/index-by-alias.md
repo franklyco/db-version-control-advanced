@@ -67,6 +67,7 @@
 | content export job | [`source.content_collector.export`](../manifest.json) | `source_reference` | `unknown` | [Content Migration add-on](../facets/content-migration-addon.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | content migration | [`addon.content_migration.runtime_guard`](../manifest.json) | `active` | `mixed` | [Content Migration add-on](../facets/content-migration-addon.md) |
 | content tree | [`source.content_collector.explorer`](../manifest.json) | `source_reference` | `unknown` | [Content Migration add-on](../facets/content-migration-addon.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| custom_wsform remap | [`portability.third_party.wsform_references`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
 | data masking | [`proposal.core.masking`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | dbvc-agency/v1 | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | dbvc-backup.log | [`observability.core.client_logs`](../manifest.json) | `active` | `filesystem_write` | [Identity and storage](../facets/identity-storage-and-observability.md) |
@@ -78,6 +79,8 @@
 | DBVC tool catalog | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | dbvc_ac | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | dbvc_ce | [`addon.connected_environments.observation`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| dbvc_third_party_wsform_preserve_ids | [`portability.third_party.wsform_id_preservation`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
+| dbvc_wsform_refs | [`portability.third_party.wsform_references`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
 | delete proposal | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | deliveries | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | download sync | [`transport.core.sync_packages`](../manifest.json) | `active` | `destructive` | [Identity and storage](../facets/identity-storage-and-observability.md) |
@@ -89,6 +92,7 @@
 | entity file browser | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) |
 | entity registry | [`identity.core.entities`](../manifest.json) | `active` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | execution | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| Export 3rd Party Entities Now | [`portability.third_party.wsform_form_export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) |
 | fixture upload | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | framework definitions | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | framework status | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
@@ -105,6 +109,7 @@
 | hub status CLI | [`cli.agency.inspect`](../manifest.json) | `experimental` | `read_only` | [CLI and automation](../facets/cli-and-automation.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | in-page editor | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) |
 | inbox | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| include trashed forms | [`portability.third_party.wsform_form_export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) |
 | intro handshake | [`addon.bricks.connected_onboarding`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | invitation form | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | job tracking | [`storage.core.snapshots`](../manifest.json) | `active` | `filesystem_write` | [Identity and storage](../facets/identity-storage-and-observability.md) |
@@ -133,6 +138,7 @@
 | per-option import | [`planned.core.granular_options`](../manifest.json) | `planned` | `unknown` | [Settings and extensions](../facets/settings-hooks-and-extensions.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | portable identity | [`identity.core.entities`](../manifest.json) | `active` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | prepare receipt | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| preserve field IDs | [`portability.third_party.wsform_id_preservation`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
 | proposal deployment | [`proposal.core.apply`](../manifest.json) | `active` | `wordpress_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | proposal review API | [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) |
 | proposal status | [`proposal.core.decisions`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) |
@@ -212,3 +218,6 @@
 | wp dbvc resolver-rules import | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules list_ | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc snapshots | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| WS Form export | [`portability.third_party.wsform_form_export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) |
+| WS Form ID parity | [`portability.third_party.wsform_id_preservation`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
+| WS Form reference sidecar | [`portability.third_party.wsform_references`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |

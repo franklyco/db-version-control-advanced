@@ -8536,6 +8536,378 @@
                 "live_runtime_verified": false,
                 "notes": "2026-09-19: baseline-confirm and link-instance executed in the lab; covered by PHPUnit. 2026-09-19: subscribe, subscribe-framework, unsubscribe and route exercised in the lab; scope validation covered by PHPUnit. EnrollmentService invite/revoke/release covered by PHPUnit; invite executed in the lab. Verified on branch claude/dbvc-connected-agency-m2-receipt (manifest baseline commit retained per check contract)."
             }
+        },
+        {
+            "id": "portability.third_party.wsform_references",
+            "title": "Portable WS Form references in post meta",
+            "summary": "Records the portable uid of every WS Form form referenced from post meta in an additive export sidecar, then resolves that uid back to the matching local form ID on import. The raw form ID is never replaced in the payload, so an unresolvable reference is left exactly as exported instead of becoming a broken token.",
+            "status": "active",
+            "primary_category": "import_export",
+            "tags": [
+                "object:post",
+                "object:third_party",
+                "operation:export",
+                "operation:import",
+                "risk:wordpress_write",
+                "scope:core",
+                "surface:hook",
+                "workflow:cross_site_portability"
+            ],
+            "aliases": [
+                "custom_wsform remap",
+                "WS Form reference sidecar",
+                "dbvc_wsform_refs"
+            ],
+            "addon_or_owner": "DBVC Core",
+            "surfaces": [
+                {
+                    "type": "hook",
+                    "identifier": "WS Form post-meta reference provider and registry filters",
+                    "discovery_ids": [
+                        "hook.extension_point.dbvc_wsform_reference_form_entity.066a2625",
+                        "hook.extension_point.dbvc_wsform_reference_form_uid.19e5c176",
+                        "hook.extension_point.dbvc_wsform_reference_meta_keys.6241b5a4",
+                        "hook.extension_point.dbvc_wsform_reference_provider_available.2ca02021",
+                        "hook.extension_point.dbvc_wsform_reference_resolve_uid.968af414"
+                    ],
+                    "source_ref": {
+                        "path": "includes/class-wsform-reference-remap.php",
+                        "line": 56
+                    }
+                }
+            ],
+            "requirements": [
+                "A WS Form provider present on both sides, or the provider filters supplied by another forms integration",
+                "dbvc_wsform_reference_remap enabled (default on)",
+                "WS Form form definitions exported before the posts that reference them"
+            ],
+            "inputs": [
+                "Exported post meta keys listed by dbvc_wsform_reference_meta_keys",
+                "The dbvc_wsform_refs sidecar block on an imported post payload"
+            ],
+            "outputs": [
+                "dbvc_wsform_refs sidecar entries carrying meta key, source form ID, portable uid, label, and status",
+                "Rewritten post meta pointing at the local form ID when the uid resolves",
+                "A remapped/unresolved/unchanged report recorded in dbvc_post_history and the import log"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Post meta keys in the reference registry (write on import)",
+                "dbvc_post_history post meta (write on import)",
+                "WS Form form_meta dbvc_portability_uid rows (read, minted on first export)",
+                "Exported post JSON in the sync folder"
+            ],
+            "settings": [
+                "dbvc_wsform_reference_remap"
+            ],
+            "hooks": [
+                "dbvc_wsform_reference_meta_keys",
+                "dbvc_wsform_reference_provider_available",
+                "dbvc_wsform_reference_form_uid",
+                "dbvc_wsform_reference_form_entity",
+                "dbvc_wsform_reference_resolve_uid"
+            ],
+            "safety": {
+                "classification": "wordpress_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "yes",
+                "backup_required": false,
+                "rollback": "Re-import the unmodified post payload, or restore the previous meta value from the remapped/unresolved report stored in dbvc_post_history.",
+                "warnings": [
+                    "Only meta keys in the filterable registry are ever rewritten; the ACF underscore-prefixed companion keys are excluded and cannot be candidates.",
+                    "Only an unambiguous positive integer meta value is rewritten; empty, non-numeric, and composite values are left untouched.",
+                    "An unresolvable uid is reported but never written, so the raw source form ID survives rather than becoming an invalid reference.",
+                    "The import rewrites the post's sync JSON meta to the resolved local ID, matching the existing vf_object_uid and dbvc_post_history behavior.",
+                    "Form definitions must import before referencing posts; a post imported first keeps its raw ID until the next import pass."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "includes/class-wsform-reference-remap.php"
+                },
+                {
+                    "path": "includes/hooks.php",
+                    "line": 30
+                },
+                {
+                    "path": "includes/class-sync-posts.php",
+                    "line": 4211
+                },
+                {
+                    "path": "includes/class-third-party-portability.php",
+                    "line": 385
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/WSFormReferenceRemapTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/wsform-reference-portability.md",
+                "docs/agents/facets/core-import-export.md"
+            ],
+            "related": [
+                "engine.core.export",
+                "settings.core.import_export",
+                "identity.core.entities"
+            ],
+            "known_gaps": [
+                "WS Form form IDs themselves are still assigned by WS Form on import; this record makes references portable but does not preserve form, group, section, or field IDs.",
+                "Only post meta is covered. References held in term meta, options, or builder element trees are not scanned.",
+                "No CLI or REST surface reports unresolved references; they are visible only in dbvc_post_history and the import log.",
+                "The auto-export on post status transition runs before an import remaps a reference, so a post briefly re-exports carrying the source site's form ID. The sidecar now skips a form absent locally, so no uid is minted for it, but the transient export does write that raw ID back to the sync file until the remap completes. Not reachable from import_all, which sets suppress_export_on_import for the post loop; it affects the single-file and Entity Editor import paths."
+            ],
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-10-10",
+                "evidence_types": [
+                    "source_review",
+                    "focused_unit_test",
+                    "static_registration_discovery",
+                    "cross_site_live_import_execution",
+                    "orphan_row_regression_check",
+                    "import_order_before_after_execution",
+                    "pre_post_table_row_counts"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Added in the claude/wsform-sync-export-issue-286143 worktree at HEAD 14b9865 (manifest baseline commit retained per check contract). 14 focused PHPUnit cases pass; the full DBVC Plugin suite shows the same 7 pre-existing failures as HEAD and no new ones. LIVE CROSS-SITE VERIFIED 2026-10-08/09 on the disposable clones dbvc-connectedsite-a -> dbvc-connectedsite-butler across all three resolution paths. (1) uid absent on the target: reported unresolved, raw id preserved, and it did NOT bind to the target's unrelated form sharing the same id and label - identity is by uid, not id or label. (2) uid present at a DIFFERENT local id (A id 21 -> B id 2): meta remapped with NO duplicate form created. (3) uid present at the SAME id: reported unchanged, nothing written. dbvc_post_history records each outcome and the sync file converges to local ids. S2b also surfaced and fixed a defect: get_wsform_form_uid() minted and persisted a uid row for a form ID absent locally, because the auto-export on post status transition runs before an import remaps the reference - leaving an orphan wsf_form_meta row and claiming that uid against an ID a later form could occupy. It now returns '' unless wsform_form_exists() confirms the row, covered by two regression tests and re-verified live (orphan rows 1 -> 0). Teardown net-zero on both sites across all 9 tracked counters. S3 (2026-10-10): both import orchestrators ran the third-party import AFTER the post loop, so every referencing post reported unresolved and only converged on a second import run. import_all() and the WP-CLI batched path now import third-party entities first, proven live with a before/after on identical input - the same two-file package left the post at the source id 21 with unresolved before the change, and remapped to local id 11 on the FIRST pass after it. Reference spread measured on frameworkflo-live.local"
+            }
+        },
+        {
+            "id": "portability.third_party.wsform_id_preservation",
+            "title": "ID-preserving WS Form form import (opt-in)",
+            "summary": "Keeps the payload's group, section and field IDs when importing into a uid-matched WS Form form, instead of renumbering them. Renumbering orphans existing submissions, whose meta keys are field_<id>, and breaks every stored #field(id) reference. A pre-flight guard refuses the import when any incoming ID belongs to a different form on this site, and the mutation runs inside a transaction when the tables are InnoDB.",
+            "status": "active",
+            "primary_category": "import_export",
+            "tags": [
+                "object:third_party",
+                "operation:import",
+                "risk:requires_backup",
+                "risk:wordpress_write",
+                "scope:core",
+                "surface:hook",
+                "workflow:cross_site_portability"
+            ],
+            "aliases": [
+                "WS Form ID parity",
+                "preserve field IDs",
+                "dbvc_third_party_wsform_preserve_ids"
+            ],
+            "addon_or_owner": "DBVC Core",
+            "surfaces": [
+                {
+                    "type": "hook",
+                    "identifier": "WS Form ID-preservation override filter",
+                    "discovery_ids": [
+                        "hook.extension_point.dbvc_third_party_wsform_preserve_ids.c53fc63a"
+                    ],
+                    "source_ref": {
+                        "path": "includes/class-third-party-portability.php",
+                        "line": 621
+                    }
+                }
+            ],
+            "requirements": [
+                "WS Form active on the target site",
+                "dbvc_third_party_portability_wsform_preserve_ids enabled (default OFF)",
+                "A form matched by portable uid; an unmatched payload falls back to renumbering",
+                "InnoDB WS Form tables for the transactional path; MyISAM degrades to guard-only"
+            ],
+            "inputs": [
+                "A WS Form form export payload carrying group/section/field IDs"
+            ],
+            "outputs": [
+                "The matched form rebuilt with its payload IDs intact",
+                "A WP_Error dbvc_wsform_id_collision naming every colliding ID per level, with nothing mutated",
+                "AUTO_INCREMENT watermarks advanced past the highest inserted ID"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "wsf_form, wsf_group, wsf_section, wsf_field and their meta tables (replace within the matched form)",
+                "wsf_form_meta dbvc_portability_uid row",
+                "AUTO_INCREMENT counters on the child tables (DDL, after COMMIT, non-fatal on failure)"
+            ],
+            "settings": [
+                "dbvc_third_party_portability_wsform_preserve_ids"
+            ],
+            "hooks": [
+                "dbvc_third_party_wsform_preserve_ids"
+            ],
+            "safety": {
+                "classification": "wordpress_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "yes",
+                "backup_required": true,
+                "rollback": "The transaction rolls back on any Throwable when the tables are InnoDB. db_import_reset() destroys the matched form's tree before the rewrite, so a database backup is the only recovery if the engine is MyISAM or the process dies mid-transaction.",
+                "warnings": [
+                    "OFF by default. Renumbering is correct when cloning a form to a new identity; preservation is correct when updating a matched form, so the two stay separately selectable.",
+                    "Applies only to a uid-matched form. With no match the payload's own form ID would be adopted and could target an unrelated local form, so DBVC falls back to renumbering.",
+                    "WS Form child tables share one global AUTO_INCREMENT space with no per-form namespace, and db_update_insert() probes only whether an ID exists, never whether this form owns it. Without the guard an import would UPDATE a foreign row and drag it into the imported form.",
+                    "Ownership is computed with set arithmetic, not a join: a nested section can carry group_id = 0 and be reachable only through its parent chain, which a field->section->group->form join would miss.",
+                    "An unreadable target form yields an empty owned set, so every existing incoming ID counts as foreign and the import fails closed.",
+                    "Style IDs, data-source references and attachment IDs remain site-specific and are not made portable by this record."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "includes/class-third-party-portability.php"
+                },
+                {
+                    "path": "admin/admin-page.php"
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/WSFormPreserveIdsTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/wsform-reference-portability.md"
+            ],
+            "related": [
+                "portability.third_party.wsform_references",
+                "entity_editor.core.write",
+                "engine.core.import"
+            ],
+            "known_gaps": [
+                "Cross-site reference rewriting (the handoff's Phase 2: per-object uids feeding WS Form's new_lookup) is not implemented; divergent sites still require the collision guard to refuse.",
+                "Data-source references, attachment IDs and style IDs are not mapped (the handoff's Phase 3).",
+                "No CLI or REST surface toggles preservation; it is the option, the filter, or the admin checkbox.",
+                "The MyISAM path runs guard-only with no transaction, so a mid-import failure there needs a database restore."
+            ],
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-10-10",
+                "evidence_types": [
+                    "source_review",
+                    "focused_unit_test",
+                    "static_registration_discovery",
+                    "same_checkout_live_import_matrix",
+                    "pre_post_table_row_counts"
+                ],
+                "live_runtime_verified": true,
+                "notes": "13 focused PHPUnit cases cover the opt-in gate, the filter override, payload ID collection including nested sections, the collision set arithmetic, the fail-closed empty-owned case, and that prepare_wsform_form_import_object() still carries every payload ID. LIVE MATRIX 2026-10-10 on dbvc-connectedsite-butler against form 1 (12 fields, 48 real submissions, 687 submit_meta rows). Default OFF: fields renumbered 1..73 -> 144..155 and 479 submission meta keys orphaned, reproducing the original defect on real data. Preserved ON: field IDs byte-identical and 0 orphaned keys. Collision guard: injecting field 83, owned by form 7, returned WP_Error dbvc_wsform_id_collision naming field 83, mutated nothing, and left both forms intact. WS Form tables were dumped before the run and restored after; all counters plus orphan_sub_keys returned to baseline and the deployed files were reverted with 0 tracked drift. Phase 2 reference rewriting and Phase 3 data-source mapping were not executed."
+            }
+        },
+        {
+            "id": "portability.third_party.wsform_form_export",
+            "title": "WS Form form and settings export to the sync folder",
+            "summary": "Writes each selected WS Form form to third-party/ws-form/forms/ as a portable payload carrying a uid and source_id, plus a filtered settings.json. Reports every form that was considered but could not be written, because a file count alone cannot express a form the operator asked for and did not get.",
+            "status": "active",
+            "primary_category": "import_export",
+            "tags": [
+                "object:third_party",
+                "operation:export",
+                "risk:filesystem_write",
+                "scope:core",
+                "surface:admin",
+                "workflow:cross_site_portability"
+            ],
+            "aliases": [
+                "Export 3rd Party Entities Now",
+                "WS Form export",
+                "include trashed forms"
+            ],
+            "addon_or_owner": "DBVC Core",
+            "surfaces": [
+                {
+                    "type": "admin",
+                    "identifier": "3rd Party Portability export action and its WS Form selections",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "admin/admin-page.php",
+                        "line": 502
+                    }
+                }
+            ],
+            "requirements": [
+                "WS Form active",
+                "wsform_forms and/or wsform_settings enabled",
+                "A writable sync folder"
+            ],
+            "inputs": [
+                "The three WS Form portability selections",
+                "Optional dbvc_third_party_wsform_setting_options filter for which option names count as settings"
+            ],
+            "outputs": [
+                "One JSON file per exported form, named ws-form-<id>-<slug>.json",
+                "third-party/ws-form/settings.json with sensitive keys removed and listed under excluded_keys",
+                "A skip report readable via get_last_wsform_export_report(), surfaced in the admin notice and the sync log"
+            ],
+            "artifacts": [
+                "third-party/ws-form/forms/*.json",
+                "third-party/ws-form/settings.json"
+            ],
+            "storage_touched": [
+                "Sync filesystem under third-party/ws-form/ (replaces existing files)",
+                "wsf_form_meta dbvc_portability_uid rows, minted on first export of a form"
+            ],
+            "settings": [
+                "dbvc_third_party_portability_wsform_forms",
+                "dbvc_third_party_portability_wsform_settings",
+                "dbvc_third_party_portability_wsform_include_trash"
+            ],
+            "hooks": [
+                "dbvc_third_party_wsform_setting_options",
+                "dbvc_third_party_wsform_form_snapshot_payload"
+            ],
+            "safety": {
+                "classification": "filesystem_write",
+                "human_reviewed": true,
+                "dry_run": "no",
+                "idempotency": "yes",
+                "backup_required": false,
+                "rollback": "Re-export, or restore the sync folder from a backup. The export replaces files in place and does not delete forms.",
+                "warnings": [
+                    "The include-trash setting cannot deliver a trashed form: WS Form's db_read() throws 'Unable to read form' for one, verified on 1.10.53 and 1.10.87. Trashed forms are reported as skipped with reason trash_unreadable; restoring the form is the only way to export it.",
+                    "export_selected_entities() returns a file count for backward compatibility. Read get_last_wsform_export_report() to learn what was skipped; forms_considered equals forms_written plus forms_skipped.",
+                    "Submissions, stats and per-site counters are not exported.",
+                    "License keys, API keys, tokens, passwords and secrets are stripped from settings.json and preserved locally on import.",
+                    "A resumed chunked export does NOT refresh these files; only creating a chunked job or the full export path does, so a resumed run can leave the folder stale."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "includes/class-third-party-portability.php"
+                },
+                {
+                    "path": "admin/admin-page.php"
+                },
+                {
+                    "path": "includes/class-export-manager.php",
+                    "line": 74
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/WSFormExportSkipReportTest.php",
+                "tests/phpunit/ThirdPartyPortabilityTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/wsform-reference-portability.md",
+                "docs/agents/facets/core-import-export.md"
+            ],
+            "related": [
+                "portability.third_party.wsform_references",
+                "portability.third_party.wsform_id_preservation",
+                "engine.core.export"
+            ],
+            "known_gaps": [
+                "A trashed form cannot be exported at all; the setting only widens which forms are attempted.",
+                "A resumed chunked export still skips third-party refresh (export_selected_entities runs only on job creation).",
+                "The skip report is per-run and in-memory; it is not persisted for later inspection.",
+                "No CLI or REST surface returns the skip report."
+            ],
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-10-12",
+                "evidence_types": [
+                    "source_review",
+                    "focused_unit_test",
+                    "same_checkout_live_export",
+                    "pre_post_table_row_counts"
+                ],
+                "live_runtime_verified": true,
+                "notes": "8 focused PHPUnit cases cover skip classification (including that only an unreadable trashed form is reclassified as trash_unreadable, so a write failure on a trashed form is not mislabelled), sanitisation, unknown-reason fallback, the report shape, and that a run resets the report. LIVE 2026-10-12 on dbvc-connectedsite-a with include_trash enabled and 25 forms: 22 written, 3 skipped, each trashed form named with reason trash_unreadable and an actionable message, and forms_considered == forms_written + forms_skipped. The same db_read refusal was confirmed read-only against WS Form 1.10.87 on frameworkflo-live, so the limitation is not specific to the clone's 1.10.53. Site A restored to baseline afterwards (uid rows 15, sync folder 148 files)."
+            }
         }
     ],
     "ignored_discovery": []
