@@ -39,10 +39,10 @@ Each record has exactly one primary category. Cross-cutting discovery belongs in
 |---|---|---|
 | `surface:` | `cli`, `rest`, `admin`, `php`, `hook`, `ajax`, `admin_post`, `cron`, `filesystem`, `database` | Exposure or invocation surface |
 | `operation:` | `inspect`, `list`, `preview`, `validate`, `export`, `import`, `upload`, `download`, `route`, `compare`, `apply`, `delete`, `restore`, `configure`, `diagnose`, `generate` | Material operation |
-| `object:` | `post`, `term`, `media`, `menu`, `option`, `acf_options`, `bricks_template`, `package`, `proposal`, `snapshot` | Primary object or artifact |
-| `scope:` | `core`, `addon:bricks`, `addon:content_migration`, `source_reference` | Runtime ownership or reference boundary |
+| `object:` | `post`, `term`, `media`, `menu`, `option`, `acf_options`, `bricks_template`, `bricks_global_class`, `bricks_variable`, `package`, `proposal`, `snapshot` | Primary object or artifact |
+| `scope:` | `core`, `addon:bricks`, `addon:content_migration`, `addon:visual_editor`, `addon:connected_environments`, `addon:agency_control`, `source_reference` | Runtime ownership or reference boundary |
 | `risk:` | `read_only`, `filesystem_write`, `wordpress_write`, `remote_write`, `destructive`, `requires_backup` | Material consequence |
-| `workflow:` | `client_onboarding`, `site_migration`, `proposal_review`, `deployment`, `recovery`, `development` | Common task context |
+| `workflow:` | `client_onboarding`, `site_migration`, `proposal_review`, `deployment`, `recovery`, `development`, `connected_environments` | Common task context |
 | `status:` | Manifest status values | Reviewed status mirror for index lookup |
 
 Tag arrays must be unique and sorted lexically by the generator.

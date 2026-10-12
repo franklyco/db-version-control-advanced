@@ -73,6 +73,8 @@
 	const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
 	const PERFORMANCE_PREFIX = 'dbvc.ve.';
 	const BADGE_HIDE_DELAY_MS = 500;
+	const BLOCK_HTML_PATTERN =
+		/<(?:p|div|h[1-6]|ul|ol|li|blockquote|pre|figure|figcaption|table|section|article|header|footer|aside|nav)\b[^>]*>/i;
 
 	function supportsPerformanceTimings() {
 		return Boolean(
@@ -9381,29 +9383,78 @@
 			: null;
 	}
 
-	function createFallbackRichTextController( value ) {
-		const wrapper = document.createElement( 'div' );
-		const toolbar = document.createElement( 'div' );
-		const editor = document.createElement( 'div' );
-		const toolbarButtons = [];
+	function getRichTextBlockFormats() {
+		return [
+			{
+				label: strings().panelRichTextParagraph || 'Paragraph',
+				value: 'p',
+			},
+			{
+				label: strings().panelRichTextHeading1 || 'Heading 1',
+				value: 'h1',
+			},
+			{
+				label: strings().panelRichTextHeading2 || 'Heading 2',
+				value: 'h2',
+			},
+			{
+				label: strings().panelRichTextHeading3 || 'Heading 3',
+				value: 'h3',
+			},
+			{
+				label: strings().panelRichTextHeading4 || 'Heading 4',
+				value: 'h4',
+			},
+			{
+				label: strings().panelRichTextHeading5 || 'Heading 5',
+				value: 'h5',
+			},
+			{
+				label: strings().panelRichTextHeading6 || 'Heading 6',
+				value: 'h6',
+			},
+			{
+				label: strings().panelRichTextPreformatted || 'Preformatted',
+				value: 'pre',
+			},
+		];
+	}
 
-		wrapper.className = 'dbvc-ve-panel__stack';
+	function createRichTextToolbar( editor, onCommand ) {
+		const toolbar = document.createElement( 'div' );
+		const formatSelect = document.createElement( 'select' );
+		const formatLabel = strings().panelRichTextFormat || 'Block format';
+		const controls = [];
+
 		toolbar.className = 'dbvc-ve-panel__toolbar';
-		editor.id = 'dbvc-ve-panel-input';
-		editor.className = 'dbvc-ve-panel__richtext';
-		editor.contentEditable = 'true';
-		editor.innerHTML = typeof value === 'string' ? value : '';
+
+		// Block format menu: Paragraph, Heading 1-6, Preformatted. Heading
+		// WYSIWYG values (e.g. a hero <h1>) need a way to pick the block tag.
+		formatSelect.className = 'dbvc-ve-panel__toolbar-select';
+		formatSelect.setAttribute( 'aria-label', formatLabel );
+		formatSelect.title = formatLabel;
+		getRichTextBlockFormats().forEach( function ( format ) {
+			const option = document.createElement( 'option' );
+
+			option.value = format.value;
+			option.textContent = format.label;
+			formatSelect.appendChild( option );
+		} );
+		formatSelect.addEventListener( 'change', function () {
+			editor.focus();
+			if ( typeof onCommand === 'function' ) {
+				onCommand();
+			}
+			document.execCommand( 'formatBlock', false, formatSelect.value );
+		} );
+		controls.push( formatSelect );
+		toolbar.appendChild( formatSelect );
 
 		[
 			{ label: strings().panelRichTextBold || 'Bold', command: 'bold' },
 			{
 				label: strings().panelRichTextItalic || 'Italic',
 				command: 'italic',
-			},
-			{
-				label: strings().panelRichTextParagraph || 'Paragraph',
-				command: 'formatBlock',
-				argument: 'p',
 			},
 			{
 				label: strings().panelRichTextBullets || 'Bullets',
@@ -9416,30 +9467,59 @@
 		].forEach( function ( item ) {
 			const button = createToolbarButton( item.label, function () {
 				editor.focus();
-				if ( item.command === 'formatBlock' ) {
-					document.execCommand( item.command, false, item.argument );
-					return;
+				if ( typeof onCommand === 'function' ) {
+					onCommand();
 				}
 
 				document.execCommand( item.command, false, null );
 			} );
 
-			toolbarButtons.push( button );
+			controls.push( button );
 			toolbar.appendChild( button );
 		} );
 
-		wrapper.appendChild( toolbar );
+		return {
+			toolbar,
+			controls,
+		};
+	}
+
+	function createFallbackRichTextController( value ) {
+		const wrapper = document.createElement( 'div' );
+		const editor = document.createElement( 'div' );
+		let baselineValue = typeof value === 'string' ? value : '';
+		let dirty = false;
+
+		wrapper.className = 'dbvc-ve-panel__stack';
+		editor.id = 'dbvc-ve-panel-input';
+		editor.className = 'dbvc-ve-panel__richtext';
+		editor.contentEditable = 'true';
+		editor.innerHTML = baselineValue;
+		// Reading back innerHTML normalises the markup (self-closing tags,
+		// attribute order), so an untouched editor returns the stored value
+		// verbatim instead.
+		editor.addEventListener( 'input', function () {
+			dirty = true;
+		} );
+
+		const richTextToolbar = createRichTextToolbar( editor, function () {
+			dirty = true;
+		} );
+		const toolbarControls = richTextToolbar.controls;
+
+		wrapper.appendChild( richTextToolbar.toolbar );
 		wrapper.appendChild( editor );
 
 		return {
 			element: wrapper,
 			mount() {},
 			getValue() {
-				return editor.innerHTML;
+				return dirty ? editor.innerHTML : baselineValue;
 			},
 			setValue( nextValue ) {
-				editor.innerHTML =
-					typeof nextValue === 'string' ? nextValue : '';
+				baselineValue = typeof nextValue === 'string' ? nextValue : '';
+				editor.innerHTML = baselineValue;
+				dirty = false;
 			},
 			focus() {
 				editor.focus();
@@ -9448,18 +9528,30 @@
 				const isDisabled = Boolean( disabled );
 
 				editor.contentEditable = isDisabled ? 'false' : 'true';
-				toolbarButtons.forEach( function ( button ) {
-					button.disabled = isDisabled;
+				toolbarControls.forEach( function ( control ) {
+					control.disabled = isDisabled;
 				} );
 			},
 			destroy() {},
 		};
 	}
 
+	function valueUsesBlockHtml( value ) {
+		return typeof value === 'string' && BLOCK_HTML_PATTERN.test( value );
+	}
+
 	function createWordPressRichTextController( value ) {
 		const wrapper = document.createElement( 'div' );
 		const textarea = document.createElement( 'textarea' );
 		const editorId = 'dbvc-ve-panel-input';
+		const initialValue = typeof value === 'string' ? value : '';
+		// Values already stored with block-level HTML must round-trip verbatim,
+		// so TinyMCE's wpautop/removep pass is switched off for them -- with it
+		// on, removep() strips every bare <p> and turns <br /> into a newline on
+		// save. Values stored in the WordPress/ACF blank-line form still need
+		// wpautop, or TinyMCE collapses the blank lines into a single paragraph.
+		const useWpautop = ! valueUsesBlockHtml( initialValue );
+		let baselineValue = initialValue;
 		let initialized = false;
 		let disabled = false;
 
@@ -9467,7 +9559,7 @@
 		textarea.id = editorId;
 		textarea.className =
 			'dbvc-ve-panel__input dbvc-ve-panel__wysiwyg-textarea';
-		textarea.value = typeof value === 'string' ? value : '';
+		textarea.value = initialValue;
 		wrapper.appendChild( textarea );
 
 		function syncState() {
@@ -9495,9 +9587,15 @@
 
 				window.wp.editor.initialize( editorId, {
 					tinymce: {
-						wpautop: true,
+						wpautop: useWpautop,
 						resize: true,
 						height: 260,
+						// WordPress's frontend defaults omit the block-format menu;
+						// heading WYSIWYG values need Paragraph / H1-H6 / Preformatted.
+						toolbar1:
+							'formatselect bold italic bullist numlist link',
+						block_formats:
+							'Paragraph=p; Heading 1=h1; Heading 2=h2; Heading 3=h3; Heading 4=h4; Heading 5=h5; Heading 6=h6; Preformatted=pre',
 					},
 					quicktags: true,
 					mediaButtons: false,
@@ -9509,7 +9607,31 @@
 			getValue() {
 				const editor = getTinyMceEditor( editorId );
 
-				if ( editor && typeof editor.save === 'function' ) {
+				if ( ! editor ) {
+					return textarea.value;
+				}
+
+				// Code ("Text") tab: the textarea is what the user edited and
+				// TinyMCE's dirty flag does not track it, so take it as-is.
+				if (
+					typeof editor.isHidden === 'function' &&
+					editor.isHidden()
+				) {
+					return textarea.value;
+				}
+
+				// An untouched editor must never rewrite the stored value.
+				// TinyMCE re-serialises markup on save even when nothing was
+				// edited, so a no-op save would otherwise silently reformat
+				// authored HTML.
+				if (
+					typeof editor.isDirty === 'function' &&
+					! editor.isDirty()
+				) {
+					return baselineValue;
+				}
+
+				if ( typeof editor.save === 'function' ) {
 					editor.save();
 				}
 
@@ -9520,10 +9642,15 @@
 					typeof nextValue === 'string' ? nextValue : '';
 				const editor = getTinyMceEditor( editorId );
 
+				baselineValue = normalized;
 				textarea.value = normalized;
 
 				if ( editor && typeof editor.setContent === 'function' ) {
 					editor.setContent( normalized );
+
+					if ( typeof editor.setDirty === 'function' ) {
+						editor.setDirty( false );
+					}
 				}
 			},
 			focus() {
@@ -10104,6 +10231,71 @@
 		return values;
 	}
 
+	function createCompositeRichTextChildEditor(
+		index,
+		initialValue,
+		onChange
+	) {
+		const wrapper = document.createElement( 'div' );
+		const editor = document.createElement( 'div' );
+		let baselineValue =
+			initialValue === null || typeof initialValue === 'undefined'
+				? ''
+				: String( initialValue );
+		let dirty = false;
+
+		wrapper.className =
+			'dbvc-ve-panel__stack dbvc-ve-panel__composite-richtext';
+		editor.id = `dbvc-ve-composite-child-${ index }`;
+		editor.className =
+			'dbvc-ve-panel__richtext dbvc-ve-panel__composite-input';
+		editor.contentEditable = 'true';
+		editor.innerHTML = baselineValue;
+		editor.addEventListener( 'input', function () {
+			dirty = true;
+			onChange();
+		} );
+
+		const richTextToolbar = createRichTextToolbar( editor, function () {
+			dirty = true;
+			onChange();
+		} );
+
+		wrapper.appendChild( richTextToolbar.toolbar );
+		wrapper.appendChild( editor );
+
+		return {
+			element: wrapper,
+			getValue() {
+				return dirty ? editor.innerHTML : baselineValue;
+			},
+			getPreviewValue() {
+				return normalizeCompositeHtmlToText(
+					dirty ? editor.innerHTML : baselineValue
+				);
+			},
+			setValue( nextValue ) {
+				baselineValue =
+					nextValue === null || typeof nextValue === 'undefined'
+						? ''
+						: String( nextValue );
+				editor.innerHTML = baselineValue;
+				dirty = false;
+			},
+			focus() {
+				editor.focus();
+			},
+			setDisabled( disabled ) {
+				const isDisabled = Boolean( disabled );
+
+				editor.contentEditable = isDisabled ? 'false' : 'true';
+				richTextToolbar.controls.forEach( function ( control ) {
+					control.disabled = isDisabled;
+				} );
+			},
+		};
+	}
+
 	function createCompositeChildEditor( child, onChange ) {
 		const input = child && child.input ? String( child.input ) : 'text';
 		const index =
@@ -10116,6 +10308,14 @@
 				? child.currentValue
 				: '';
 		let field;
+
+		if ( input === 'richtext' ) {
+			return createCompositeRichTextChildEditor(
+				index,
+				initialValue,
+				onChange
+			);
+		}
 
 		if ( input === 'select' ) {
 			const descriptor =

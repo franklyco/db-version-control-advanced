@@ -1563,6 +1563,8 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 
 require_once __DIR__ . '/class-capabilities-cli.php';
 require_once __DIR__ . '/class-bricks-cli.php';
+require_once __DIR__ . '/class-connected-cli.php';
+require_once __DIR__ . '/class-agency-cli.php';
 require_once __DIR__ . '/class-configuration-portability-cli.php';
 require_once __DIR__ . '/class-content-migration-cli.php';
 require_once __DIR__ . '/class-entity-editor-cli.php';

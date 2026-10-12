@@ -366,3 +366,17 @@ Learned running S1–S6 for real (`R5-LATER-PERF-AUDIT-REPORT.md` §2 has the ex
 - **S6:** the palette parent row lives in the collapsed-by-default `Site Settings Advanced` group; expand it (or all groups) in setup and let the row's own value-summary batch finish before clearing timing.
 - Park the mouse on the admin bar between runs — a cursor resting on a page marker keeps the prefetch active and contaminates S3/S4 (`s4/discarded-hover-prefetch.json`).
 
+### The harness used for that sweep
+
+`R5-LATER-PERF-MEASUREMENTS/harness/` holds the scripts the 2026-09-17 sweep actually ran, so a re-sweep produces directly comparable JSON:
+
+| File | Role |
+|---|---|
+| `boot-capture.js` | S1/S2 — wait for load + `dbvc.ve.overlay_boot`, settle 2 s, capture |
+| `capture-compact.js` | the capture snippet on its own, for a scenario whose action you drive by hand |
+| `s5-run.js` | S5 — hover the marker, click the `Edit` badge 300 ms later, wait for `panel.render` |
+| `s6-setup.js` | S6 — drawer to the palette-parent row with its value-summary batch drained (the measured click runs after it) |
+| `save-run.py` | compact capture on stdin → `<scenario>/<runN>.json` (consumed by `analyze.py`) |
+
+Run `save-run.py` and `analyze.py` from the plugin root. S3 and S4 have no checked-in script — S3 is `document.dispatchEvent(new CustomEvent('dbvc:visual-editor:control-center:toggle'))` plus `capture-compact.js`, and S4 is the rAF scroll described above.
+

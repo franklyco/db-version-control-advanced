@@ -41,6 +41,10 @@ try {
 
     if ($command === 'build') {
         $snapshot = writeGeneratedIndexes($repositoryRoot, $manifest);
+        // Persist the snapshot the indexes were rendered from; `check` compares
+        // this file against a fresh discovery, so a build that skipped it
+        // always reported the snapshot as stale until `discover` was run too.
+        writeJsonFile(agentDocsPath($repositoryRoot, 'generated/discovery-snapshot.json'), $snapshot);
         updateReadmeIndex($repositoryRoot, $manifest, $snapshot);
         printManifestSummary($manifest, 'Built generated agent indexes');
         exit(0);
@@ -577,6 +581,11 @@ function discoverHooks(string $contents, string $path, string $scope): array
         return [];
     }
 
+    // Hook IDs hash the file path, kind, hook name and the occurrence index of
+    // that hook within the file — NOT the byte offset — so editing code above
+    // a call no longer changes its identity (2026-09-17; previously every edit
+    // higher up in bootstrap.php churned the mapped IDs).
+    $occurrences = [];
     foreach ($matches[0] as $index => $wholeMatch) {
         $function = $matches[1][$index][0];
         $hook = $matches[2][$index][0];
@@ -584,8 +593,10 @@ function discoverHooks(string $contents, string $path, string $scope): array
         if ($kind === 'extension_point' && ! str_starts_with($hook, 'dbvc_')) {
             continue;
         }
+        $occurrenceKey = $kind . ':' . $hook;
+        $occurrence = $occurrences[$occurrenceKey] = ($occurrences[$occurrenceKey] ?? -1) + 1;
         $hooks[] = [
-            'discovery_id' => 'hook.' . $kind . '.' . sanitizeDiscoveryPart($hook) . '.' . substr(sha1($path . ':' . $wholeMatch[1]), 0, 8),
+            'discovery_id' => 'hook.' . $kind . '.' . sanitizeDiscoveryPart($hook) . '.' . substr(sha1($path . ':' . $kind . ':' . $hook . ':' . $occurrence), 0, 8),
             'kind' => $kind,
             'scope' => $scope,
             'function' => $function,

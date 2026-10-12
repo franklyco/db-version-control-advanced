@@ -70,3 +70,9 @@ For every slice report: actual source owner, behavior added, evidence run, limit
 ## Later product extraction
 
 Keep this implementation in DBVC until independent release cadence, external distribution, non-DBVC consumers, or measured hub infrastructure needs justify extraction. First package the hub separately in the same repository if useful; move repositories only when that solves a real workflow problem. Preserve table/identity ownership and protocol compatibility through an explicit migration, not a folder rename.
+
+## Delivery status and follow-ups (2026-09-22)
+
+M0–M6 are all implemented on stacked, merged branches; the live board is `tracking/tasks.json` and `tracking/SESSION-HANDOFF.md`. **M6 (fleet rollout) is complete and live-verified** (2026-09-21, master `94fade2`; schema migrated v8→v10 on the live site, the `agency/rollout-*` CLI/routes exercised, the Rollouts admin page rendered). M1–M5 remain `implemented_pending_live_site_gate`.
+
+Open follow-up — **admin-page colour readability (light + dark)**: some text is low-contrast (the active section-nav tab is white-on-near-white in dark mode; `--dbvc-ce-color-text-subtle` `#8c8f94` fails WCAG AA on white and is thin on the dark surfaces). A concrete, measured remediation plan (findings table + token/rule fixes + verification) is in `docs/implementation/active/connected-environments-admin-page.md` §5.4. It is a tokens-and-one-nav-rule change with no behaviour impact; ship it as its own small slice.

@@ -140,6 +140,9 @@ require_once DBVC_PLUGIN_PATH . 'includes/hooks.php';
 require_once DBVC_PLUGIN_PATH . 'commands/class-wp-cli-commands.php';
 require_once DBVC_PLUGIN_PATH . 'commands/class-media-hydration-cli.php';
 require_once DBVC_PLUGIN_PATH . 'admin/class-admin-app.php';
+// Connected Environments page: menu (admin) + admin REST routes (REST requests are not is_admin()); inert while both gates are off.
+require_once DBVC_PLUGIN_PATH . 'admin/class-connected-admin-page.php';
+DBVC_Connected_Admin_Page::init();
 require_once DBVC_PLUGIN_PATH . 'admin/class-entity-editor-app.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-addon.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-artifacts.php';
@@ -167,6 +170,9 @@ require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-por
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-rest-controller.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability.php';
 require_once DBVC_PLUGIN_PATH . 'addons/visual-editor/bootstrap.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConnectedProtocol/autoload.php';
+require_once DBVC_PLUGIN_PATH . 'addons/connected-environments/bootstrap.php';
+require_once DBVC_PLUGIN_PATH . 'addons/agency-control/bootstrap.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/DomainProviderInterface.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Field.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/AbstractOptionDomainProvider.php';
@@ -196,6 +202,8 @@ DBVC_Entity_Editor_App::init();
 DBVC_Bricks_Addon::bootstrap();
 DBVC_Bricks_Portability::bootstrap();
 DBVC_Visual_Editor_Addon::bootstrap();
+DBVC_Connected_Environments_Addon::bootstrap();
+DBVC_Agency_Control_Addon::bootstrap();
 \Dbvc\AiPackage\OpenAiModelCatalogService::init();
 \Dbvc\Media\Hydration\MediaHydrationJobRunner::init();
 \Dbvc\Media\Hydration\RestController::init();

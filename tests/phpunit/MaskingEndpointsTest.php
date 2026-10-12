@@ -1,5 +1,8 @@
 <?php
 
+/**
+ * @group proposal-diff
+ */
 class MaskingEndpointsTest extends WP_UnitTestCase
 {
     private const PROPOSAL_ID = 'masking-proposal';
@@ -28,7 +31,7 @@ class MaskingEndpointsTest extends WP_UnitTestCase
     {
         $server = rest_get_server();
         $filter = static function () {
-            return 3;
+            return 5;
         };
         add_filter('dbvc_masking_chunk_size', $filter);
         $request = new WP_REST_Request('GET', '/dbvc/v1/proposals/' . self::PROPOSAL_ID . '/masking');
@@ -38,7 +41,7 @@ class MaskingEndpointsTest extends WP_UnitTestCase
         $this->assertSame(200, $response->get_status());
         $data = $response->get_data();
         $this->assertArrayHasKey('chunk', $data);
-        $this->assertSame(3, $data['chunk']['per_page']);
+        $this->assertSame(5, $data['chunk']['per_page']);
         $this->assertTrue($data['chunk']['has_more']);
         $this->assertNotEmpty($data['fields']);
 
@@ -59,17 +62,19 @@ class MaskingEndpointsTest extends WP_UnitTestCase
         $suppress_store = get_option('dbvc_masked_field_suppressions');
         $this->assertArrayHasKey(self::PROPOSAL_ID, $suppress_store);
         $entity_suppress = $suppress_store[self::PROPOSAL_ID]['mask-post-1'] ?? [];
-        $this->assertArrayHasKey('_secret_key', $entity_suppress);
-        $this->assertArrayHasKey('meta._secret_key', $entity_suppress['_secret_key']);
+        $this->assertArrayHasKey('meta', $entity_suppress);
+        $this->assertArrayHasKey('_secret_key', $entity_suppress['meta']);
+        $this->assertArrayHasKey('meta._secret_key', $entity_suppress['meta']['_secret_key']);
 
         $override_store = get_option('dbvc_mask_overrides');
         $this->assertArrayHasKey(self::PROPOSAL_ID, $override_store);
         $entity_overrides = $override_store[self::PROPOSAL_ID]['mask-post-1'] ?? [];
-        $this->assertArrayHasKey('_hidden_blob', $entity_overrides);
-        $this->assertArrayHasKey('meta._hidden_blob.0.label', $entity_overrides['_hidden_blob']);
+        $this->assertArrayHasKey('meta', $entity_overrides);
+        $this->assertArrayHasKey('_hidden_blob', $entity_overrides['meta']);
+        $this->assertArrayHasKey('meta._hidden_blob.0.label', $entity_overrides['meta']['_hidden_blob']);
         $this->assertSame(
             'REDACTED',
-            $entity_overrides['_hidden_blob']['meta._hidden_blob.0.label']['value']
+            $entity_overrides['meta']['_hidden_blob']['meta._hidden_blob.0.label']['value']
         );
     }
 
@@ -221,6 +226,9 @@ class MaskingEndpointsTest extends WP_UnitTestCase
         return $response->get_data();
     }
 
+    /**
+     * Phase 5.1 contract for post-field masking during apply.
+     */
     public function test_import_post_respects_post_field_masking(): void
     {
         $post_id = self::factory()->post->create([
@@ -230,11 +238,15 @@ class MaskingEndpointsTest extends WP_UnitTestCase
             'post_date'    => '2020-01-01 10:00:00',
             'post_modified'=> '2020-01-02 11:00:00',
         ]);
+        update_post_meta($post_id, 'vf_object_uid', 'mask-post-override');
 
         $json = [
             'ID'            => $post_id,
             'post_type'     => 'page',
             'post_title'    => 'Import Target',
+            'post_content'  => '',
+            'post_excerpt'  => '',
+            'post_name'     => 'import-target',
             'post_status'   => 'publish',
             'post_date'     => '2030-05-01 08:00:00',
             'post_modified' => '2030-05-02 08:30:00',

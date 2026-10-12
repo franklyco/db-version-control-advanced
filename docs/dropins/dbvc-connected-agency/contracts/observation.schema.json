@@ -44,10 +44,24 @@
       ],
       "properties": {
         "domain": {
-          "enum": [
-            "bricks.global_class",
-            "bricks.variable",
-            "wp.service"
+          "type": "string",
+          "maxLength": 128,
+          "anyOf": [
+            {
+              "enum": [
+                "bricks.global_class",
+                "bricks.variable",
+                "wp.service"
+              ]
+            },
+            {
+              "description": "Universal post-type coverage: wp.post: followed by a post-type slug (wp.service is the back-compat alias of wp.post:service).",
+              "pattern": "^wp\\.post:[a-z0-9_-]+$"
+            },
+            {
+              "description": "Additional Bricks domains (M9 slice 6): wp.bricks: followed by a collection/singleton slug, e.g. wp.bricks:color_palette.",
+              "pattern": "^wp\\.bricks:[a-z0-9_]+$"
+            }
           ]
         },
         "instance_uid": {
@@ -55,6 +69,12 @@
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+        },
+        "match_key": {
+          "description": "Optional, backward-compatible portable identity token (a Bricks object's name/token/slug) used by the hub to propose links between the same framework object on environments whose site-local instance_uid differs. Absent on lineage-portable domains and on connectors that predate this field; its presence or absence never changes the schema version.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 191
         }
       }
     },

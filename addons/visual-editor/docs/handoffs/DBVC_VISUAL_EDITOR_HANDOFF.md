@@ -46,6 +46,8 @@ git diff --stat
 
 If branch, HEAD, or the dirty boundary has changed, reconcile the delta before editing. Do not force the checkout back to this recorded state.
 
+Reminder (2026-09-20): two unpushed local Codex branches still hold Visual Editor / Entity Editor / Bricks-portability work that predates r5/r6 — `codex/resume-dbvc-visual-editor-work` (`0e796fa`, 31 of its 75 files differ from `master`, notably `src/Resolvers/AbstractAcfResolver.php`, `src/Registry/EditableRegistry.php`, `src/Assets/AssetLoader.php`, `assets/js/overlay-app.js`) and `codex/add-select-all-option` (`dc594e6`, already landed on `master`). Review them for anything worth adopting before deleting; details and the review order are in `docs/ROADMAP.md` → "Deferred Review: Unpushed Local Codex Branches".
+
 ## Required read order
 
 Read narrowly in this order:

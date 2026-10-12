@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connected Environments — state vocabulary gallery</title>
+<style>
+  /* Mirrors src/connected-app/style.css: the six badge tones and the scoped tokens.
+     Light by default; toggling data-theme="dark" applies the same dark tokens the
+     app uses under @media (prefers-color-scheme: dark). */
+  :root {
+    --dbvc-badge-bg-alpha: 0.2;
+    --dbvc-badge-border-darken: 12%;
+    --dbvc-badge-text-darken: 18%;
+  }
+  .dbvc-ce {
+    --dbvc-ce-color-text: #1e1e1e;
+    --dbvc-ce-color-text-muted: #50575e;
+    --dbvc-ce-color-text-subtle: #787c82;
+    --dbvc-ce-color-border: #dcdcde;
+    --dbvc-ce-color-border-strong: #c3c4c7;
+    --dbvc-ce-color-surface: #ffffff;
+    --dbvc-ce-color-surface-muted: #f6f7f7;
+    color: var(--dbvc-ce-color-text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--dbvc-ce-color-surface);
+    min-height: 100vh;
+    margin: 0;
+    padding: 24px 32px 64px;
+  }
+  .dbvc-ce[data-theme="dark"] {
+    --dbvc-ce-color-text: #f0f0f1;
+    --dbvc-ce-color-text-muted: #c3c4c7;
+    --dbvc-ce-color-text-subtle: #8c8f94;
+    --dbvc-ce-color-border: #3c434a;
+    --dbvc-ce-color-border-strong: #50575e;
+    --dbvc-ce-color-surface: #1d2327;
+    --dbvc-ce-color-surface-muted: #2c3338;
+  }
+  .dbvc-ce[data-theme="dark"] .dbvc-badge {
+    --dbvc-badge-text-darken: -34%;
+    --dbvc-badge-border-darken: -14%;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.lede { color: var(--dbvc-ce-color-text-muted); margin: 0 0 20px; max-width: 62ch; }
+  .toolbar { margin: 0 0 24px; }
+  .toolbar button {
+    font: inherit; cursor: pointer; padding: 6px 14px; border-radius: 20px;
+    border: 1px solid var(--dbvc-ce-color-border-strong);
+    background: var(--dbvc-ce-color-surface-muted); color: inherit;
+  }
+  section { margin: 0 0 22px; padding: 16px 18px; border: 1px solid var(--dbvc-ce-color-border); border-radius: 8px; background: var(--dbvc-ce-color-surface); }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--dbvc-ce-color-text-muted); margin: 0 0 4px; }
+  section .meaning { color: var(--dbvc-ce-color-text-subtle); font-size: 12px; margin: 0 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .dbvc-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; line-height: 1.4;
+    border: 1px solid transparent; white-space: nowrap;
+    --dbvc-badge-h: 210deg; --dbvc-badge-s: 6%; --dbvc-badge-l: 42%;
+    background: hsla(var(--dbvc-badge-h) var(--dbvc-badge-s) var(--dbvc-badge-l) / var(--dbvc-badge-bg-alpha));
+    border-color: hsl(var(--dbvc-badge-h) var(--dbvc-badge-s) calc(var(--dbvc-badge-l) - var(--dbvc-badge-border-darken)));
+    color: hsl(var(--dbvc-badge-h) var(--dbvc-badge-s) calc(var(--dbvc-badge-l) - var(--dbvc-badge-text-darken)));
+  }
+  .dbvc-badge--positive { --dbvc-badge-h: 140deg; --dbvc-badge-s: 56%; --dbvc-badge-l: 40%; }
+  .dbvc-badge--directional { --dbvc-badge-h: 210deg; --dbvc-badge-s: 68%; --dbvc-badge-l: 44%; }
+  .dbvc-badge--neutral { --dbvc-badge-h: 215deg; --dbvc-badge-s: 6%; --dbvc-badge-l: 42%; }
+  .dbvc-badge--caution { --dbvc-badge-h: 35deg; --dbvc-badge-s: 90%; --dbvc-badge-l: 42%; }
+  .dbvc-badge--negative { --dbvc-badge-h: 358deg; --dbvc-badge-s: 66%; --dbvc-badge-l: 48%; }
+  .dbvc-badge--uncertain { --dbvc-badge-h: 210deg; --dbvc-badge-s: 6%; --dbvc-badge-l: 50%; border-style: dashed; background: transparent; }
+</style>
+</head>
+<body class="dbvc-ce" id="app">
+  <h1>Connected Environments — state vocabulary</h1>
+  <p class="lede">Every state string the page can render, grouped by the six tones in <code>TONES</code> (src/connected-app/index.js). The mapping is <code>toneFor()</code>; an unlisted state falls back to <em>neutral</em>. Toggle dark to check both themes against the same tokens the app ships.</p>
+  <div class="toolbar"><button type="button" id="toggle" aria-pressed="false">Preview dark tokens</button></div>
+
+  <section>
+    <h2>Positive</h2>
+    <p class="meaning">Agreement, success, an enabled/present/enrolled steady state.</p>
+    <div class="row" data-tone="positive"></div>
+  </section>
+  <section>
+    <h2>Directional</h2>
+    <p class="meaning">A pending or in-flight direction of travel (outgoing/incoming, requested, approved, selected).</p>
+    <div class="row" data-tone="directional"></div>
+  </section>
+  <section>
+    <h2>Neutral</h2>
+    <p class="meaning">A settled non-judgemental fact (converged, noop, baseline required, observed, withdrawn/detached).</p>
+    <div class="row" data-tone="neutral"></div>
+  </section>
+  <section>
+    <h2>Caution</h2>
+    <p class="meaning">Drift, version distance, a hold or a stale/incomplete read — attention, not failure.</p>
+    <div class="row" data-tone="caution"></div>
+  </section>
+  <section>
+    <h2>Negative</h2>
+    <p class="meaning">Conflict, failure, compensation, revocation — something did not or cannot proceed.</p>
+    <div class="row" data-tone="negative"></div>
+  </section>
+  <section>
+    <h2>Uncertain <span style="text-transform:none;font-weight:400">(dashed)</span></h2>
+    <p class="meaning">Not knowable right now: unknown, unsupported, not observed, incomplete, unavailable, disabled. Never reads as clean.</p>
+    <div class="row" data-tone="uncertain"></div>
+  </section>
+
+<script>
+  var TONES = {
+    positive: ['synchronized','clean','current','applied','sealed','received','consumed','enabled','present','enrolled','available','ready_gate','acked','released','resolved','published'],
+    directional: ['outgoing','incoming','ready','requested','open','selected','provisional','approved'],
+    neutral: ['converged','noop','baseline_required','observed','classified','disconnected','withdrawn','detached','version_differs'],
+    caution: ['local_drift','behind_version','ahead_version','channel_mismatch','needs_rebase_review','stale','partial','mismatch','held','expiring','migration_required'],
+    negative: ['conflict','override_changed','failed','compensated','revoked','unresolved','cancelled','emergency_disabled'],
+    uncertain: ['unknown','offline','unsupported','not_observed','incomplete','unavailable','uninitialized','disabled'],
+  };
+  Object.keys(TONES).forEach(function (tone) {
+    var row = document.querySelector('.row[data-tone="' + tone + '"]');
+    TONES[tone].forEach(function (state) {
+      var span = document.createElement('span');
+      span.className = 'dbvc-badge dbvc-badge--' + tone;
+      span.textContent = state.replace(/_/g, ' ');
+      row.appendChild(span);
+    });
+  });
+  var app = document.getElementById('app');
+  var toggle = document.getElementById('toggle');
+  toggle.addEventListener('click', function () {
+    var dark = app.getAttribute('data-theme') === 'dark';
+    app.setAttribute('data-theme', dark ? 'light' : 'dark');
+    toggle.setAttribute('aria-pressed', String(!dark));
+    toggle.textContent = dark ? 'Preview dark tokens' : 'Preview light tokens';
+  });
+</script>
+</body>
+</html>
