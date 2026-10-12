@@ -16,9 +16,22 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
         const OPTION_WSFORM_FORMS         = 'dbvc_third_party_portability_wsform_forms';
         const OPTION_WSFORM_SETTINGS      = 'dbvc_third_party_portability_wsform_settings';
         const OPTION_WSFORM_INCLUDE_TRASH = 'dbvc_third_party_portability_wsform_include_trash';
+        const OPTION_WSFORM_PRESERVE_IDS  = 'dbvc_third_party_portability_wsform_preserve_ids';
         const META_PORTABILITY_UID        = 'dbvc_portability_uid';
         const PROVIDER_WSFORM            = 'ws_form';
         const SYNC_DIR                   = 'third-party/ws-form';
+
+        /**
+         * Report for the most recent export_selected_entities() run.
+         *
+         * @var array{forms_considered: int, forms_written: int, forms_skipped: array, settings_written: bool}
+         */
+        private static $wsform_export_report = [
+            'forms_considered' => 0,
+            'forms_written'    => 0,
+            'forms_skipped'    => [],
+            'settings_written' => false,
+        ];
 
         public static function get_settings(): array
         {
@@ -26,6 +39,7 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                 'wsform_forms'         => get_option(self::OPTION_WSFORM_FORMS, '0') === '1' ? '1' : '0',
                 'wsform_settings'      => get_option(self::OPTION_WSFORM_SETTINGS, '0') === '1' ? '1' : '0',
                 'wsform_include_trash' => get_option(self::OPTION_WSFORM_INCLUDE_TRASH, '0') === '1' ? '1' : '0',
+                'wsform_preserve_ids'  => get_option(self::OPTION_WSFORM_PRESERVE_IDS, '0') === '1' ? '1' : '0',
             ];
         }
 
@@ -34,6 +48,7 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             update_option(self::OPTION_WSFORM_FORMS, ! empty($post[self::OPTION_WSFORM_FORMS]) ? '1' : '0');
             update_option(self::OPTION_WSFORM_SETTINGS, ! empty($post[self::OPTION_WSFORM_SETTINGS]) ? '1' : '0');
             update_option(self::OPTION_WSFORM_INCLUDE_TRASH, ! empty($post[self::OPTION_WSFORM_INCLUDE_TRASH]) ? '1' : '0');
+            update_option(self::OPTION_WSFORM_PRESERVE_IDS, ! empty($post[self::OPTION_WSFORM_PRESERVE_IDS]) ? '1' : '0');
         }
 
         public static function get_wsform_summary(): array
@@ -77,15 +92,85 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             $settings = self::get_settings();
             $exported = 0;
 
+            self::$wsform_export_report = self::empty_wsform_export_report();
+
             if ($settings['wsform_forms'] === '1') {
                 $exported += self::export_wsform_forms($settings['wsform_include_trash'] === '1');
             }
 
             if ($settings['wsform_settings'] === '1') {
-                $exported += self::export_wsform_settings() ? 1 : 0;
+                $written = self::export_wsform_settings();
+                self::$wsform_export_report['settings_written'] = $written;
+                $exported += $written ? 1 : 0;
+            }
+
+            if (! empty(self::$wsform_export_report['forms_skipped']) && class_exists('DBVC_Sync_Logger')) {
+                DBVC_Sync_Logger::log('WS Form export skipped forms', self::$wsform_export_report);
             }
 
             return $exported;
+        }
+
+        /**
+         * What the most recent export_selected_entities() call actually produced.
+         *
+         * export_selected_entities() returns a file count for backward
+         * compatibility, which cannot express a form that was asked for but could
+         * not be written. Callers that need to tell the operator read this.
+         *
+         * @return array{forms_considered: int, forms_written: int, forms_skipped: array, settings_written: bool}
+         */
+        public static function get_last_wsform_export_report(): array
+        {
+            return self::$wsform_export_report;
+        }
+
+        /**
+         * Shape of an empty export report.
+         */
+        private static function empty_wsform_export_report(): array
+        {
+            return [
+                'forms_considered' => 0,
+                'forms_written'    => 0,
+                'forms_skipped'    => [],
+                'settings_written' => false,
+            ];
+        }
+
+        /**
+         * Describe one skipped form, classifying why.
+         *
+         * A trashed form is called out separately: WS Form's db_read() refuses it,
+         * so no amount of retrying will export it and the include-trash setting
+         * cannot deliver what its label implies.
+         *
+         * @return array{form_id: int, label: string, status: string, reason: string, message: string}
+         */
+        public static function describe_wsform_export_skip(int $form_id, string $status, string $label, string $reason = 'unreadable'): array
+        {
+            $status = sanitize_key($status);
+            $reason = sanitize_key($reason);
+
+            if ($reason === 'unreadable' && $status === 'trash') {
+                $reason = 'trash_unreadable';
+            }
+
+            $messages = [
+                'trash_unreadable' => __('WS Form cannot read a trashed form, so it cannot be exported. Restore it first.', 'dbvc'),
+                'unreadable'       => __('WS Form could not read this form.', 'dbvc'),
+                'unsafe_path'      => __('The target filename resolved outside the sync folder.', 'dbvc'),
+                'encode_failed'    => __('The form payload could not be encoded as JSON.', 'dbvc'),
+                'write_failed'     => __('The form file could not be written.', 'dbvc'),
+            ];
+
+            return [
+                'form_id' => absint($form_id),
+                'label'   => sanitize_text_field($label),
+                'status'  => $status,
+                'reason'  => $reason,
+                'message' => $messages[$reason] ?? $messages['unreadable'],
+            ];
         }
 
         public static function import_selected_entities_from_sync(): array
@@ -382,6 +467,73 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             return self::wsform_setting_option_names();
         }
 
+        /**
+         * Portable uid for a form, minted on first read.
+         *
+         * Shares the identity used by the form export, so a post-meta sidecar
+         * and the form payload always agree on the same uid.
+         *
+         * Returns '' for a form ID that does not exist locally. Minting there
+         * would write an orphan meta row and, worse, claim that uid against an
+         * ID a later form could occupy, producing a false identity match. Post
+         * meta carrying a foreign site's form ID reaches this method routinely:
+         * the auto-export on post status transition runs before an import has
+         * remapped the reference.
+         */
+        public static function get_wsform_form_uid(int $form_id): string
+        {
+            $form_id = absint($form_id);
+            if ($form_id <= 0 || ! self::is_wsform_available()) {
+                return '';
+            }
+
+            if (! self::wsform_form_exists($form_id)) {
+                return '';
+            }
+
+            return self::ensure_wsform_form_uid($form_id);
+        }
+
+        /**
+         * Whether a WS Form form row exists locally.
+         */
+        public static function wsform_form_exists(int $form_id): bool
+        {
+            $form_id = absint($form_id);
+            if ($form_id <= 0 || ! self::is_wsform_available()) {
+                return false;
+            }
+
+            global $wpdb;
+            $form_table = self::wsform_table('form');
+
+            return (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$form_table} WHERE id = %d LIMIT 1",
+                $form_id
+            )) === $form_id;
+        }
+
+        /**
+         * Resolve a portable uid to the local form ID, or 0 when absent.
+         */
+        public static function find_wsform_form_id_for_uid(string $uid): int
+        {
+            $uid = sanitize_text_field($uid);
+            if ($uid === '' || ! self::is_wsform_available()) {
+                return 0;
+            }
+
+            return self::find_wsform_form_id_by_uid($uid);
+        }
+
+        /**
+         * Describe a form by local ID (label, status, edit URL).
+         */
+        public static function get_wsform_form_entity(int $form_id): array
+        {
+            return self::format_wsform_form_entity(absint($form_id), 'id');
+        }
+
         private static function export_wsform_forms(bool $include_trash = false): int
         {
             if (! self::is_wsform_available()) {
@@ -398,30 +550,88 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                 return 0;
             }
 
+            $statuses = self::get_wsform_form_statuses($form_ids);
+
             $exported = 0;
             foreach ($form_ids as $form_id) {
+                $status = (string) ($statuses[$form_id]['status'] ?? '');
+                $label  = (string) ($statuses[$form_id]['label'] ?? '');
+
                 $payload = self::build_wsform_form_export_payload($form_id);
                 if (! is_array($payload)) {
+                    // WS Form's db_read() refuses a trashed form outright, so an
+                    // enabled include-trash setting cannot actually produce one.
+                    // Record it rather than dropping it silently.
+                    self::record_wsform_export_skip($form_id, $status, $label, 'unreadable');
                     continue;
                 }
 
                 $filename = self::determine_wsform_form_filename_from_payload($payload);
                 $path = trailingslashit($forms_dir) . $filename;
                 if (! dbvc_is_safe_file_path($path)) {
+                    self::record_wsform_export_skip($form_id, $status, $label, 'unsafe_path');
                     continue;
                 }
 
                 $json = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
                 if ($json === false) {
+                    self::record_wsform_export_skip($form_id, $status, $label, 'encode_failed');
                     continue;
                 }
 
-                if (file_put_contents($path, $json) !== false) {
-                    $exported++;
+                if (file_put_contents($path, $json) === false) {
+                    self::record_wsform_export_skip($form_id, $status, $label, 'write_failed');
+                    continue;
                 }
+
+                $exported++;
             }
 
+            self::$wsform_export_report['forms_written'] = $exported;
+            self::$wsform_export_report['forms_considered'] = count($form_ids);
+
             return $exported;
+        }
+
+        /**
+         * Status and label for each form ID, for skip reporting.
+         *
+         * @param int[] $form_ids
+         * @return array<int, array{status: string, label: string}>
+         */
+        private static function get_wsform_form_statuses(array $form_ids): array
+        {
+            global $wpdb;
+
+            $ids = array_values(array_filter(array_map('absint', $form_ids)));
+            if (empty($ids)) {
+                return [];
+            }
+
+            $form_table = self::wsform_table('form');
+            $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, status, label FROM {$form_table} WHERE id IN ({$placeholders})",
+                ...$ids
+            ), ARRAY_A);
+
+            $out = [];
+            foreach ((array) $rows as $row) {
+                $out[(int) $row['id']] = [
+                    'status' => (string) ($row['status'] ?? ''),
+                    'label'  => (string) ($row['label'] ?? ''),
+                ];
+            }
+
+            return $out;
+        }
+
+        /**
+         * Add one skipped form to the current export report.
+         */
+        private static function record_wsform_export_skip(int $form_id, string $status, string $label, string $reason): void
+        {
+            self::$wsform_export_report['forms_skipped'][] = self::describe_wsform_export_skip($form_id, $status, $label, $reason);
         }
 
         private static function export_wsform_settings(): bool
@@ -537,6 +747,240 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             });
         }
 
+        /**
+         * Whether a uid-matched form import keeps the payload's object IDs.
+         *
+         * Renumbering stays the default. Preserving IDs matters because WS Form
+         * submission meta keys are `field_<id>` and `#field(id)` references are
+         * stored by ID, so renumbering an updated form orphans both.
+         */
+        public static function wsform_preserve_ids_enabled(): bool
+        {
+            $enabled = get_option(self::OPTION_WSFORM_PRESERVE_IDS, '0') === '1';
+
+            return (bool) apply_filters('dbvc_third_party_wsform_preserve_ids', $enabled);
+        }
+
+        /**
+         * Object IDs carried by an import payload or a read form object.
+         *
+         * Sections nest, so this walks `sections` recursively rather than assuming
+         * one level under each group.
+         *
+         * @param mixed $tree Decoded payload or WS Form object.
+         * @return array{group: int[], section: int[], field: int[]}
+         */
+        public static function collect_wsform_object_ids($tree): array
+        {
+            $ids = ['group' => [], 'section' => [], 'field' => []];
+
+            $collect_sections = static function ($sections) use (&$ids, &$collect_sections): void {
+                foreach ((array) $sections as $section) {
+                    $section = (array) $section;
+                    if (isset($section['id'])) {
+                        $ids['section'][] = absint($section['id']);
+                    }
+                    foreach ((array) ($section['fields'] ?? []) as $field) {
+                        $field = (array) $field;
+                        if (isset($field['id'])) {
+                            $ids['field'][] = absint($field['id']);
+                        }
+                    }
+                    if (! empty($section['sections'])) {
+                        $collect_sections($section['sections']);
+                    }
+                }
+            };
+
+            $tree = (array) $tree;
+            foreach ((array) ($tree['groups'] ?? []) as $group) {
+                $group = (array) $group;
+                if (isset($group['id'])) {
+                    $ids['group'][] = absint($group['id']);
+                }
+                $collect_sections($group['sections'] ?? []);
+            }
+
+            foreach ($ids as $level => $values) {
+                $values = array_values(array_unique(array_filter($values, static function ($v) {
+                    return $v > 0;
+                })));
+                sort($values);
+                $ids[$level] = $values;
+            }
+
+            return $ids;
+        }
+
+        /**
+         * Compute colliding object IDs: present in the table but owned by another form.
+         *
+         * Deliberately set arithmetic rather than a join. A nested section can carry
+         * `group_id = 0` and be reachable only through its parent chain, so a
+         * field -> section -> group -> form join misses nested subtrees and would
+         * under-report ownership.
+         *
+         * @param array $incoming IDs in the payload, keyed by level.
+         * @param array $existing IDs that exist in each table, keyed by level.
+         * @param array $owned    IDs owned by the target form, keyed by level.
+         * @return array<string, int[]> Colliding IDs per level; empty when safe.
+         */
+        public static function compute_wsform_id_collisions(array $incoming, array $existing, array $owned): array
+        {
+            $collisions = [];
+
+            foreach (['group', 'section', 'field'] as $level) {
+                $in    = array_map('absint', (array) ($incoming[$level] ?? []));
+                $table = array_map('absint', (array) ($existing[$level] ?? []));
+                $mine  = array_map('absint', (array) ($owned[$level] ?? []));
+
+                $hit = array_values(array_diff(array_intersect($in, $table), $mine));
+                sort($hit);
+                if (! empty($hit)) {
+                    $collisions[$level] = $hit;
+                }
+            }
+
+            return $collisions;
+        }
+
+        /**
+         * Render a collision report for an error message.
+         */
+        public static function describe_wsform_id_collisions(array $collisions): string
+        {
+            $parts = [];
+            foreach ($collisions as $level => $ids) {
+                $parts[] = $level . ' ' . implode(', ', array_map('absint', (array) $ids));
+            }
+
+            return implode('; ', $parts);
+        }
+
+        /**
+         * Detect collisions for an ID-preserving import into $form_id.
+         *
+         * @param object $form_object Prepared import object.
+         * @param int    $form_id     Target (uid-matched) form.
+         * @return array<string, int[]>
+         */
+        private static function detect_wsform_id_collisions($form_object, int $form_id): array
+        {
+            $incoming = self::collect_wsform_object_ids(json_decode(wp_json_encode($form_object), true));
+
+            $owned = ['group' => [], 'section' => [], 'field' => []];
+            $target = new WS_Form_Form();
+            $target->id = $form_id;
+            try {
+                $read = $target->db_read(true, true, false, false, true);
+                if (is_object($read)) {
+                    $owned = self::collect_wsform_object_ids(json_decode(wp_json_encode($read), true));
+                }
+            } catch (Throwable $e) {
+                // An unreadable target owns nothing we can prove; the guard then
+                // treats every existing ID as foreign, which fails closed.
+                if (class_exists('DBVC_Sync_Logger')) {
+                    DBVC_Sync_Logger::log('WS Form collision guard could not read target form', [
+                        'form_id' => $form_id,
+                        'error'   => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            return self::compute_wsform_id_collisions($incoming, self::wsform_existing_object_ids($incoming), $owned);
+        }
+
+        /**
+         * Which of the given IDs already exist in each WS Form child table.
+         *
+         * @param array $ids_by_level
+         * @return array{group: int[], section: int[], field: int[]}
+         */
+        private static function wsform_existing_object_ids(array $ids_by_level): array
+        {
+            global $wpdb;
+            $existing = ['group' => [], 'section' => [], 'field' => []];
+
+            foreach (['group', 'section', 'field'] as $level) {
+                $ids = array_values(array_filter(array_map('absint', (array) ($ids_by_level[$level] ?? []))));
+                if (empty($ids)) {
+                    continue;
+                }
+
+                $table = self::wsform_table($level);
+                $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+                $rows = $wpdb->get_col($wpdb->prepare(
+                    "SELECT id FROM {$table} WHERE id IN ({$placeholders})",
+                    ...$ids
+                ));
+                $existing[$level] = array_map('absint', (array) $rows);
+            }
+
+            return $existing;
+        }
+
+        /**
+         * Whether every WS Form table this import writes is InnoDB.
+         *
+         * Transactions are pointless on MyISAM, so the caller degrades to
+         * guard-only rather than claiming a rollback it cannot deliver.
+         */
+        private static function wsform_tables_are_innodb(): bool
+        {
+            global $wpdb;
+
+            $tables = [];
+            foreach (['form', 'form_meta', 'group', 'group_meta', 'section', 'section_meta', 'field', 'field_meta'] as $suffix) {
+                $tables[] = self::wsform_table($suffix);
+            }
+
+            $placeholders = implode(',', array_fill(0, count($tables), '%s'));
+            $engines = $wpdb->get_col($wpdb->prepare(
+                "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({$placeholders})",
+                ...$tables
+            ));
+
+            if (empty($engines)) {
+                return false;
+            }
+
+            foreach ($engines as $engine) {
+                if (strtoupper((string) $engine) !== 'INNODB') {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /**
+         * Advance each table's AUTO_INCREMENT past the highest inserted ID.
+         *
+         * Explicit-ID inserts already advance the counter on InnoDB, so this guards
+         * against engine and version differences. Failure is logged, never fatal.
+         */
+        private static function bump_wsform_auto_increment_watermarks(): void
+        {
+            global $wpdb;
+
+            foreach (['group', 'group_meta', 'section', 'section_meta', 'field', 'field_meta'] as $suffix) {
+                $table = self::wsform_table($suffix);
+                $next = (int) $wpdb->get_var("SELECT IFNULL(MAX(id), 0) + 1 FROM {$table}");
+                if ($next <= 1) {
+                    continue;
+                }
+
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- identifier and integer are both derived locally.
+                $result = $wpdb->query("ALTER TABLE {$table} AUTO_INCREMENT = {$next}");
+                if ($result === false && class_exists('DBVC_Sync_Logger')) {
+                    DBVC_Sync_Logger::log('WS Form AUTO_INCREMENT watermark bump failed', [
+                        'table' => $table,
+                        'next'  => $next,
+                    ]);
+                }
+            }
+        }
+
         private static function import_wsform_form(array $payload, bool $return_details = false)
         {
             if (! self::is_wsform_available()) {
@@ -558,7 +1002,18 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             }
 
             return self::with_wsform_caps(function () use ($form_object, $uid, $source_status, $return_details) {
+                global $wpdb;
+
                 $existing_id = self::find_wsform_form_id_by_uid($uid);
+
+                // ID preservation applies only when updating a uid-matched form.
+                // With no match the payload's own form ID would be adopted (WS Form
+                // takes $form_object->id when $new is false), which on this site may
+                // belong to an unrelated form. Cloning to a new identity is the
+                // renumbering case, so fall back to it.
+                $preserve = self::wsform_preserve_ids_enabled() && $existing_id > 0;
+                $preserve_skipped = self::wsform_preserve_ids_enabled() && $existing_id <= 0;
+                $use_transaction = false;
                 $ws_form = new WS_Form_Form();
 
                 try {
@@ -568,8 +1023,47 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                         $ws_form->db_create(false);
                     }
 
+                    if ($preserve) {
+                        // Point the form row at the matched local form rather than the
+                        // source site's ID. Child objects keep their payload IDs.
+                        $form_object->id = $existing_id;
+
+                        // Validate before mutating: db_import_reset() destroys the
+                        // target's tree, so a collision found afterwards would leave
+                        // no clean rollback point.
+                        $collisions = self::detect_wsform_id_collisions($form_object, $existing_id);
+                        if (! empty($collisions)) {
+                            if (class_exists('DBVC_Sync_Logger')) {
+                                DBVC_Sync_Logger::log('WS Form ID-preserving import blocked by collisions', [
+                                    'uid'        => $uid,
+                                    'form_id'    => $existing_id,
+                                    'collisions' => $collisions,
+                                ]);
+                            }
+
+                            return new WP_Error(
+                                'dbvc_wsform_id_collision',
+                                sprintf(
+                                    /* translators: %s: comma separated list of colliding object IDs. */
+                                    __('WS Form ID-preserving import refused: these IDs belong to other forms on this site: %s', 'dbvc'),
+                                    self::describe_wsform_id_collisions($collisions)
+                                ),
+                                [
+                                    'status'     => 409,
+                                    'form_id'    => $existing_id,
+                                    'collisions' => $collisions,
+                                ]
+                            );
+                        }
+
+                        $use_transaction = self::wsform_tables_are_innodb();
+                        if ($use_transaction) {
+                            $wpdb->query('START TRANSACTION');
+                        }
+                    }
+
                     $ws_form->db_import_reset();
-                    $ws_form->db_update_from_object($form_object, true, true, true);
+                    $ws_form->db_update_from_object($form_object, true, ! $preserve, true);
                     $ws_form->db_conditional_repair();
                     $ws_form->db_action_repair();
                     $ws_form->db_meta_repair();
@@ -581,13 +1075,30 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                     if ($source_status === 'publish') {
                         $ws_form->db_publish(true);
                     }
+
+                    if ($use_transaction) {
+                        $wpdb->query('COMMIT');
+                        $use_transaction = false;
+                    }
+
+                    if ($preserve) {
+                        // DDL is not transactional, so this runs after COMMIT and a
+                        // failure is logged rather than fatal.
+                        self::bump_wsform_auto_increment_watermarks();
+                    }
                 } catch (Throwable $e) {
+                    if ($use_transaction) {
+                        $wpdb->query('ROLLBACK');
+                    }
+
                     if (class_exists('DBVC_Sync_Logger')) {
                         DBVC_Sync_Logger::log('WS Form import failed', [
                             'uid'           => $uid,
                             'source_status' => $source_status,
                             'existing_id'   => $existing_id,
                             'form_id'       => isset($ws_form->id) ? (int) $ws_form->id : 0,
+                            'preserve_ids'  => $preserve,
+                            'rolled_back'   => $use_transaction,
                             'error_class'   => get_class($e),
                             'error'         => $e->getMessage(),
                         ]);

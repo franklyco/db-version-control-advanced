@@ -493,6 +493,9 @@ function dbvc_render_export_page()
 
     if (class_exists('DBVC_Third_Party_Portability')) {
       DBVC_Third_Party_Portability::save_settings_from_post((array) $_POST);
+      if (class_exists('DBVC_WSForm_Reference_Remap')) {
+        DBVC_WSForm_Reference_Remap::save_settings_from_post((array) $_POST);
+      }
       $third_party_portability_settings = DBVC_Third_Party_Portability::get_settings();
       $third_party_portability_summary = DBVC_Third_Party_Portability::get_wsform_summary();
 
@@ -509,6 +512,37 @@ function dbvc_render_export_page()
           esc_html__('No third-party entities were exported. Check plugin availability and 3rd Party Portability selections. Target path: %s', 'dbvc'),
           esc_html($target_dir)
         );
+      }
+
+      // A file count cannot express a form that was asked for but could not be
+      // written, so report skipped forms explicitly instead of losing them.
+      if (method_exists('DBVC_Third_Party_Portability', 'get_last_wsform_export_report')) {
+        $third_party_export_report = DBVC_Third_Party_Portability::get_last_wsform_export_report();
+        $third_party_skipped = isset($third_party_export_report['forms_skipped']) && is_array($third_party_export_report['forms_skipped'])
+          ? $third_party_export_report['forms_skipped']
+          : [];
+
+        if (! empty($third_party_skipped)) {
+          $skipped_lines = [];
+          foreach ($third_party_skipped as $skipped_form) {
+            $skipped_lines[] = sprintf(
+              /* translators: 1: form label, 2: form ID, 3: form status, 4: reason. */
+              esc_html__('"%1$s" (ID %2$d, %3$s) — %4$s', 'dbvc'),
+              esc_html((string) ($skipped_form['label'] ?? '')),
+              (int) ($skipped_form['form_id'] ?? 0),
+              esc_html((string) ($skipped_form['status'] ?? '')),
+              esc_html((string) ($skipped_form['message'] ?? ''))
+            );
+          }
+
+          $config_feedback['import']['error'][] = sprintf(
+            /* translators: 1: number of skipped forms, 2: considered count, 3: list of skipped forms. */
+            esc_html__('%1$d of %2$d WS Form form(s) could not be exported: %3$s', 'dbvc'),
+            count($third_party_skipped),
+            (int) ($third_party_export_report['forms_considered'] ?? 0),
+            implode(' | ', $skipped_lines)
+          );
+        }
       }
     } else {
       $config_feedback['import']['error'][] = esc_html__('3rd Party Portability exporter unavailable.', 'dbvc');
@@ -717,6 +751,9 @@ function dbvc_render_export_page()
 
     if (class_exists('DBVC_Third_Party_Portability')) {
       DBVC_Third_Party_Portability::save_settings_from_post((array) $_POST);
+      if (class_exists('DBVC_WSForm_Reference_Remap')) {
+        DBVC_WSForm_Reference_Remap::save_settings_from_post((array) $_POST);
+      }
       $third_party_portability_settings = DBVC_Third_Party_Portability::get_settings();
       $third_party_portability_summary = DBVC_Third_Party_Portability::get_wsform_summary();
     }
@@ -3999,9 +4036,28 @@ document.addEventListener('DOMContentLoaded', function () {
               <p>
                 <label>
                   <input type="checkbox" name="<?php echo esc_attr(DBVC_Third_Party_Portability::OPTION_WSFORM_INCLUDE_TRASH); ?>" value="1" <?php checked($third_party_portability_settings['wsform_include_trash'], '1'); ?> />
-                  <?php esc_html_e('Include trashed WS Form forms during export', 'dbvc'); ?>
-                </label>
+                  <?php esc_html_e('Attempt to include trashed WS Form forms during export', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('WS Form refuses to read a trashed form, so trashed forms are reported as skipped rather than exported. Restore a form to include it. This setting only widens which forms are attempted.', 'dbvc'); ?></small>
               </p>
+
+              <p>
+                <label>
+                  <input type="checkbox" name="<?php echo esc_attr(DBVC_Third_Party_Portability::OPTION_WSFORM_PRESERVE_IDS); ?>" value="1" <?php checked($third_party_portability_settings['wsform_preserve_ids'] ?? '0', '1'); ?> />
+                  <?php esc_html_e('Preserve WS Form object IDs when updating a matched form', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('Keeps the imported group, section and field IDs instead of renumbering them, so existing submissions (whose meta keys are field_&lt;id&gt;) and #field(id) references keep resolving. Applies only when the form is matched by portable uid; cloning to a new form still renumbers. The import refuses and changes nothing if any incoming ID belongs to a different form on this site.', 'dbvc'); ?></small>
+              </p>
+
+              <?php if (class_exists('DBVC_WSForm_Reference_Remap')) : ?>
+                <p>
+                  <label>
+                    <input type="checkbox" name="<?php echo esc_attr(DBVC_WSForm_Reference_Remap::OPTION_ENABLED); ?>" value="1" <?php checked(DBVC_WSForm_Reference_Remap::is_enabled()); ?> />
+                    <?php esc_html_e('Remap WS Form references stored in post meta', 'dbvc'); ?>
+                  </label><br>
+                  <small><?php esc_html_e('Records each referenced form’s portable uid alongside the exported post, then resolves it to the matching local form on import. The raw form ID is always left in place, so a reference that cannot be resolved stays exactly as exported.', 'dbvc'); ?></small>
+                </p>
+              <?php endif; ?>
 
               <p style="margin-top:1rem;">
                 <?php wp_nonce_field('dbvc_third_party_export_action', 'dbvc_third_party_export_nonce'); ?>

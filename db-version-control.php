@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     2.0.0
+ * Version:     2.1.0
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -45,7 +45,7 @@ define('DBVC_PLUGIN_FILE', __FILE__);
 define('DBVC_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('DBVC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBVC_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('DBVC_PLUGIN_VERSION', '2.0.0');
+define('DBVC_PLUGIN_VERSION', '2.1.0');
 if (! defined('DBVC_NEW_ENTITY_DECISION_KEY')) {
 	define('DBVC_NEW_ENTITY_DECISION_KEY', '__dbvc_new_entity__');
 }
@@ -78,6 +78,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-snapshot-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-media-sync.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-third-party-portability.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-wsform-reference-remap.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/BundleManager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Resolver.php';

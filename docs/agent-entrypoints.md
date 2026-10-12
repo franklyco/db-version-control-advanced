@@ -26,6 +26,16 @@ Read:
 3. `docs/reference/meta-masking.md` when masking is relevant
 4. `docs/development/README.md` for build and QA commands
 
+## WS Form Portability Or Third-Party Entity References
+
+Read:
+
+1. `docs/implementation/active/wsform-reference-portability.md`
+2. `includes/class-wsform-reference-remap.php` and `includes/class-third-party-portability.php`
+3. `docs/agents/manifest.json` record `portability.third_party.wsform_references`
+
+The slice ledger in that guide is the resume point. Do not run an import against real client content; use the disposable connector clones.
+
 ## Visual Editor Add-on
 
 Read:

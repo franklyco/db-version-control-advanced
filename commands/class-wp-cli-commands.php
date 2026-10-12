@@ -213,6 +213,13 @@ class DBVC_WP_CLI_Commands {
 			$total_processed = 0;
 			
 			WP_CLI::log( "Starting batch import with batch size: {$batch_size}" );
+
+			// Third-party entities first: post meta can reference them by
+			// portable uid, and the reference only resolves once the target
+			// entity exists locally.
+			if ( class_exists( 'DBVC_Third_Party_Portability' ) ) {
+				$third_party_stats = DBVC_Third_Party_Portability::import_selected_entities_from_sync();
+			}
 			
 			do {
 				$result = DBVC_Sync_Posts::import_posts_batch( $batch_size, $offset, $import_mode );
@@ -243,10 +250,6 @@ class DBVC_WP_CLI_Commands {
 			);
 
 			$processed_total = $total_processed;
-		}
-
-		if ( ! $no_batch && class_exists( 'DBVC_Third_Party_Portability' ) ) {
-			$third_party_stats = DBVC_Third_Party_Portability::import_selected_entities_from_sync();
 		}
 
 		if ( is_array( $third_party_stats ) && ! empty( $third_party_stats['processed'] ) ) {

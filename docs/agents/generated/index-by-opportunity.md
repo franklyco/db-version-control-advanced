@@ -53,6 +53,9 @@
 | [`planned.core.canonical_authority`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`planned.core.granular_options`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`planned.core.universal_upload_intake`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
+| [`portability.third_party.wsform_form_export`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
+| [`portability.third_party.wsform_id_preservation`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
+| [`portability.third_party.wsform_references`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`proposal.core.apply`](../manifest.json) | `covered_elsewhere` | `none` | `small` | `none` | Not applicable. | Proposal apply already has a dedicated WP-CLI command with its own write and backup contract, so this REST record is not a parity gap. |
 | [`proposal.core.cleanup`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`proposal.core.decisions`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
