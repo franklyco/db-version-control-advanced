@@ -44,6 +44,84 @@ function _dbvc_tests_load_plugin()
 }
 tests_add_filter('muplugins_loaded', '_dbvc_tests_load_plugin');
 
+/**
+ * Locate WS Form so its portability tests can run instead of skipping.
+ *
+ * Looks for a sibling of this plugin's directory, which is how WS Form is
+ * installed wherever DBVC's WS Form support is in use. WP_PLUGIN_DIR is no help
+ * here: under PHPUnit it points at the throwaway test WordPress, not at the site
+ * where WS Form lives. Set WS_FORM_PLUGIN_FILE to point somewhere else, or
+ * DBVC_TESTS_WS_FORM=0 to skip loading it.
+ *
+ * @return string Absolute path to the WS Form entry file, or '' if not found.
+ */
+function _dbvc_tests_find_ws_form()
+{
+    if (getenv('DBVC_TESTS_WS_FORM') === '0') {
+        return '';
+    }
+
+    $override = getenv('WS_FORM_PLUGIN_FILE');
+    if (is_string($override) && $override !== '') {
+        return file_exists($override) ? $override : '';
+    }
+
+    $plugins_dir = dirname(dirname(__DIR__, 2));
+
+    foreach (['ws-form-pro', 'ws-form'] as $slug) {
+        $candidate = $plugins_dir . '/' . $slug . '/ws-form.php';
+        if (file_exists($candidate)) {
+            return $candidate;
+        }
+    }
+
+    return '';
+}
+
+/**
+ * @return void
+ */
+function _dbvc_tests_load_ws_form()
+{
+    $ws_form_file = _dbvc_tests_find_ws_form();
+    if ($ws_form_file === '') {
+        return;
+    }
+
+    require_once $ws_form_file;
+}
+tests_add_filter('muplugins_loaded', '_dbvc_tests_load_ws_form');
+
+/**
+ * Create the WS Form tables in the test database on first use.
+ *
+ * Probes for the table first so repeat runs stay cheap.
+ *
+ * @return void
+ */
+function _dbvc_tests_activate_ws_form()
+{
+    if (! defined('WS_FORM_PLUGIN_DIR_PATH') || ! class_exists('WS_Form_Common')) {
+        return;
+    }
+
+    global $wpdb;
+
+    $prefix = defined('WS_FORM_DB_TABLE_PREFIX') ? WS_FORM_DB_TABLE_PREFIX : 'wsf_';
+    $table = $wpdb->prefix . $prefix . 'form';
+
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+        return;
+    }
+
+    if (! class_exists('WS_Form_Activator')) {
+        require_once WS_FORM_PLUGIN_DIR_PATH . 'includes/class-ws-form-activator.php';
+    }
+
+    WS_Form_Activator::activate();
+}
+tests_add_filter('init', '_dbvc_tests_activate_ws_form', 1);
+
 require $_tests_dir . '/includes/bootstrap.php';
 
 /**
