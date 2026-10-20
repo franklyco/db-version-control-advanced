@@ -284,8 +284,9 @@ final class Preparer
         $result['before_hash'] = BricksOptionCollectionObserver::absent_hash();
         $result['exists'] = false;
         $result['complete'] = true;
-        // The insert is guarded at apply by the container's fingerprint, so the receipt must
-        // carry the collection's current fingerprint (the member is absent, but the option is not).
+        // The insert is guarded at apply by the container's fingerprint, so the receipt
+        // carries the collection's current fingerprint — or null when the option itself
+        // does not exist yet, which apply treats as a create into an absent option.
         if ($observer instanceof BricksOptionCollectionObserver) {
             $container = $observer->read_container();
             $result['storage_fingerprint'] = $container['present'] ? $container['fingerprint'] : null;

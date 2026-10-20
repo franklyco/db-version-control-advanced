@@ -5,6 +5,8 @@ namespace Dbvc\AgencyControl\Release;
 use Dbvc\AgencyControl\Comparison\ComparisonService;
 use Dbvc\AgencyControl\Framework\FrameworkStatusService;
 use Dbvc\AgencyControl\Storage\EnvironmentRegistry;
+use Dbvc\AgencyControl\Storage\MediaBlobStore;
+use Dbvc\AgencyControl\Storage\PreparationStore;
 use Dbvc\AgencyControl\Storage\ProjectionStore;
 use Dbvc\AgencyControl\Storage\ReleaseStore;
 use Dbvc\ConnectedProtocol\Canonicalizer;
@@ -210,6 +212,135 @@ final class ReleaseService
     }
 
     /**
+     * Accept one large media blob streamed from the source over the dedicated
+     * fetch-by-hash pull channel (post-M9 A-2). The hub trusts nothing the source
+     * claims: the principal must own the release as its source, the release must
+     * still be open, the declared hash must be one this release's items actually
+     * reference, the body must be within the pull ceiling, and its sha256 must
+     * match the declared hash. On success the raw bytes are stored
+     * content-addressed (deduped) in the blob store; a release target later pulls
+     * them by hash at apply time.
+     *
+     * @param array<string, mixed> $source
+     * @param string $release_uid
+     * @param string $hash  `sha256:<64 hex>`.
+     * @param string $bytes Raw file bytes (not base64).
+     * @return array<string, mixed>|\WP_Error
+     */
+    public function accept_media_blob(array $source, $release_uid, $hash, $bytes)
+    {
+        $release = $this->releases->find((string) $release_uid);
+        if ($release === null || $release['source_environment_id'] !== $source['environment_id']) {
+            return new \WP_Error('dbvc_agency_release_not_found', 'Release not found for this environment.', ['status' => 404]);
+        }
+        // Media may be uploaded while the release is open OR after it seals: the
+        // payload POST that carries the fetch descriptor can itself seal the
+        // release (all payloads received), so the follow-up blob upload lands
+        // post-seal. This is safe — the blob is content-addressed and already
+        // referenced by the sealed manifest's item hash, so it is never part of
+        // the release digest. A withdrawn release accepts nothing.
+        if ($release['state'] === ReleaseStore::STATE_WITHDRAWN) {
+            return new \WP_Error('dbvc_agency_release_not_open', 'The release no longer accepts media.', ['status' => 409]);
+        }
+        if (! preg_match('/^sha256:[a-f0-9]{64}$/', (string) $hash)) {
+            return new \WP_Error('dbvc_agency_invalid_hash', 'A sha256:<hex> content hash is required.', ['status' => 400]);
+        }
+        if (! is_string($bytes) || $bytes === '') {
+            return new \WP_Error('dbvc_agency_invalid_body', 'Empty media body.', ['status' => 400]);
+        }
+        $ceiling = self::pull_ceiling();
+        if (strlen($bytes) > $ceiling) {
+            return new \WP_Error('dbvc_agency_media_too_large', sprintf('Media exceeds the pull ceiling of %d bytes.', $ceiling), ['status' => 413]);
+        }
+        if ('sha256:' . hash('sha256', $bytes) !== (string) $hash) {
+            return new \WP_Error('dbvc_agency_media_hash_mismatch', 'The uploaded bytes do not match the declared content hash.', ['status' => 422]);
+        }
+        if (! $this->hash_in_release((int) $release['release_id'], (string) $hash)) {
+            return new \WP_Error('dbvc_agency_media_unreferenced', 'That content hash is not referenced by this release.', ['status' => 403]);
+        }
+        $stored = MediaBlobStore::store((string) $hash, $bytes, '', strlen($bytes));
+
+        return ['stored' => (bool) $stored, 'hash' => (string) $hash, 'bytes' => strlen($bytes)];
+    }
+
+    /**
+     * Serve one media blob by hash to a party of the release over the pull
+     * channel. The principal must be a target the release was prepared for (or
+     * the source), and the hash must be referenced by the release. Returns the
+     * raw bytes (the controller base64-wraps them in its JSON response) or an
+     * error.
+     *
+     * @param array<string, mixed> $environment
+     * @param string $release_uid
+     * @param string $hash
+     * @return string|\WP_Error raw bytes
+     */
+    public function serve_media_blob(array $environment, $release_uid, $hash)
+    {
+        $release = $this->releases->find((string) $release_uid);
+        if ($release === null) {
+            return new \WP_Error('dbvc_agency_release_not_found', 'Release not found.', ['status' => 404]);
+        }
+        if (! preg_match('/^sha256:[a-f0-9]{64}$/', (string) $hash)) {
+            return new \WP_Error('dbvc_agency_invalid_hash', 'A sha256:<hex> content hash is required.', ['status' => 400]);
+        }
+        $is_source = $release['source_environment_id'] === $environment['environment_id'];
+        $is_target = (new PreparationStore())->all((string) $release_uid, (string) $environment['environment_id'], 1) !== [];
+        if (! $is_source && ! $is_target) {
+            return new \WP_Error('dbvc_agency_media_forbidden', 'This environment is not a party to that release.', ['status' => 403]);
+        }
+        if (! $this->hash_in_release((int) $release['release_id'], (string) $hash)) {
+            return new \WP_Error('dbvc_agency_media_unreferenced', 'That content hash is not referenced by this release.', ['status' => 404]);
+        }
+        $bytes = MediaBlobStore::bytes((string) $hash);
+        if (! is_string($bytes) || $bytes === '') {
+            return new \WP_Error('dbvc_agency_media_absent', 'That media blob has not been uploaded.', ['status' => 404]);
+        }
+
+        return $bytes;
+    }
+
+    /**
+     * Whether any item in the release references the given content hash in its
+     * media descriptors.
+     *
+     * @param int $release_id
+     * @param string $hash
+     * @return bool
+     */
+    private function hash_in_release($release_id, $hash)
+    {
+        foreach ($this->releases->items((int) $release_id, true) as $item) {
+            if (! isset($item['media']) || ! is_string($item['media']) || $item['media'] === '') {
+                continue;
+            }
+            $decoded = json_decode($item['media'], true);
+            if (! is_array($decoded) || ! isset($decoded['media']) || ! is_array($decoded['media'])) {
+                continue;
+            }
+            foreach ($decoded['media'] as $descriptor) {
+                if (is_array($descriptor) && isset($descriptor['hash']) && (string) $descriptor['hash'] === (string) $hash) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Effective pull-channel ceiling (filterable, never below the inline cap).
+     *
+     * @return int
+     */
+    private static function pull_ceiling()
+    {
+        $ceiling = (int) apply_filters('dbvc_agency_max_pull_file_bytes', Protocol::MAX_PULL_FILE_BYTES);
+
+        return $ceiling > 0 ? $ceiling : Protocol::MAX_PULL_FILE_BYTES;
+    }
+
+    /**
      * Validate a source's media bundle before it is stored on the item. The
      * hub trusts nothing the source claims: each entry's base64 bytes are
      * decoded, size-capped and re-hashed against its declared content hash,
@@ -248,6 +379,35 @@ final class ReleaseService
                 }
             }
             $primary_ref = $refs !== [] ? $refs[0] : ('hash:' . substr($hash, 0, 20));
+            // A fetch entry (a large file over the inline cap) carries no bytes —
+            // the source streams them to the media pull channel separately. Keep
+            // the descriptor with fetch:true; the blob arrives via
+            // accept_media_blob and the target pulls it by hash at apply.
+            if (! empty($entry['fetch'])) {
+                if (! preg_match('/^sha256:[a-f0-9]{64}$/', $hash)) {
+                    $deferred[] = ['ref' => $primary_ref, 'hash' => $hash !== '' ? $hash : null, 'reason' => 'invalid'];
+                    continue;
+                }
+                if (count($stored) >= Protocol::MAX_MEDIA_ITEMS) {
+                    $deferred[] = ['ref' => $primary_ref, 'hash' => $hash, 'reason' => 'too_many'];
+                    continue;
+                }
+                $stored[] = [
+                    'source_id' => (int) ($entry['source_id'] ?? 0),
+                    'hash' => $hash,
+                    'mime' => isset($entry['mime']) ? (string) $entry['mime'] : '',
+                    'filename' => isset($entry['filename']) ? (string) $entry['filename'] : '',
+                    'relpath' => isset($entry['relpath']) ? (string) $entry['relpath'] : '',
+                    'filesize' => (int) ($entry['filesize'] ?? 0),
+                    'url' => isset($entry['url']) ? (string) $entry['url'] : '',
+                    'title' => isset($entry['title']) ? (string) $entry['title'] : '',
+                    'alt' => isset($entry['alt']) ? (string) $entry['alt'] : '',
+                    'caption' => isset($entry['caption']) ? (string) $entry['caption'] : '',
+                    'refs' => $refs,
+                    'fetch' => true,
+                ];
+                continue;
+            }
             if (! preg_match('/^sha256:[a-f0-9]{64}$/', $hash) || ! is_string($entry['bytes'] ?? null)) {
                 $deferred[] = ['ref' => $primary_ref, 'hash' => $hash !== '' ? $hash : null, 'reason' => 'invalid'];
                 continue;
@@ -274,7 +434,7 @@ final class ReleaseService
                 continue;
             }
             $total += strlen($bytes);
-            $stored[] = [
+            $descriptor = [
                 'source_id' => (int) ($entry['source_id'] ?? 0),
                 'hash' => $hash,
                 'mime' => isset($entry['mime']) ? (string) $entry['mime'] : '',
@@ -286,8 +446,15 @@ final class ReleaseService
                 'alt' => isset($entry['alt']) ? (string) $entry['alt'] : '',
                 'caption' => isset($entry['caption']) ? (string) $entry['caption'] : '',
                 'refs' => $refs,
-                'bytes' => (string) $entry['bytes'],
             ];
+            // Offload the bytes to the content-addressed blob store (A2-2a) so the
+            // hot release_items.media column carries only the descriptor. If the
+            // store write fails, keep the bytes inline so nothing is lost; the read
+            // side (prepare/approve) hydrates from the store or the inline copy.
+            if (! \Dbvc\AgencyControl\Storage\MediaBlobStore::store($hash, $bytes, $descriptor['mime'], $descriptor['filesize'])) {
+                $descriptor['bytes'] = (string) $entry['bytes'];
+            }
+            $stored[] = $descriptor;
         }
         if ($stored === [] && $deferred === []) {
             return ['stored' => null, 'count' => 0, 'deferred' => 0];

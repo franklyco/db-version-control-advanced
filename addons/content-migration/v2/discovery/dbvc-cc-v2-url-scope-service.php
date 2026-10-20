@@ -28,11 +28,15 @@ final class DBVC_CC_V2_URL_Scope_Service
      * @param string $source_url
      * @return array<string, string>
      */
-    public function evaluate_url($domain, $source_url)
+    public function evaluate_url($domain, $source_url, $discovery_reason = 'sitemap')
     {
         $source_url = esc_url_raw((string) $source_url);
         $domain_key = $this->normalize_domain($domain);
         $normalized_url = $this->canonicalize_url($source_url);
+        $discovery_reason = sanitize_key((string) $discovery_reason);
+        if ($discovery_reason === '') {
+            $discovery_reason = 'sitemap';
+        }
 
         $record = [
             'page_id' => '',
@@ -41,7 +45,7 @@ final class DBVC_CC_V2_URL_Scope_Service
             'path' => '',
             'slug' => '',
             'discovery_status' => 'discovered',
-            'discovery_reason' => 'sitemap',
+            'discovery_reason' => $discovery_reason,
             'scope_status' => 'eligible',
             'scope_reason' => 'same_domain_html_candidate',
         ];
@@ -67,6 +71,9 @@ final class DBVC_CC_V2_URL_Scope_Service
         if ($this->is_non_html_asset($path)) {
             $record['scope_status'] = 'out_of_scope';
             $record['scope_reason'] = 'non_html_asset';
+        } elseif ($this->is_static_template_artifact($path)) {
+            $record['scope_status'] = 'out_of_scope';
+            $record['scope_reason'] = 'static_template_artifact';
         } elseif ($this->is_utility_path($path)) {
             $record['scope_status'] = 'out_of_scope';
             $record['scope_reason'] = 'utility_path';
@@ -171,6 +178,31 @@ final class DBVC_CC_V2_URL_Scope_Service
     private function is_non_html_asset($path)
     {
         return (bool) preg_match('/\.(?:xml|json|rss|atom|jpg|jpeg|png|webp|gif|svg|pdf|zip|css|js|txt|ico|mp4|mov|mp3)$/i', (string) $path);
+    }
+
+    /**
+     * Server-parsed template extensions that a WordPress permalink never uses.
+     *
+     * Injected SEO spam is routinely left behind as flat `.shtml` files at deep paths, and such
+     * URLs can outlive the compromise in a search index for years - three were still indexed for
+     * the first client site measured, and the visible set drifted between crawls. Discovery that
+     * accepts them crawls someone else's spam as if it were the client's content.
+     *
+     * `.html` and `.htm` are deliberately NOT rejected. The legacy `index.html` form of a real
+     * page is live content on exactly the kind of older site this tool targets, and rejecting it
+     * would discard pages the client still serves.
+     *
+     * @param string $path
+     * @return bool
+     */
+    private function is_static_template_artifact($path)
+    {
+        $pattern = (string) apply_filters(
+            'dbvc_cc_v2_static_template_artifact_pattern',
+            '/\.(?:shtml|shtm|phtml|jhtml|asp|aspx|jsp|cfm)$/i'
+        );
+
+        return $pattern !== '' && (bool) preg_match($pattern, (string) $path);
     }
 
     /**

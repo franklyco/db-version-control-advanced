@@ -52,6 +52,13 @@ final class DBVC_CC_V2_Contracts
     public const STORAGE_INITIAL_CLASSIFICATION_SUFFIX = '.initial-classification.v1.json';
     public const STORAGE_ROUTING_ARTIFACT_SUFFIX = '.routing-artifact.v1.json';
     public const STORAGE_MAPPING_INDEX_SUFFIX = '.mapping-index.v1.json';
+    /**
+     * What the interpretation boundary returned for a page, stored beside the mapping
+     * artifacts so a reviewer can see what produced a recommendation. Written only when
+     * `dbvc_cc_flag_model_interpretation` is on; absent otherwise, which is itself the signal
+     * that the lexical floor ranked the page.
+     */
+    public const STORAGE_INTERPRETATION_RESULT_SUFFIX = '.interpretation-result.v1.json';
     public const STORAGE_TARGET_TRANSFORM_SUFFIX = '.target-transform.v1.json';
     public const STORAGE_MAPPING_RECOMMENDATIONS_SUFFIX = '.mapping-recommendations.v2.json';
     public const STORAGE_MAPPING_DECISIONS_SUFFIX = '.mapping-decisions.v2.json';
@@ -64,6 +71,15 @@ final class DBVC_CC_V2_Contracts
     public const STORAGE_PACKAGE_QA_REPORT_FILE = 'package-qa-report.v1.json';
     public const STORAGE_PACKAGE_SUMMARY_FILE = 'package-summary.v1.json';
     public const STORAGE_PACKAGE_ZIP_FILE = 'import-package.v1.zip';
+
+    /**
+     * Lets a producer outside WordPress supply a complete page artifact bundle for one row,
+     * bypassing the in-WordPress fetch and DOM extraction. Return null to let PHP capture run.
+     *
+     * Filtered value: array{raw_artifact: array, elements: array, sections: array,
+     * ingestion_package: array}|WP_Error|null. See the V3 guide, D-21.
+     */
+    public const FILTER_EXTERNAL_PAGE_ARTIFACTS = 'dbvc_cc_v2_external_page_artifacts';
 
     public const STEP_DOMAIN_JOURNEY_STARTED = 'domain_journey_started';
     public const STEP_URL_DISCOVERED = 'url_discovered';

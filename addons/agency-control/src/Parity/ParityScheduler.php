@@ -97,6 +97,13 @@ final class ParityScheduler
             ];
         }
 
+        // Heartbeat so an operator can confirm this tick actually fired (WP-Cron is
+        // request-gated and can silently stall on a quiet hub).
+        \Dbvc\AgencyControl\Scheduler\SchedulerHeartbeat::record('parity', [
+            'ran' => $ran,
+            'skipped' => $skipped,
+        ]);
+
         return ['ran' => $ran, 'skipped' => $skipped, 'results' => $results];
     }
 

@@ -235,6 +235,7 @@ Recommended URL-level artifacts:
 - `{slug}.initial-classification.v1.json`
 - `{slug}.routing-artifact.v1.json`
 - `{slug}.mapping-index.v1.json`
+- `{slug}.interpretation-result.v1.json` (written only when `dbvc_cc_flag_model_interpretation` is on)
 - `{slug}.target-transform.v1.json`
 - `{slug}.mapping-recommendations.v2.json`
 - `{slug}.mapping-decisions.v2.json`
@@ -550,6 +551,46 @@ Recommended additive per-content-item fields:
 Recommended additive stats fields:
 - `structured_section_item_count`
 - `skipped_section_count`
+
+Recommended additive fields when model interpretation ran (absent entirely when it did not):
+- top-level `interpretation`: `artifact_type`, `artifact_ref`, `interpreter`, `ranking_applied`,
+  `model_attempt`, `recommendation_count`, `declined_count`, `items_ranked_by_interpreter`,
+  `items_declined_by_interpreter`, `unjoined_recommendation_items`
+- per-content-item `interpretation`: `ranked_by` (`model` | `lexical`), `reason`
+  (`interpreter_mapped` | `interpreter_declined` | `interpreter_did_not_answer` |
+  `not_offered_to_interpreter`), `item_ids`, `decline_reasons`
+- per-`target_candidates[]` entry `provenance` and `rationale`, present only on a candidate an
+  interpreter produced
+
+Presence rule: these keys are written by the component that did the work and are **absent**, not
+defaulted, when no interpreter ran. That is the D-3 rule from the V3 guide and it is what makes a
+floor-produced recommendation distinguishable from a model-produced one.
+
+### 9b. `*.interpretation-result.v1.json`
+
+Purpose:
+- what the interpretation boundary returned for one page, stored so a reviewer can see what
+  produced a recommendation
+
+Written only when `dbvc_cc_flag_model_interpretation` is `1`. Its absence means the lexical scorer
+ranked the page.
+
+Required top-level fields:
+- `artifact_type` = `interpretation-result.v1`
+- `page_slug`
+- `source_url`
+- `target_object_key`
+- `interpreter` = `model` | `floor`
+- `model_attempt`
+- `recommendations[]`
+- `declined[]`
+- `stats`
+
+`model_attempt` always carries `used` and, when a call was made, `attempted` and a named `reason`
+from `no_api_key` | `over_budget` | `transport_error` | `invalid_response_shape` |
+`unrouted_page` | `target_schema_unavailable` | `no_mappable_content` | `interpreter_result_invalid`.
+`model`, `provider` and `prompt_version` appear on `model_attempt` and on each recommendation's
+`provenance` **only when a model actually ran**.
 
 ### 10. `*.target-transform.v1.json`
 

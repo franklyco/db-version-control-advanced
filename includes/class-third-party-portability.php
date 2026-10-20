@@ -1068,14 +1068,13 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                      * Fires after the target form's tree has been torn down and
                      * before it is rebuilt from the payload.
                      *
-                     * This is the point of no return for a non-transactional
-                     * import: the form's groups, sections and fields are gone and
-                     * have not been replaced yet. Throwing from this hook aborts
-                     * the import, which rolls the transaction back when one is
-                     * active (ID preservation on InnoDB) and otherwise leaves the
-                     * form torn down. Intended for fault-injection in tests and
-                     * for callers that need to observe the mid-import boundary;
-                     * do not mutate the form from here.
+                     * This is the point of no return: the form's groups, sections
+                     * and fields are gone and have not been replaced yet. Throwing
+                     * from this hook aborts the import, which rolls back when a
+                     * transaction is active (ID preservation on InnoDB) and
+                     * otherwise leaves the form torn down. Intended for
+                     * fault-injection in tests and for callers that need to
+                     * observe the mid-import boundary; do not mutate the form here.
                      *
                      * @param int    $form_id  Form being imported into.
                      * @param bool   $preserve Whether IDs are being preserved.

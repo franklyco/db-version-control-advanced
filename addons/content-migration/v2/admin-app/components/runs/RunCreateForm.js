@@ -5,6 +5,7 @@ import {
 	buildRunCreateStateFromProfile,
 	buildRunCreatePayload,
 	deriveDomainFromSitemap,
+	deriveDomainFromUrlList,
 	getInitialRunCreateState,
 	normalizeRunCreateBootstrap,
 } from '../../workspaces/runs/runCreateFields';
@@ -73,7 +74,8 @@ export default function RunCreateForm( {
 	const visibleError = clientError || error;
 	const derivedDomain =
 		formState.domain.trim() === ''
-			? deriveDomainFromSitemap( formState.sitemapUrl )
+			? deriveDomainFromSitemap( formState.sitemapUrl ) ||
+			  deriveDomainFromUrlList( formState.urls )
 			: '';
 
 	const updateField = ( fieldName, value ) => {
@@ -106,9 +108,11 @@ export default function RunCreateForm( {
 		event.preventDefault();
 
 		const payload = buildRunCreatePayload( formState );
-		if ( ! payload.sitemapUrl ) {
+		const hasUrlList =
+			Array.isArray( payload.urls ) && payload.urls.length > 0;
+		if ( ! payload.sitemapUrl && ! hasUrlList ) {
 			setClientError(
-				'Enter a sitemap URL to start a V2 crawl-backed run.'
+				'Enter a sitemap URL, or paste the URLs to capture. A sitemap is not required: many older sites serve none.'
 			);
 			return;
 		}
@@ -290,7 +294,6 @@ export default function RunCreateForm( {
 						<input
 							id="dbvc-cc-v2-run-create-sitemap-url"
 							type="url"
-							required
 							value={ formState.sitemapUrl }
 							onChange={ ( event ) =>
 								updateField( 'sitemapUrl', event.target.value )
@@ -298,6 +301,33 @@ export default function RunCreateForm( {
 							placeholder="https://example.com/sitemap.xml"
 							data-testid="dbvc-cc-v2-run-create-sitemap-url"
 						/>
+						<p className="dbvc-cc-v2-toolbar__hint">
+							Optional. Sitemap capture is best-effort and does
+							not recover copy a page builder wraps in divs, or
+							imagery rendered as CSS backgrounds.
+						</p>
+					</div>
+					<div className="dbvc-cc-v2-toolbar__field">
+						<label htmlFor="dbvc-cc-v2-run-create-urls">
+							URLs to capture
+						</label>
+						<textarea
+							id="dbvc-cc-v2-run-create-urls"
+							rows="4"
+							value={ formState.urls }
+							onChange={ ( event ) =>
+								updateField( 'urls', event.target.value )
+							}
+							placeholder={
+								'https://example.com/\nhttps://example.com/about'
+							}
+							data-testid="dbvc-cc-v2-run-create-urls"
+						/>
+						<p className="dbvc-cc-v2-toolbar__hint">
+							One per line, or comma separated. Use this when the
+							site serves no usable sitemap. Same-domain, asset
+							and utility rules still apply to every entry.
+						</p>
 					</div>
 					<div className="dbvc-cc-v2-toolbar__field">
 						<label htmlFor="dbvc-cc-v2-run-create-max-urls">

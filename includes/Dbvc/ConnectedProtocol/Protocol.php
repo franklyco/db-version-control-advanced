@@ -31,6 +31,16 @@ final class Protocol
     public const MAX_MEDIA_ITEMS = 25;
     public const MAX_MEDIA_FILE_BYTES = 2097152;
     public const MAX_MEDIA_TOTAL_BYTES = 4194304;
+    /**
+     * Ceiling for the fetch-by-hash media pull channel (post-M9 A-2). A file over
+     * {@see MAX_MEDIA_FILE_BYTES} but within this bound is not inlined — its bytes
+     * ride the dedicated streamed `releases/{uid}/media/{sha256}` channel instead,
+     * so a large file never bloats a payload JSON or a manifest. Over this bound
+     * it is still `deferred`. Kept consistent fleet-wide (source upload bound ==
+     * target accept bound); a mismatch is a clean hash-verified rejection, never a
+     * corrupt apply. Filterable via `dbvc_agency_max_pull_file_bytes`.
+     */
+    public const MAX_PULL_FILE_BYTES = 26214400;
     /** A prepare receipt describes target state at one moment; it expires and is never permission to write. */
     public const PREPARE_RECEIPT_TTL_SECONDS = 3600;
 

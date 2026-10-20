@@ -555,7 +555,7 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         return [
             'title' => isset($raw['metadata']['title']) ? (string) $raw['metadata']['title'] : '',
             'description' => isset($raw['metadata']['description']) ? (string) $raw['metadata']['description'] : '',
-            'headings' => isset($raw['headings']) && is_array($raw['headings']) ? array_values(array_slice($raw['headings'], 0, 8)) : [],
+            'headings' => array_slice(dbvc_cc_heading_texts(isset($raw['headings']) ? $raw['headings'] : []), 0, 8),
             'textBlocks' => isset($raw['text_blocks']) && is_array($raw['text_blocks']) ? array_values(array_slice($raw['text_blocks'], 0, 6)) : [],
             'links' => isset($source_normalization['normalized']['links']) && is_array($source_normalization['normalized']['links'])
                 ? array_values(array_slice($source_normalization['normalized']['links'], 0, 6))
@@ -933,6 +933,10 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'duplicate_target_collision' => 'Duplicate target collision',
             'low_mapping_evidence' => 'Low mapping evidence',
             'missing_media_slot' => 'Missing media slot',
+            // The interpreter read the item and judged that no offered field fits it.
+            // Distinct from a missing slot: the schema may be complete and the content
+            // simply belongs nowhere on this object.
+            'declined_by_interpreter' => 'Declined by the interpreter',
         ];
 
         return isset($labels[$unresolved_class]) ? $labels[$unresolved_class] : '';

@@ -141,6 +141,20 @@ if (! class_exists('DBVC_Connected_Admin_Page')) {
 				'callback' => [self::class, 'save_settings'],
 				'permission_callback' => [self::class, 'permission'],
 			]);
+			// Hub capability delegation (publisher / approver) for the Roles panel.
+			// Admin-only via permission(); only meaningful when the hub is ready.
+			register_rest_route(self::REST_NAMESPACE, '/connected-admin/roles', [
+				[
+					'methods' => WP_REST_Server::READABLE,
+					'callback' => [self::class, 'roles'],
+					'permission_callback' => [self::class, 'permission'],
+				],
+				[
+					'methods' => WP_REST_Server::CREATABLE,
+					'callback' => [self::class, 'save_roles'],
+					'permission_callback' => [self::class, 'permission'],
+				],
+			]);
 		}
 
 		/**
@@ -217,6 +231,60 @@ if (! class_exists('DBVC_Connected_Admin_Page')) {
 				'gates' => self::bootstrap_config()['gates'],
 				'page_available' => self::is_available(),
 			]);
+		}
+
+		/**
+		 * List the hub capability delegates (non-admin users holding publisher /
+		 * approver). Reuses the CLI inspector, as overview() reuses ::status().
+		 * The panel is hub-only; when the hub is not ready a quiet empty shape is
+		 * returned rather than an error.
+		 *
+		 * @param WP_REST_Request $request
+		 * @return WP_REST_Response|WP_Error
+		 */
+		public static function roles(WP_REST_Request $request) {
+			unset($request);
+			if (! self::hub_ready() || ! class_exists('DBVC_Agency_CLI_Inspector')) {
+				return self::respond(['hub_ready' => false, 'roles' => ['publisher', 'approver'], 'publishers' => [], 'approvers' => []]);
+			}
+			$assignments = DBVC_Agency_CLI_Inspector::roles([]);
+			if (is_wp_error($assignments)) {
+				return self::respond($assignments);
+			}
+
+			return self::respond(array_merge(['hub_ready' => true, 'roles' => ['publisher', 'approver']], (array) $assignments));
+		}
+
+		/**
+		 * Grant or revoke one hub capability on a user — privilege delegation, so
+		 * admin-only (permission() = manage_options). Body: { action: grant|revoke,
+		 * user: <id|login|email>, role: publisher|approver }. Delegates to the CLI
+		 * inspector (which wraps RoleService + the hub-ready gate).
+		 *
+		 * @param WP_REST_Request $request
+		 * @return WP_REST_Response|WP_Error
+		 */
+		public static function save_roles(WP_REST_Request $request) {
+			if (! self::hub_ready() || ! class_exists('DBVC_Agency_CLI_Inspector')) {
+				return self::respond(new WP_Error('dbvc_connected_admin_hub_unavailable', __('The Agency Control hub is not enabled on this site.', 'dbvc'), ['status' => 409]));
+			}
+			$body = $request->get_json_params();
+			$body = is_array($body) ? $body : [];
+			$action = isset($body['action']) ? (string) $body['action'] : '';
+			if ($action !== 'grant' && $action !== 'revoke') {
+				return self::respond(new WP_Error('dbvc_connected_admin_invalid_action', __('action must be grant or revoke.', 'dbvc'), ['status' => 400]));
+			}
+			$args = ['user' => (string) ($body['user'] ?? ''), 'role' => (string) ($body['role'] ?? '')];
+			$result = $action === 'grant'
+				? DBVC_Agency_CLI_Inspector::role_grant($args)
+				: DBVC_Agency_CLI_Inspector::role_revoke($args);
+			if (is_wp_error($result)) {
+				return self::respond($result);
+			}
+			$assignments = DBVC_Agency_CLI_Inspector::roles([]);
+			$assignments = is_wp_error($assignments) ? ['publishers' => [], 'approvers' => []] : (array) $assignments;
+
+			return self::respond(array_merge(['changed' => $result, 'hub_ready' => true, 'roles' => ['publisher', 'approver']], $assignments));
 		}
 
 		/**

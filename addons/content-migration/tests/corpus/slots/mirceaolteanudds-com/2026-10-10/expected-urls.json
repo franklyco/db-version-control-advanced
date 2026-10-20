@@ -1,0 +1,163 @@
+{
+  "schema": "corpus-expected-urls.v1",
+  "domain": "mirceaolteanudds.com",
+  "verified_at": "2026-10-12",
+  "verification": "curl -sS -o /dev/null -w '%{http_code}' per URL, and a resolved internal link graph harvested from the homepage",
+  "content_urls": [
+    {
+      "path": "/",
+      "http": 200,
+      "found_by": [
+        "firecrawl_map",
+        "link_graph"
+      ]
+    },
+    {
+      "path": "/dental-team",
+      "http": 200,
+      "found_by": [
+        "firecrawl_map",
+        "link_graph"
+      ]
+    },
+    {
+      "path": "/services",
+      "http": 200,
+      "found_by": [
+        "firecrawl_map",
+        "link_graph"
+      ]
+    },
+    {
+      "path": "/contact",
+      "http": 200,
+      "found_by": [
+        "link_graph",
+        "firecrawl_map_2026_10_12"
+      ],
+      "note": "firecrawl_map did NOT return this page on 2026-10-10 although it is live and in the main nav; on 2026-10-12 the same call DID return it. A single discovery tool's recall is not stable over time, which is a stronger argument for unioning strategies than a fixed blind spot would be. The link graph found it on both dates."
+    },
+    {
+      "path": "/patient-info",
+      "http": 200,
+      "found_by": [
+        "firecrawl_map",
+        "link_graph"
+      ]
+    },
+    {
+      "path": "/in-house-dental-plan",
+      "http": 200,
+      "found_by": [
+        "firecrawl_map",
+        "link_graph"
+      ]
+    },
+    {
+      "path": "/faq",
+      "http": 200,
+      "found_by": [
+        "firecrawl_map",
+        "link_graph"
+      ]
+    },
+    {
+      "path": "/contact/thank-you",
+      "http": 200,
+      "found_by": [
+        "firecrawl_map"
+      ],
+      "note": "Reachable only as a form-submit destination, so no link graph reaches it. The mirror case of /contact."
+    }
+  ],
+  "must_reject": [
+    {
+      "path": "/caste/return/fe4b15sbhgwivud.shtml",
+      "http": 404,
+      "reason": "index_spam",
+      "note": "Injected SEO spam with a Japanese product title, still in Google's index. Returned by firecrawl_map."
+    },
+    {
+      "path": "/denomination/abhelp/d07548v1ksv5c5c.shtml",
+      "http": 404,
+      "reason": "index_spam"
+    },
+    {
+      "path": "/stratum/brand/ej0aldoc1xomta5.shtml",
+      "http": 404,
+      "reason": "index_spam"
+    },
+    {
+      "path": "/sample-page/feed",
+      "http": null,
+      "reason": "wp_default_leftover"
+    },
+    {
+      "path": "/file",
+      "http": null,
+      "reason": "script_artifact",
+      "note": "Harvested from an inline JS template string. A link-graph crawler must restrict hrefs to <a> elements outside <script>."
+    },
+    {
+      "path": "/' + file + '",
+      "http": null,
+      "reason": "script_artifact"
+    },
+    {
+      "path": "/' + target + '",
+      "http": null,
+      "reason": "script_artifact"
+    }
+  ],
+  "must_report_not_crawl": [
+    {
+      "path": "/meet-the-team",
+      "http": 403,
+      "reason": "broken_internal_target",
+      "inbound_links_from_homepage": 5,
+      "note": "The hero 'Learn More' button and the 'Meet Dr. Olteanu' card both point here. The real page is /dental-team. Belongs in the redirect map as a decision, not silently repointed."
+    }
+  ],
+  "discovery_strategy_recall": {
+    "comment": "Measured against the 8 content_urls. This is why G-1 requires a union, and it corrects the S2 design in the V3 guide, which proposed firecrawl_map plus a site: search alone. Re-measured 2026-10-12: firecrawl_map returned 8/8 that day, so its recall varies between runs - treat any single strategy's number as a sample, not a constant. Only the union has been 100% on every date measured.",
+    "sitemap_only": {
+      "found": 0,
+      "recall": 0.0,
+      "note": "No sitemap at /wp-sitemap.xml, /sitemap_index.xml, /sitemap.xml, /sitemap-index.xml or /page-sitemap.xml; none declared in robots.txt. This is what V2 requires and it returns WP_Error."
+    },
+    "firecrawl_map_only": {
+      "found": 7,
+      "recall": 0.875,
+      "misses": [
+        "/contact"
+      ],
+      "note": "7/8 on 2026-10-10 (missed /contact); 8/8 on 2026-10-12. Not reproducible, so not a fixed blind spot - an unstable one.",
+      "remeasured_2026_10_12": {
+        "found": 8,
+        "recall": 1.0,
+        "misses": []
+      }
+    },
+    "link_graph_only": {
+      "found": 7,
+      "recall": 0.875,
+      "misses": [
+        "/contact/thank-you"
+      ],
+      "note": "7/8 on both 2026-10-10 and 2026-10-12; the miss is structural."
+    },
+    "union_map_and_link_graph": {
+      "found": 8,
+      "recall": 1.0,
+      "misses": []
+    }
+  },
+  "legacy_url_form": {
+    "comment": "Every internal href is RELATIVE and targets index.html, e.g. href=\"dental-team/index.html\". Both forms serve 200 and no canonical tag exists anywhere, so every page is live at two URLs.",
+    "example_href": "dental-team/index.html",
+    "resolves_to": "/dental-team/index.html",
+    "clean_path": "/dental-team",
+    "requirement": "A crawler must resolve relative hrefs against the page base and normalise the index.html form; the legacy form must survive into the redirect map."
+  },
+  "remeasurement_note": "Re-run on 2026-10-12 with .claude/skills/site-content-harvest/scripts/discover.py --verify: 8/8 content URLs, 3 spam .shtml rejected (the set drifts between runs - one of the original three was absent and a new one appeared), 1 downloadable client document found (/wp-content/uploads/2018/06/New-patient-packet.pdf), and 2 broken internal targets reported: /meet-the-team (403, 5 inbound links from the homepage) and /440.746.9070 (404, a malformed tel link)."
+}

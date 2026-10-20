@@ -1,0 +1,1023 @@
+{
+  "schema": "corpus-expected-content.v1",
+  "derived_from": "authoritative raw HTML captured 2026-10-12 by .claude/skills/site-content-harvest/scripts/capture.py",
+  "pages_with_ground_truth": [
+    "contact",
+    "dental-team",
+    "faq",
+    "home",
+    "in-house-dental-plan",
+    "patient-info",
+    "services",
+    "thank-you"
+  ],
+  "pages_pending_capture": [],
+  "pages": [
+    {
+      "slug": "contact",
+      "url": "https://mirceaolteanudds.com/contact/",
+      "fixture": "raw-html/contact.html",
+      "raw_html_sha256": "913f5a2326e8f50e19bc2e0660d1bfa8e75b4b728d9b99a52702a5e964ac3452",
+      "visible_text_chars": 957,
+      "required_text": [
+        "7500 Town Centre Dr Suite 100, Broadview Heights, OH 44147"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "Contact Us",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Mircea Olteanu DDS Family Dentistry",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-office.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        }
+      ],
+      "head_fields": {
+        "title": "Dentist Office in Broadview Heights, Ohio - Mircea Olteanu DDS",
+        "meta_description": "We invite you to join our dental family and achieve your dream smile. Get in touch to schedule your dentist appointment. We look forward to seeing you soon!",
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2023-03-13T18:08:55+00:00",
+        "og_keys": [
+          "og:description",
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card",
+          "twitter:data1",
+          "twitter:label1"
+        ]
+      },
+      "imagery_confirmed_absent": false
+    },
+    {
+      "slug": "dental-team",
+      "url": "https://mirceaolteanudds.com/dental-team/",
+      "fixture": "raw-html/dental-team.html",
+      "raw_html_sha256": "11dc1538b612c0464c518e8fe293ed0b861002536e969702d31af4cb8aa90392",
+      "visible_text_chars": 3596,
+      "required_text": [
+        "Dr. Olteanu is always looking out for the best interest of",
+        "Dr. Olteanu consistently keeps up with the latest advances",
+        "Nicole earned her dental hygiene degree in 2013 from Cuyah",
+        "Connie has been working in the field of dentistry for many",
+        "Mariana earned her dental assisting degree in 2006 from Cu"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "Meet the Team",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Mircea Olteanu, DDS",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Nicole Langford",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "Registered Dental Hygienist",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Nancy Gezymalla",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "Certified Dental Assistant",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Mariana Cristea",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Connie Viola",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "Office Manager",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-broadview-heights-ohio.jpg",
+          "alt": "Dr. Mircea Olteanu is a family dentist in Broadview Heights, Ohio.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/mircea-olteanu-broadview-heights-ohio.jpg",
+          "alt": "Dr. Mircea Olteanu, his wife and their two young sons pose for a family portrait outdoors in Broadview Heights, Ohio.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dental-hygienist-nicole.jpg",
+          "alt": "Nicole Jeglie is a registered dental hygienist.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dental-assistant-nancy.jpg",
+          "alt": "Nancy Gezymalla is a certified dental assistant.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dental-assistant-mariana.jpg",
+          "alt": "Mariana Cristea is a certified dental assistant.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dentist-office-manager-connie.jpg",
+          "alt": "Connie Viola is a dentist office manager.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/broadview-heights-dentist-team.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        }
+      ],
+      "head_fields": {
+        "title": "Dentistry Experts in Broadview Heights - Mircea Olteanu DDS",
+        "meta_description": "Dr. Mircea Olteanu takes a no-pressure, individualized approach to dental care. Our team genuinely understands the importance of patient-centered dentistry.",
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2019-04-29T17:35:21+00:00",
+        "og_keys": [
+          "og:description",
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card",
+          "twitter:data1",
+          "twitter:label1"
+        ]
+      },
+      "imagery_confirmed_absent": false
+    },
+    {
+      "slug": "faq",
+      "url": "https://mirceaolteanudds.com/faq/",
+      "fixture": "raw-html/faq.html",
+      "raw_html_sha256": "6ebeb1d4c5cb54120da67b23b72af4bc553499048efbf205ed2960ff52abe94e",
+      "visible_text_chars": 4267,
+      "required_text": [
+        "We recommend that most children start seeing a dentist by",
+        "There are many good reasons to replace a missing tooth. Fi",
+        "It is never advisable to put off necessary dental work. Ev",
+        "In most cases, we recommend that you visit the dentist at"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "Frequently Asked Questions",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "How often should I visit the dentist?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "What should I bring to my first appointment?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "What is a Solea laser?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Is there anything I can do to make my teeth whiter?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "At what age should children start seeing the dentist?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Are silver fillings safe?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "How long can I put off needed dental work?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Do I really have to replace missing teeth?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Does your office offer financing options?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        }
+      ],
+      "head_fields": {
+        "title": "Frequently Asked Questions About Dentistry - Mircea Olteanu DDS",
+        "meta_description": "At Mircea Olteanu DDS Family Dentistry, our extensive knowledge and skill, paired with sincere concern for your overall health and wellbeing, sets us apart.",
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2018-09-28T22:01:47+00:00",
+        "og_keys": [
+          "og:description",
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card",
+          "twitter:data1",
+          "twitter:label1"
+        ]
+      },
+      "imagery_confirmed_absent": true
+    },
+    {
+      "slug": "home",
+      "url": "https://mirceaolteanudds.com/",
+      "fixture": "raw-html/home.html",
+      "raw_html_sha256": "f01106c3c161c1ea9566f7134bb57227921de03134d930129bab24ccc63e8562",
+      "visible_text_chars": 2583,
+      "required_text": [
+        "Providing quality dental care at an affordable price while",
+        "Your smile is in great hands at Mircea Olteanu DDS Family",
+        "Your questions and concerns are important. We are here for",
+        "Receive the highest quality care every time you see us. We",
+        "We are fully committed to your health, well-being, and cre",
+        "Extensive knowledge and skill, along with our sincere conc",
+        "On behalf of the entire team, we welcome you to enjoy our"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "Creating Healthy & Happy Smiles",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Welcome to Mircea Olteanu DDS Family Dentistry",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Meet Dr. Olteanu",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Services Offered",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Qs & As",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Schedule an Appt",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Honest · Affordable · Caring",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Our Current Specials",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "No Dental Insurance? We offer our In-House Dental Savings Plan!",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/broadview-heights-dentist-team.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/pediatric-dentist-broadview-heights.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/mircea-olteanu-DDS-broadview-heights.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        }
+      ],
+      "head_fields": {
+        "title": "Family Dentist in Broadview Heights, OH - Mircea Olteanu DDS",
+        "meta_description": "Mircea Olteanu DDS Family Dentistry offers a full range of preventative and general dentistry services from our office location in Broadview Heights, Ohio.",
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2023-08-01T20:28:30+00:00",
+        "og_keys": [
+          "og:description",
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card"
+        ]
+      },
+      "imagery_confirmed_absent": false
+    },
+    {
+      "slug": "in-house-dental-plan",
+      "url": "https://mirceaolteanudds.com/in-house-dental-plan/",
+      "fixture": "raw-html/in-house-dental-plan.html",
+      "raw_html_sha256": "f604d4a06020e79473329261cf59ae5f50eae03f2fc0462200b49691aeac21f3",
+      "visible_text_chars": 2735,
+      "required_text": [
+        "With your insurance, you may pay a percentage of the preve",
+        "Plan is only honored at Mircea Olteanu DDS Family Dentistr",
+        "In conjunction with another dental plan, dental insurance",
+        "It is non-refundable; no refunds will be given if the pati"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "In-House Dental Plan",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "Now offered to our patients without insurance",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "Need a dentist but don’t have insurance?",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Our Individual Plan",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Single Member: $290/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Family Plans",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Two Members: $490/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Three Members: $650/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "Four Members: $750/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "Program Guidelines",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "Program Exclusions and Limitations",
+          "is_site_chrome": false
+        },
+        {
+          "level": 3,
+          "text": "The Dental Savings Plan Difference",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Delta Dental A (single)",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "$740/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Our Plan (single)",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "$290/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Amount Saved: $450",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Delta Dental A (4-person)",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "$2,225/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Our Plan (4-person)",
+          "is_site_chrome": false
+        },
+        {
+          "level": 5,
+          "text": "$750/year",
+          "is_site_chrome": false
+        },
+        {
+          "level": 4,
+          "text": "Amount Saved: $1,475",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        }
+      ],
+      "head_fields": {
+        "title": "In-House Dental Plan - Mircea Olteanu Family Dentistry",
+        "meta_description": "Need a dentist but don’t have insurance? Our In-House Dental Plan can help! Learn more about our payment options for patients without dental insurance.",
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2019-02-26T23:26:38+00:00",
+        "og_keys": [
+          "og:description",
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card",
+          "twitter:data1",
+          "twitter:label1"
+        ]
+      },
+      "imagery_confirmed_absent": true
+    },
+    {
+      "slug": "patient-info",
+      "url": "https://mirceaolteanudds.com/patient-info/",
+      "fixture": "raw-html/patient-info.html",
+      "raw_html_sha256": "dfc54d1ba9e7fb50a0966d08f1ba74bd9039af7b705615ebf133379d969fd8b4",
+      "visible_text_chars": 2847,
+      "required_text": [
+        "With many years of training and expertise, the office of M",
+        "You deserve the best service from a practice that genuinel",
+        "Our team believes in building a solid foundation for our p",
+        "We accept most PPO dental insurance plans, and we are happ"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "Patient Information",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Our Philosophy",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Your First Visit",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Dental Records",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Patient Forms",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Financial Information",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Dental Insurance",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Payment Options",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dentist-visit-broadview-heights-ohio.jpg",
+          "alt": "A dental patient in Broadview Heights, Ohio comfortably awaits the dentist in his office.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentistry-broadview-heights-ohio.jpg",
+          "alt": "A handsome family with two young children enjoy a walk in Broadview Heights, Ohio.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/broadview-heights-ohio-family.jpg",
+          "alt": "A family with perfect, healthy teeth smile for a group photo.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dentist-patient-info.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        }
+      ],
+      "head_fields": {
+        "title": "Dental Patient Info for Broadview Heights, OH - Mircea Olteanu DDS",
+        "meta_description": "Mircea Olteanu DDS Family Dentistry puts patients over profits when providing treatment. Comfort and compassion in dental care are our office's priority.",
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2018-09-28T22:33:04+00:00",
+        "og_keys": [
+          "og:description",
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card",
+          "twitter:data1",
+          "twitter:label1"
+        ]
+      },
+      "imagery_confirmed_absent": false
+    },
+    {
+      "slug": "services",
+      "url": "https://mirceaolteanudds.com/services/",
+      "fixture": "raw-html/services.html",
+      "raw_html_sha256": "26dd28c0e3696c6a471c5187f64e59a88e3d45f3c7393d81316d9dc6162b00b6",
+      "visible_text_chars": 3108,
+      "required_text": [
+        "Preventative care and regular cleanings are keys to mainta",
+        "We use the most useful, state-of-the-art teeth cosmetic wh",
+        "Simply put, the Solea laser makes almost all dental treatm",
+        "Our office features Solea, which is a hard and soft tissue"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "Services",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Your Smile is in Great Hands!",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Services",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Zoom! Teeth Whitening",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Solea Dental Laser",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Solea Explained",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Solea Testimonial",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dental-technology-solea-screen.jpg",
+          "alt": "Solea dental technology features a clean, white design.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dental-technology-solea.jpg",
+          "alt": "Solea dental technology is available to patients in Broadview Heights, Ohio.",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": false,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/dental-services-broadview-ohio.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        }
+      ],
+      "head_fields": {
+        "title": "Family Dentistry in Broadview Heights, OH - Mircea Olteanu DDS",
+        "meta_description": "Preventative care and regular cleanings are crucial for optimal oral health! We offer complete general and comprehensive dentistry to patients of all ages.",
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2019-02-26T23:27:34+00:00",
+        "og_keys": [
+          "og:description",
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card",
+          "twitter:data1",
+          "twitter:label1"
+        ]
+      },
+      "imagery_confirmed_absent": false
+    },
+    {
+      "slug": "thank-you",
+      "url": "https://mirceaolteanudds.com/contact/thank-you/",
+      "fixture": "raw-html/thank-you.html",
+      "raw_html_sha256": "940459c0d176ae66ca1ab239a9e1aa3968d585aab95ab9e37056e39da6e17320",
+      "visible_text_chars": 953,
+      "required_text": [
+        "8193 Avery Rd #100, Broadview Heights, OH 44147, USA"
+      ],
+      "probe_selection": "preferring substantial text outside V2's element selector set, because a probe V2 already captures does not discriminate",
+      "heading_tree": [
+        {
+          "level": 1,
+          "text": "Contact Us",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Mircea Olteanu DDS Family Dentistry",
+          "is_site_chrome": false
+        },
+        {
+          "level": 2,
+          "text": "Follow Us",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Address",
+          "is_site_chrome": true
+        },
+        {
+          "level": 2,
+          "text": "Contact Us",
+          "is_site_chrome": true
+        }
+      ],
+      "images": [
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/09/family-dentist-mircea-olteanu-dds.png",
+          "alt": "Mircea Olteanu Family Dentistry",
+          "real_url_attr": "data-src",
+          "src_is_placeholder": true,
+          "is_site_chrome": true,
+          "source": "img_tag"
+        },
+        {
+          "url": "https://mirceaolteanudds.com/wp-content/uploads/2018/07/DSC_5666-resized.jpg",
+          "alt": null,
+          "real_url_attr": null,
+          "src_is_placeholder": false,
+          "is_site_chrome": false,
+          "source": "css_background",
+          "note": "Rendered as CSS background-image. Present in no HTML, no srcset and no data-src; resolved from a browser's computed styles."
+        }
+      ],
+      "head_fields": {
+        "title": "Thank You - Mircea Olteanu Family Dentistry",
+        "meta_description": null,
+        "meta_robots": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1",
+        "canonical": null,
+        "lang": "en-US",
+        "source_modified": "2018-09-26T17:26:06+00:00",
+        "og_keys": [
+          "og:locale",
+          "og:site_name",
+          "og:title",
+          "og:type",
+          "og:url"
+        ],
+        "twitter_keys": [
+          "twitter:card",
+          "twitter:data1",
+          "twitter:label1"
+        ]
+      },
+      "imagery_confirmed_absent": false
+    }
+  ],
+  "image_ground_truth_note": "Images come from two sources because the page uses two mechanisms. img_tag entries are read from the raw HTML, taking the real URL from data-src where src holds a lazyload placeholder. css_background entries are rendered as CSS background-image and exist in no HTML at all; they were resolved from a browser's computed styles, which is the only way to reach them. is_site_chrome is computed from the ground truth itself - an identical image appearing on at least 7 of 8 pages is sitewide furniture, not page content - so the gate can require page imagery without demanding the logo.",
+  "heading_ground_truth_note": "is_site_chrome on a heading is computed from the ground truth itself: a heading below h1 whose text appears on at least 7 of 8 pages is sitewide furniture. On this site that is Address, Contact Us and Follow Us, which the acquisition skill collects once into site-level data rather than repeating per page. An h1 is exempt because it is the page title - /contact legitimately has \"Contact Us\" as its own h1."
+}

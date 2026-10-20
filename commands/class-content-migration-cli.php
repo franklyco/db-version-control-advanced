@@ -709,5 +709,279 @@ if (defined('WP_CLI') && WP_CLI && ! class_exists('DBVC_WP_CLI_Content_Migration
 		}
 	}
 
+	/**
+	 * Report or remove crawled content collections past a retention window.
+	 */
+	class DBVC_WP_CLI_Content_Migration_Storage extends WP_CLI_Command {
+
+		/**
+		 * Report crawled collections older than the retention window, and optionally remove them.
+		 *
+		 * Dry run unless --execute is given. The content under these directories belongs to a third
+		 * party and was collected to rebuild their own site, so removal is always explicit: nothing
+		 * is scheduled and nothing is deleted without this flag.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--days=<days>]
+		 * : Collections untouched for longer than this are eligible. Defaults to the configured
+		 * artifact_retention_days, which is 0 (retention disabled) unless set.
+		 *
+		 * [--execute]
+		 * : Actually remove the eligible collections. Without it, nothing is deleted.
+		 *
+		 * [--format=<format>]
+		 * : table, json or yaml. Default table.
+		 *
+		 * ## EXAMPLES
+		 *
+		 *     wp dbvc content-migration storage prune --days=90
+		 *     wp dbvc content-migration storage prune --days=90 --execute
+		 *
+		 * @param array<int, string>    $args
+		 * @param array<string, string> $assoc_args
+		 * @return void
+		 */
+		public function prune($args, $assoc_args) {
+			if (! class_exists('DBVC_CC_Artifact_Manager') || ! class_exists('DBVC_CC_Settings_Service')) {
+				WP_CLI::error('The Content Migration add-on is not loaded.');
+			}
+
+			$options = DBVC_CC_Settings_Service::get_options();
+			$configured = isset($options['artifact_retention_days']) ? (int) $options['artifact_retention_days'] : 0;
+			$days = isset($assoc_args['days']) ? max(0, (int) $assoc_args['days']) : $configured;
+			$execute = ! empty($assoc_args['execute']);
+			$format = isset($assoc_args['format']) ? (string) $assoc_args['format'] : 'table';
+
+			if ($days === 0) {
+				WP_CLI::warning('Retention is disabled (0 days). Pass --days=<n> or set artifact_retention_days.');
+			}
+
+			$result = DBVC_CC_Artifact_Manager::prune_domains($days, $execute);
+
+			$rows = [];
+			foreach (['eligible' => 'eligible', 'retained' => 'retained'] as $bucket => $label) {
+				foreach ($result[$bucket] as $row) {
+					$rows[] = [
+						'domain' => (string) $row['domain'],
+						'last_modified' => (string) ($row['last_modified'] ?? 'unknown'),
+						'age_days' => (string) ($row['age_days'] ?? 'unknown'),
+						'state' => $execute && $bucket === 'eligible' ? 'removed' : $label,
+					];
+				}
+			}
+
+			if ($rows === []) {
+				WP_CLI::log('No crawled collections found.');
+				return;
+			}
+
+			WP_CLI\Utils\format_items($format, $rows, ['domain', 'last_modified', 'age_days', 'state']);
+
+			if (! $execute && $result['eligible'] !== []) {
+				WP_CLI::log(sprintf(
+					'%d collection(s) are eligible. Re-run with --execute to remove them.',
+					count($result['eligible'])
+				));
+				return;
+			}
+			if ($result['failed'] !== []) {
+				WP_CLI::warning(sprintf('%d collection(s) could not be removed.', count($result['failed'])));
+			}
+			if ($execute) {
+				WP_CLI::success(sprintf('Removed %d collection(s).', count($result['removed'])));
+			}
+		}
+	}
+
+	/**
+	 * Start a run from artifacts captured outside WordPress.
+	 *
+	 * V3 moved acquisition into an agent skill. This is how its output gets in: the skill writes
+	 * page-artifact.v1 / elements.v2 / sections.v2 / ingestion-package.v2 per page, and these
+	 * commands validate that set and run the pipeline against it without fetching anything.
+	 */
+	class DBVC_WP_CLI_Content_Migration_Ingest extends WP_CLI_Command {
+		/**
+		 * Validate a directory of externally captured artifacts without starting a run.
+		 *
+		 * Run this before `ingest run`. It applies the same contract checks the run applies, so a
+		 * capture problem surfaces here rather than half way through a pipeline.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --dir=<path>
+		 * : Directory holding the emitter's per-page JSON files.
+		 *
+		 * [--format=<format>]
+		 * : table or json. Default: table.
+		 *
+		 * ## EXAMPLES
+		 *
+		 *     wp dbvc content-migration ingest validate --dir=~/captures/example.com/2026-10-16
+		 *
+		 * @param array<int, string>    $args
+		 * @param array<string, string> $assoc_args
+		 * @return void
+		 */
+		public function validate($args, $assoc_args) {
+			$service = self::service();
+			$dir = self::resolve_dir($assoc_args);
+			$format = isset($assoc_args['format']) ? (string) $assoc_args['format'] : 'table';
+
+			$journey_id = 'cli-validate-' . wp_generate_password(8, false);
+			$staged = $service->stage($journey_id, $dir);
+			if (is_wp_error($staged)) {
+				WP_CLI::error($staged->get_error_message());
+			}
+			$service->unstage($journey_id);
+
+			$rows = [];
+			foreach ($staged['pages'] as $slug => $page) {
+				$rows[] = [
+					'slug' => (string) $slug,
+					'source_url' => (string) $page['source_url'],
+					'elements' => (string) $page['element_count'],
+					'content_hash' => substr((string) $page['content_hash'], 0, 12),
+				];
+			}
+
+			WP_CLI\Utils\format_items($format, $rows, ['slug', 'source_url', 'elements', 'content_hash']);
+			WP_CLI::success(sprintf('%d page bundle(s) valid.', (int) $staged['pageCount']));
+		}
+
+		/**
+		 * Start a run that reads its pages from a validated artifact directory.
+		 *
+		 * No HTTP fetch and no DOM extraction happens: the staged artifacts are used as captured.
+		 * The URL scope rules still apply to every page, and the run's own ids are stamped onto
+		 * the artifacts rather than trusted from the files.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --dir=<path>
+		 * : Directory holding the emitter's per-page JSON files.
+		 *
+		 * --domain=<domain>
+		 * : Source domain for the run.
+		 *
+		 * [--max-urls=<number>]
+		 * : Cap the number of pages captured.
+		 *
+		 * [--force-rebuild]
+		 * : Rebuild the target schema before the run.
+		 *
+		 * ## EXAMPLES
+		 *
+		 *     wp dbvc content-migration ingest run --dir=~/captures/example.com --domain=example.com
+		 *
+		 * @param array<int, string>    $args
+		 * @param array<string, string> $assoc_args
+		 * @return void
+		 */
+		public function run($args, $assoc_args) {
+			self::service();
+			$dir = self::resolve_dir($assoc_args);
+			$domain = isset($assoc_args['domain']) ? (string) $assoc_args['domain'] : '';
+			if ($domain === '') {
+				WP_CLI::error('Pass --domain=<domain>.');
+			}
+
+			// The REST allowlist exists to stop an authenticated HTTP request walking the disk.
+			// Whoever runs WP-CLI already has shell access, so the restriction protects nothing
+			// here; permitting exactly this directory for this process keeps run creation in one
+			// place instead of duplicating it.
+			$permit = static function ($roots) use ($dir) {
+				$roots[] = $dir;
+
+				return $roots;
+			};
+			add_filter('dbvc_cc_v2_ingest_allowed_roots', $permit);
+
+			$request = new WP_REST_Request('POST', '/' . DBVC_CC_V2_Contracts::REST_NAMESPACE . '/runs');
+			$request->set_param('domain', $domain);
+			$request->set_param('ingestDir', $dir);
+			if (! empty($assoc_args['max-urls'])) {
+				$request->set_param('maxUrls', (int) $assoc_args['max-urls']);
+			}
+			if (! empty($assoc_args['force-rebuild'])) {
+				$request->set_param('forceRebuild', true);
+			}
+
+			$response = rest_do_request($request);
+			remove_filter('dbvc_cc_v2_ingest_allowed_roots', $permit);
+
+			if ($response->is_error()) {
+				$error = $response->as_error();
+				WP_CLI::error(sprintf('[%s] %s', $error->get_error_code(), $error->get_error_message()));
+			}
+
+			$data = $response->get_data();
+			$run_id = isset($data['runId']) ? (string) $data['runId'] : '';
+			$pages = isset($data['pages']) && is_array($data['pages']) ? $data['pages'] : [];
+
+			$completed = 0;
+			foreach ($pages as $page) {
+				if (isset($page['status']) && $page['status'] === 'completed') {
+					$completed++;
+				} elseif (isset($page['status'])) {
+					WP_CLI::warning(sprintf(
+						'%s: %s',
+						isset($page['path']) ? (string) $page['path'] : '?',
+						(string) $page['status']
+					));
+				}
+			}
+
+			WP_CLI::success(sprintf(
+				'Run %s ingested %d of %d page(s) from %s.',
+				$run_id,
+				$completed,
+				count($pages),
+				$dir
+			));
+		}
+
+		/**
+		 * @return DBVC_CC_V2_External_Artifact_Ingest_Service
+		 */
+		private static function service() {
+			if (! class_exists('DBVC_CC_V2_External_Artifact_Ingest_Service')) {
+				WP_CLI::error('The Content Migration add-on is not loaded.');
+			}
+
+			return DBVC_CC_V2_External_Artifact_Ingest_Service::get_instance();
+		}
+
+		/**
+		 * @param array<string, string> $assoc_args
+		 * @return string
+		 */
+		private static function resolve_dir($assoc_args) {
+			$dir = isset($assoc_args['dir']) ? (string) $assoc_args['dir'] : '';
+			if ($dir === '') {
+				WP_CLI::error('Pass --dir=<path>.');
+			}
+
+			// A shell that did not expand ~ would otherwise produce a confusing "no such
+			// directory" for a path the operator can see.
+			if (strpos($dir, '~') === 0) {
+				$home = getenv('HOME');
+				if (is_string($home) && $home !== '') {
+					$dir = $home . substr($dir, 1);
+				}
+			}
+
+			$real = realpath($dir);
+			if ($real === false) {
+				WP_CLI::error(sprintf('No such directory: %s', $dir));
+			}
+
+			return wp_normalize_path($real);
+		}
+	}
+
 	WP_CLI::add_command('dbvc content-migration runs', 'DBVC_WP_CLI_Content_Migration_Runs');
+	WP_CLI::add_command('dbvc content-migration ingest', 'DBVC_WP_CLI_Content_Migration_Ingest');
+	WP_CLI::add_command('dbvc content-migration storage', 'DBVC_WP_CLI_Content_Migration_Storage');
 }

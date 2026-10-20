@@ -66,6 +66,8 @@
 | Content Collector export | [`source.content_collector.export`](../manifest.json) | `source_reference` | `unknown` | [Content Migration add-on](../facets/content-migration-addon.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | content export job | [`source.content_collector.export`](../manifest.json) | `source_reference` | `unknown` | [Content Migration add-on](../facets/content-migration-addon.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | content migration | [`addon.content_migration.runtime_guard`](../manifest.json) | `active` | `mixed` | [Content Migration add-on](../facets/content-migration-addon.md) |
+| content migration AI mapping | [`addon.content_migration.model_interpretation`](../manifest.json) | `active` | `remote_write` | [Content Migration add-on](../facets/content-migration-addon.md) |
+| content migration retention | [`cli.content_migration.storage.prune`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | content tree | [`source.content_collector.explorer`](../manifest.json) | `source_reference` | `unknown` | [Content Migration add-on](../facets/content-migration-addon.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | custom_wsform remap | [`portability.third_party.wsform_references`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
 | data masking | [`proposal.core.masking`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
@@ -78,9 +80,11 @@
 | DBVC lifecycle hooks | [`hooks.core.lifecycle`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) |
 | DBVC tool catalog | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | dbvc_ac | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| dbvc_cc_flag_model_interpretation | [`addon.content_migration.model_interpretation`](../manifest.json) | `active` | `remote_write` | [Content Migration add-on](../facets/content-migration-addon.md) |
 | dbvc_ce | [`addon.connected_environments.observation`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | dbvc_third_party_wsform_preserve_ids | [`portability.third_party.wsform_id_preservation`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
 | dbvc_wsform_refs | [`portability.third_party.wsform_references`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
+| delete old crawled collections | [`cli.content_migration.storage.prune`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | delete proposal | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | deliveries | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | download sync | [`transport.core.sync_packages`](../manifest.json) | `active` | `destructive` | [Identity and storage](../facets/identity-storage-and-observability.md) |
@@ -110,6 +114,8 @@
 | in-page editor | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) |
 | inbox | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | include trashed forms | [`portability.third_party.wsform_form_export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) |
+| ingest captured artifacts | [`cli.content_migration.ingest`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| interpretation boundary | [`addon.content_migration.model_interpretation`](../manifest.json) | `active` | `remote_write` | [Content Migration add-on](../facets/content-migration-addon.md) |
 | intro handshake | [`addon.bricks.connected_onboarding`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | invitation form | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | job tracking | [`storage.core.snapshots`](../manifest.json) | `active` | `filesystem_write` | [Identity and storage](../facets/identity-storage-and-observability.md) |
@@ -117,6 +123,7 @@
 | JSON export engine | [`engine.core.export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) |
 | JSON intake | [`engine.core.import`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
 | local observation outbox | [`addon.connected_environments.observation`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| map captured content to fields with a model | [`addon.content_migration.model_interpretation`](../manifest.json) | `active` | `remote_write` | [Content Migration add-on](../facets/content-migration-addon.md) |
 | mask revert | [`proposal.core.masking`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | media hydrate | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) |
 | media inventory | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) |
@@ -165,6 +172,7 @@
 | snapshot history | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | source drop guard | [`addon.content_migration.runtime_guard`](../manifest.json) | `active` | `mixed` | [Content Migration add-on](../facets/content-migration-addon.md) |
 | stage proposal ZIP | [`cli.core.proposals.upload`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| start a run from the harvest skill | [`cli.content_migration.ingest`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | studio hub | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | subscriptions | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | sync artifact generator | [`engine.core.export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) |
@@ -201,8 +209,11 @@
 | wp dbvc connected reconcile | [`cli.connected.process`](../manifest.json) | `experimental` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | wp dbvc connected resume | [`cli.connected.transport`](../manifest.json) | `experimental` | `remote_write` | [CLI and automation](../facets/cli-and-automation.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | wp dbvc connected status | [`cli.connected.inspect`](../manifest.json) | `experimental` | `read_only` | [CLI and automation](../facets/cli-and-automation.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| wp dbvc content-migration ingest run | [`cli.content_migration.ingest`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc content-migration ingest validate | [`cli.content_migration.ingest`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc content-migration runs list | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc content-migration runs show | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc content-migration storage prune | [`cli.content_migration.storage.prune`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc entity-editor inspect | [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc entity-editor list | [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc export | [`cli.core.export`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |

@@ -2,7 +2,9 @@
 
 namespace Dbvc\Connected\Transport;
 
+use Dbvc\Connected\Adapters\BricksOptionCollectionObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
+use Dbvc\Connected\Adapters\PostTypeObserver;
 use Dbvc\Connected\Apply\Applier;
 use Dbvc\Connected\Capture\DirtyCapture;
 use Dbvc\Connected\Preparation\MediaReferences;
@@ -277,10 +279,15 @@ final class ReleaseWorker
                 // A post's referenced attachments ride as a sibling media channel
                 // (bytes out-of-body, so the after_hash contract is untouched). Any post
                 // domain — the `wp.service` alias or a `wp.post:<type>` — carries media.
-                if (! $deletion && DomainRegistry::is_post_domain((string) $item['domain'])) {
+                if (! $deletion) {
                     $after = json_decode($body, true);
-                    if (is_array($after)) {
-                        $bundle = MediaReferences::collect_for_transport($after);
+                    // The observer decides its media bundle: a post carries its referenced
+                    // attachments (string refs + a Bricks template's structured image refs);
+                    // a Bricks option collection carries its members' structured image refs.
+                    // A domain whose observer has no media seam carries none.
+                    $observer = is_array($after) ? DomainRegistry::observer_for((string) $item['domain']) : null;
+                    if ($observer instanceof PostTypeObserver || $observer instanceof BricksOptionCollectionObserver) {
+                        $bundle = $observer->collect_transport_media($after);
                         if ($bundle['media'] !== []) {
                             $payload['media'] = $bundle['media'];
                             $summary['media_sent'] = ($summary['media_sent'] ?? 0) + count($bundle['media']);
@@ -301,6 +308,34 @@ final class ReleaseWorker
                 $summary['http_status'] = $post['status'];
                 if (! $post['ok']) {
                     return $this->transport_failure($post, $summary);
+                }
+            }
+        }
+
+        // Media pull channel (A2-2b): stream the raw bytes of each large (fetch)
+        // media reference to the hub, now that the payload POST has registered its
+        // descriptor on the release. Best-effort — a failed upload simply leaves
+        // the target to fail closed on that object (media_unresolved), never a bad
+        // apply; it is retried on the next delivery pass.
+        foreach ($batches as $release_uid => $payloads) {
+            foreach ($payloads as $payload) {
+                foreach ((is_array($payload['media'] ?? null) ? $payload['media'] : []) as $descriptor) {
+                    if (empty($descriptor['fetch']) || ! isset($descriptor['hash']) || ! is_string($descriptor['hash'])) {
+                        continue;
+                    }
+                    $hash = (string) $descriptor['hash'];
+                    $local = MediaReferences::local_by_hash($hash);
+                    $bytes = $local > 0 ? MediaReferences::read_bytes($local) : null;
+                    if (! is_string($bytes) || 'sha256:' . hash('sha256', $bytes) !== $hash) {
+                        $summary['media_pull_failed'] = ($summary['media_pull_failed'] ?? 0) + 1;
+                        continue;
+                    }
+                    $put = HubClient::put_bytes($hub_url, '/releases/' . rawurlencode((string) $release_uid) . '/media/' . substr($hash, 7), $bytes, $auth);
+                    if ($put['ok']) {
+                        $summary['media_pull_uploaded'] = ($summary['media_pull_uploaded'] ?? 0) + 1;
+                    } else {
+                        $summary['media_pull_failed'] = ($summary['media_pull_failed'] ?? 0) + 1;
+                    }
                 }
             }
         }

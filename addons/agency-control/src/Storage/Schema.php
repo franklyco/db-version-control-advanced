@@ -9,7 +9,7 @@ namespace Dbvc\AgencyControl\Storage;
  */
 final class Schema
 {
-    public const SCHEMA_VERSION = 19;
+    public const SCHEMA_VERSION = 20;
     public const OPTION_SCHEMA_VERSION = 'dbvc_agency_control_schema_version';
     public const ENVIRONMENT_ROLE = 'dbvc_connected_environment';
 
@@ -59,6 +59,7 @@ final class Schema
             'framework_rollout_targets' => "{$wpdb->prefix}dbvc_ac_framework_rollout_targets",
             'notification_channels' => "{$wpdb->prefix}dbvc_ac_notification_channels",
             'notification_log' => "{$wpdb->prefix}dbvc_ac_notification_log",
+            'media_blobs' => "{$wpdb->prefix}dbvc_ac_media_blobs",
         ];
         if (! isset($map[$name])) {
             throw new \InvalidArgumentException('Unknown hub table: ' . (string) $name);
@@ -234,6 +235,7 @@ final class Schema
         $framework_rollout_targets = self::table('framework_rollout_targets');
         $notification_channels = self::table('notification_channels');
         $notification_log = self::table('notification_log');
+        $media_blobs = self::table('media_blobs');
 
         $sql = [];
         $sql[] = "CREATE TABLE {$invitations} (
@@ -700,6 +702,18 @@ final class Schema
             PRIMARY KEY  (log_id),
             UNIQUE KEY dedupe (channel_uid, dedupe_key),
             KEY status (status, log_id)
+        ) {$charset_collate};";
+
+        // Content-addressed media blobs (post-M9 Phase A-2a): carried attachment
+        // bytes keyed by their sha256, stored once and shared across releases,
+        // so the hot `release_items.media` column no longer carries base64 bytes.
+        $sql[] = "CREATE TABLE {$media_blobs} (
+            hash varbinary(71) NOT NULL,
+            mime varbinary(191) NOT NULL DEFAULT '',
+            filesize bigint(20) unsigned NOT NULL DEFAULT 0,
+            created_at datetime NOT NULL,
+            bytes longblob NULL,
+            PRIMARY KEY  (hash)
         ) {$charset_collate};";
 
         foreach ($sql as $statement) {

@@ -82,6 +82,12 @@ final class DBVC_CC_V2_Mapping_Index_Service
             );
         $context_map = $this->build_context_map($context_artifact);
         $route_map = $this->build_route_map($routing_artifact);
+        $interpretation = $this->build_interpretation_ranking(
+            isset($args['interpretation_result']) && is_array($args['interpretation_result'])
+                ? $args['interpretation_result']
+                : [],
+            $object_key
+        );
         $section_outline_map = $this->build_section_outline_map($sections_artifact);
         $element_lookup = $this->build_element_lookup($elements_artifact);
 
@@ -94,20 +100,20 @@ final class DBVC_CC_V2_Mapping_Index_Service
         $title = isset($raw_artifact['metadata']['title']) ? trim((string) $raw_artifact['metadata']['title']) : '';
         if ($title !== '') {
             ++$item_order;
-            $page_title = $this->build_page_title_item($item_order, $title, $primary, $narrowed_catalog, $pattern_memory);
+            $page_title = $this->build_page_title_item($item_order, $title, $primary, $narrowed_catalog, $pattern_memory, $interpretation);
             $content_items[] = $page_title;
             if (empty($page_title['target_candidates'])) {
-                $unresolved_items[] = $this->build_unresolved_item($page_title, 'no_target_candidates');
+                $unresolved_items[] = $this->build_unresolved_item($page_title, $this->resolve_unresolved_reason($page_title));
             }
         }
 
         $description = isset($raw_artifact['metadata']['description']) ? trim((string) $raw_artifact['metadata']['description']) : '';
         if ($description !== '') {
             ++$item_order;
-            $page_description = $this->build_page_description_item($item_order, $description, $primary, $narrowed_catalog, $pattern_memory);
+            $page_description = $this->build_page_description_item($item_order, $description, $primary, $narrowed_catalog, $pattern_memory, $interpretation);
             $content_items[] = $page_description;
             if (empty($page_description['target_candidates'])) {
-                $unresolved_items[] = $this->build_unresolved_item($page_description, 'no_target_candidates');
+                $unresolved_items[] = $this->build_unresolved_item($page_description, $this->resolve_unresolved_reason($page_description));
             }
         }
 
@@ -150,11 +156,12 @@ final class DBVC_CC_V2_Mapping_Index_Service
                         $narrowed_catalog,
                         $pattern_memory,
                         $route_map,
-                        $page_intent
+                        $page_intent,
+                        $interpretation
                     );
                     $content_items[] = $section_item;
                     if (empty($section_item['target_candidates'])) {
-                        $unresolved_items[] = $this->build_unresolved_item($section_item, 'no_target_candidates');
+                        $unresolved_items[] = $this->build_unresolved_item($section_item, $this->resolve_unresolved_reason($section_item));
                     }
                 }
 
@@ -162,12 +169,14 @@ final class DBVC_CC_V2_Mapping_Index_Service
             }
 
             ++$item_order;
-            $section_item = $this->build_section_item($item_order, $section, $primary, $narrowed_catalog, $context_map, $pattern_memory, $route_map, $page_intent);
+            $section_item = $this->build_section_item($item_order, $section, $primary, $narrowed_catalog, $context_map, $pattern_memory, $route_map, $page_intent, $interpretation);
             $content_items[] = $section_item;
             if (empty($section_item['target_candidates'])) {
-                $unresolved_items[] = $this->build_unresolved_item($section_item, 'no_target_candidates');
+                $unresolved_items[] = $this->build_unresolved_item($section_item, $this->resolve_unresolved_reason($section_item));
             }
         }
+
+        $interpretation_summary = $this->build_interpretation_summary($interpretation, $content_items, $args);
 
         $best_confidences = [];
         foreach ($content_items as $content_item) {
@@ -179,7 +188,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
             $best_confidences[] = isset($summary['best']) ? (float) $summary['best'] : 0.0;
         }
 
-        return [
+        $artifact = [
             'artifact_schema_version' => DBVC_CC_Contracts::ARTIFACT_SCHEMA_VERSION,
             'artifact_type' => 'mapping-index.v1',
             'journey_id' => isset($raw_artifact['journey_id']) ? (string) $raw_artifact['journey_id'] : '',
@@ -219,6 +228,15 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'average_best_confidence' => empty($best_confidences) ? 0.0 : round(array_sum($best_confidences) / count($best_confidences), 2),
             ],
         ];
+
+        // Added, never defaulted. With `dbvc_cc_flag_model_interpretation` off the key is absent
+        // and the artifact is byte-for-byte the one V2 has always written, which is the whole
+        // point of putting the seam behind a flag rather than behind a mode.
+        if ($interpretation_summary !== []) {
+            $artifact['interpretation'] = $interpretation_summary;
+        }
+
+        return $artifact;
     }
 
     /**
@@ -227,9 +245,10 @@ final class DBVC_CC_V2_Mapping_Index_Service
      * @param array<string, mixed> $primary
      * @param array<string, mixed> $narrowed_catalog
      * @param array<string, mixed> $pattern_memory
+     * @param array<string, mixed> $interpretation
      * @return array<string, mixed>
      */
-    private function build_page_title_item($item_order, $title, array $primary, array $narrowed_catalog, array $pattern_memory)
+    private function build_page_title_item($item_order, $title, array $primary, array $narrowed_catalog, array $pattern_memory, array $interpretation = [])
     {
         $pattern_keys = ['title', 'headline', 'hero'];
         $candidates = [];
@@ -270,7 +289,8 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'pattern_keys' => $pattern_keys,
                 'notes' => ['Deterministic title mapping against the selected target object.'],
             ],
-            $candidates
+            $candidates,
+            $interpretation
         );
     }
 
@@ -280,9 +300,10 @@ final class DBVC_CC_V2_Mapping_Index_Service
      * @param array<string, mixed> $primary
      * @param array<string, mixed> $narrowed_catalog
      * @param array<string, mixed> $pattern_memory
+     * @param array<string, mixed> $interpretation
      * @return array<string, mixed>
      */
-    private function build_page_description_item($item_order, $description, array $primary, array $narrowed_catalog, array $pattern_memory)
+    private function build_page_description_item($item_order, $description, array $primary, array $narrowed_catalog, array $pattern_memory, array $interpretation = [])
     {
         $pattern_keys = ['description', 'summary', 'intro'];
         $candidates = [];
@@ -330,7 +351,8 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'pattern_keys' => $pattern_keys,
                 'notes' => ['Description candidate mapping stays inside the selected object family.'],
             ],
-            $candidates
+            $candidates,
+            $interpretation
         );
     }
 
@@ -353,7 +375,8 @@ final class DBVC_CC_V2_Mapping_Index_Service
         array $context_map,
         array $pattern_memory,
         array $route_map = [],
-        $page_intent = ''
+        $page_intent = '',
+        array $interpretation = []
     ) {
         $section_id = isset($section['section_id']) ? sanitize_key((string) $section['section_id']) : '';
         $label = isset($section['label']) ? sanitize_text_field((string) $section['label']) : '';
@@ -415,7 +438,8 @@ final class DBVC_CC_V2_Mapping_Index_Service
                     $route_scope !== '' && $route_scope !== $context_tag ? sprintf('Routing scope normalized this section to `%s`.', $route_scope) : '',
                 ])),
             ],
-            $candidates
+            $candidates,
+            $interpretation
         );
     }
 
@@ -436,7 +460,8 @@ final class DBVC_CC_V2_Mapping_Index_Service
         array $narrowed_catalog,
         array $pattern_memory,
         array $route_map = [],
-        $page_intent = ''
+        $page_intent = '',
+        array $interpretation = []
     ) {
         $content_role = isset($section_unit['content_role']) ? sanitize_key((string) $section_unit['content_role']) : '';
         $context_tag = isset($section_unit['context_tag']) ? sanitize_key((string) $section_unit['context_tag']) : 'content';
@@ -496,7 +521,8 @@ final class DBVC_CC_V2_Mapping_Index_Service
                     )
                 ),
             ],
-            $candidates
+            $candidates,
+            $interpretation
         );
     }
 
@@ -612,10 +638,13 @@ final class DBVC_CC_V2_Mapping_Index_Service
     /**
      * @param array<string, mixed> $seed
      * @param array<int, array<string, mixed>> $candidates
+     * @param array<string, mixed> $interpretation
      * @return array<string, mixed>
      */
-    private function finalize_item(array $seed, array $candidates)
+    private function finalize_item(array $seed, array $candidates, array $interpretation = [])
     {
+        list($seed, $candidates) = $this->apply_interpretation_ranking($seed, $candidates, $interpretation);
+
         $deduped = [];
         $pattern_match_count = 0;
         foreach ($candidates as $candidate) {
@@ -627,13 +656,25 @@ final class DBVC_CC_V2_Mapping_Index_Service
             $confidence = isset($candidate['confidence']) ? (float) $candidate['confidence'] : 0.0;
             $sort_score = isset($candidate['sort_score']) ? (float) $candidate['sort_score'] : $confidence;
             if (! isset($deduped[$target_ref]) || $sort_score > (float) $deduped[$target_ref]['sort_score']) {
-                $deduped[$target_ref] = [
+                $row = [
                     'target_ref' => $target_ref,
                     'confidence' => round(min(0.99, max(0.05, $confidence)), 2),
                     'sort_score' => $sort_score,
                     'reason' => isset($candidate['reason']) ? sanitize_key((string) $candidate['reason']) : '',
                     'pattern_key' => isset($candidate['pattern_key']) ? sanitize_key((string) $candidate['pattern_key']) : '',
                 ];
+
+                // Present only on a candidate an interpreter produced. Absence is the signal that
+                // the lexical scorer did, which is the D-3 rule applied to this artifact: a
+                // provenance key is written by whatever did the work and defaulted by nothing.
+                if (isset($candidate['provenance']) && is_array($candidate['provenance'])) {
+                    $row['provenance'] = $candidate['provenance'];
+                }
+                if (isset($candidate['rationale']) && $candidate['rationale'] !== '') {
+                    $row['rationale'] = sanitize_text_field((string) $candidate['rationale']);
+                }
+
+                $deduped[$target_ref] = $row;
             }
 
             if (! empty($candidate['reason']) && strpos((string) $candidate['reason'], 'pattern') !== false) {
@@ -674,6 +715,292 @@ final class DBVC_CC_V2_Mapping_Index_Service
     }
 
     /**
+     * Index an `interpretation-result.v1` so the item builders can look a ranking up by item id.
+     *
+     * Only a MODEL-produced result supplies a ranking. When the boundary fell back to its own
+     * deterministic floor — no key, over budget, transport error, invalid shape — that floor is a
+     * compact token-overlap scorer measured at 4.8% field accuracy on corpus slot 1, while the
+     * lexical scorer in this file has the slot graph, the section family, provider purpose text
+     * and pattern memory behind it and scores higher. Replacing the better floor with the weaker
+     * one on a model failure would be a regression dressed as a fallback, so a floor result is
+     * recorded and persisted for its named reason and changes no candidate here. That is what
+     * "the existing lexical scorer remains the fallback" means in practice.
+     *
+     * @param array<string, mixed> $result     interpretation-result.v1, or [] when the stage did not run.
+     * @param string               $object_key The target object the mapping index narrowed to.
+     * @return array<string, mixed>
+     */
+    private function build_interpretation_ranking(array $result, $object_key)
+    {
+        if (empty($result) || ! isset($result['artifact_type'])) {
+            return ['present' => false, 'applied' => false];
+        }
+
+        $interpreter = isset($result['interpreter']) ? sanitize_key((string) $result['interpreter']) : '';
+        $model_attempt = isset($result['model_attempt']) && is_array($result['model_attempt'])
+            ? $result['model_attempt']
+            : [];
+        $index = [
+            'present' => true,
+            'applied' => $interpreter === DBVC_CC_Interp_Contracts::INTERPRETER_MODEL,
+            'interpreter' => $interpreter,
+            'model_attempt' => $model_attempt,
+            'by_item' => [],
+            'declined' => [],
+            'recommendation_count' => 0,
+            'declined_count' => 0,
+        ];
+
+        $object_key = sanitize_key((string) $object_key);
+        $recommendations = isset($result['recommendations']) && is_array($result['recommendations'])
+            ? $result['recommendations']
+            : [];
+
+        foreach ($recommendations as $recommendation) {
+            if (! is_array($recommendation) || empty($recommendation['item_id']) || empty($recommendation['target_ref'])) {
+                continue;
+            }
+
+            // A recommendation against a different object than the one this page routes to cannot
+            // be written by the transform stage, so it is not offered as a candidate.
+            $recommendation_object = isset($recommendation['target_object_key'])
+                ? sanitize_key((string) $recommendation['target_object_key'])
+                : $object_key;
+            if ($object_key !== '' && $recommendation_object !== '' && $recommendation_object !== $object_key) {
+                continue;
+            }
+
+            $item_id = (string) $recommendation['item_id'];
+            $confidence = isset($recommendation['confidence']) ? (float) $recommendation['confidence'] : 0.0;
+            if (! isset($index['by_item'][$item_id])) {
+                $index['by_item'][$item_id] = [];
+            }
+
+            $index['by_item'][$item_id][] = [
+                'target_ref' => (string) $recommendation['target_ref'],
+                'confidence' => $confidence,
+                // The interpreter's own number orders its candidates and faces the same
+                // auto-accept gates the lexical ones face. Nothing is scaled up to outrank the
+                // floor, because the floor's candidates are not in the list when this applies.
+                'sort_score' => $confidence,
+                'reason' => 'model_interpretation',
+                'pattern_key' => '',
+                'provenance' => isset($recommendation['provenance']) && is_array($recommendation['provenance'])
+                    ? $recommendation['provenance']
+                    : [],
+                'rationale' => isset($recommendation['rationale']) ? (string) $recommendation['rationale'] : '',
+            ];
+            ++$index['recommendation_count'];
+        }
+
+        foreach (isset($result['declined']) && is_array($result['declined']) ? $result['declined'] : [] as $declined) {
+            if (! is_array($declined) || empty($declined['item_id'])) {
+                continue;
+            }
+
+            $index['declined'][(string) $declined['item_id']] = isset($declined['reason'])
+                ? sanitize_text_field((string) $declined['reason'])
+                : '';
+            ++$index['declined_count'];
+        }
+
+        return $index;
+    }
+
+    /**
+     * Let the interpreter's answer stand in for the lexical candidates on the items it answered.
+     *
+     * Per item, not per page. An item the interpreter mapped takes its candidates; an item it
+     * explicitly declined takes none, because overriding a decline with a lexical guess is
+     * exactly the confident-wrong mapping the decline exists to avoid; an item it never answered
+     * keeps the lexical candidates unchanged.
+     *
+     * @param array<string, mixed> $seed
+     * @param array<int, array<string, mixed>> $candidates
+     * @param array<string, mixed> $interpretation
+     * @return array{0: array<string, mixed>, 1: array<int, array<string, mixed>>}
+     */
+    private function apply_interpretation_ranking(array $seed, array $candidates, array $interpretation)
+    {
+        if (empty($interpretation['applied'])) {
+            return [$seed, $candidates];
+        }
+
+        $item_ids = $this->interpretation_item_ids($seed);
+        if ($item_ids === []) {
+            $seed['interpretation'] = [
+                'ranked_by' => 'lexical',
+                'reason' => 'not_offered_to_interpreter',
+                'item_ids' => [],
+            ];
+
+            return [$seed, $candidates];
+        }
+
+        $ranked = [];
+        $decline_reasons = [];
+        foreach ($item_ids as $item_id) {
+            if (isset($interpretation['by_item'][$item_id]) && is_array($interpretation['by_item'][$item_id])) {
+                $ranked = array_merge($ranked, $interpretation['by_item'][$item_id]);
+            }
+            if (isset($interpretation['declined'][$item_id])) {
+                $decline_reasons[] = (string) $interpretation['declined'][$item_id];
+            }
+        }
+
+        if ($ranked !== []) {
+            $seed['interpretation'] = [
+                'ranked_by' => 'model',
+                'reason' => 'interpreter_mapped',
+                'item_ids' => $item_ids,
+            ];
+
+            return [$seed, $ranked];
+        }
+
+        if ($decline_reasons !== []) {
+            $seed['interpretation'] = [
+                'ranked_by' => 'model',
+                'reason' => 'interpreter_declined',
+                'item_ids' => $item_ids,
+                'decline_reasons' => array_values(array_unique(array_filter($decline_reasons))),
+            ];
+
+            return [$seed, []];
+        }
+
+        $seed['interpretation'] = [
+            'ranked_by' => 'lexical',
+            'reason' => 'interpreter_did_not_answer',
+            'item_ids' => $item_ids,
+        ];
+
+        return [$seed, $candidates];
+    }
+
+    /**
+     * Join keys between a mapping content item and `interpretation-input.v1`.
+     *
+     * The adapter builds its items from `elements.v2`, so an element id is the join. Head
+     * metadata has no element, and the adapter offers it under fixed ids. A section item built
+     * without units carries only section refs and therefore joins to nothing, which is why it
+     * keeps the lexical candidates rather than being treated as unanswered content.
+     *
+     * @param array<string, mixed> $seed
+     * @return array<int, string>
+     */
+    private function interpretation_item_ids(array $seed)
+    {
+        $source_refs = isset($seed['source_refs']) && is_array($seed['source_refs']) ? $seed['source_refs'] : [];
+        $map = [
+            'page-artifact.v1#metadata.title' => 'head:title',
+            'page-artifact.v1#metadata.description' => 'head:description',
+        ];
+
+        $item_ids = [];
+        foreach ($source_refs as $source_ref) {
+            $source_ref = (string) $source_ref;
+            if (isset($map[$source_ref])) {
+                $item_ids[] = $map[$source_ref];
+                continue;
+            }
+
+            if (strpos($source_ref, 'elements.v2#') === 0) {
+                $element_id = substr($source_ref, strlen('elements.v2#'));
+                if ($element_id !== '') {
+                    $item_ids[] = $element_id;
+                }
+            }
+        }
+
+        return array_values(array_unique($item_ids));
+    }
+
+    /**
+     * Why an item has no candidates.
+     *
+     * A declined item is not the same as a page with no eligible slot, and reporting both as
+     * `no_target_candidates` would hide the one case where the system was working as designed.
+     *
+     * @param array<string, mixed> $item
+     * @return string
+     */
+    private function resolve_unresolved_reason(array $item)
+    {
+        $interpretation = isset($item['interpretation']) && is_array($item['interpretation'])
+            ? $item['interpretation']
+            : [];
+
+        return isset($interpretation['reason']) && $interpretation['reason'] === 'interpreter_declined'
+            ? 'interpretation_declined'
+            : 'no_target_candidates';
+    }
+
+    /**
+     * The run-level record of what interpretation did, for the mapping artifact's own trace.
+     *
+     * Absent entirely when the stage did not run, so an artifact built with the flag off is the
+     * artifact V2 has always built.
+     *
+     * @param array<string, mixed> $interpretation
+     * @param array<int, array<string, mixed>> $content_items
+     * @param array<string, mixed> $args
+     * @return array<string, mixed>
+     */
+    private function build_interpretation_summary(array $interpretation, array $content_items, array $args)
+    {
+        if (empty($interpretation['present'])) {
+            return [];
+        }
+
+        $ranked_by_model = 0;
+        $declined = 0;
+        $joined = [];
+        foreach ($content_items as $content_item) {
+            if (! is_array($content_item) || ! isset($content_item['interpretation']['reason'])) {
+                continue;
+            }
+
+            foreach ((array) ($content_item['interpretation']['item_ids'] ?? []) as $item_id) {
+                $joined[(string) $item_id] = true;
+            }
+
+            if ($content_item['interpretation']['reason'] === 'interpreter_mapped') {
+                ++$ranked_by_model;
+            } elseif ($content_item['interpretation']['reason'] === 'interpreter_declined') {
+                ++$declined;
+            }
+        }
+
+        // An interpreter answer the mapping stage has nowhere to put. The interpreter is offered
+        // every non-chrome element; this stage builds items from section UNITS — one headline,
+        // one body, one CTA per section — so a page with several paragraphs in a section drops
+        // the interpreter's answers for all but one of them. Counting it makes the loss visible
+        // instead of leaving the artifact looking complete.
+        $unjoined = 0;
+        foreach (array_keys(isset($interpretation['by_item']) && is_array($interpretation['by_item']) ? $interpretation['by_item'] : []) as $item_id) {
+            if (! isset($joined[(string) $item_id])) {
+                ++$unjoined;
+            }
+        }
+
+        return [
+            'artifact_type' => DBVC_CC_Interp_Contracts::RESULT_TYPE,
+            'artifact_ref' => isset($args['interpretation_ref']) ? (string) $args['interpretation_ref'] : '',
+            'interpreter' => isset($interpretation['interpreter']) ? (string) $interpretation['interpreter'] : '',
+            'ranking_applied' => ! empty($interpretation['applied']),
+            'model_attempt' => isset($interpretation['model_attempt']) && is_array($interpretation['model_attempt'])
+                ? $interpretation['model_attempt']
+                : [],
+            'recommendation_count' => isset($interpretation['recommendation_count']) ? (int) $interpretation['recommendation_count'] : 0,
+            'declined_count' => isset($interpretation['declined_count']) ? (int) $interpretation['declined_count'] : 0,
+            'items_ranked_by_interpreter' => $ranked_by_model,
+            'items_declined_by_interpreter' => $declined,
+            'unjoined_recommendation_items' => $unjoined,
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $item
      * @param string $reason
      * @return array<string, mixed>
@@ -705,6 +1032,13 @@ final class DBVC_CC_V2_Mapping_Index_Service
         $reason = sanitize_key((string) $reason);
         $item_type = isset($item['item_type']) ? sanitize_key((string) $item['item_type']) : '';
         $context_tag = isset($item['context_tag']) ? sanitize_key((string) $item['context_tag']) : '';
+
+        // The interpreter looked at this item and said no field fits. That is the designed
+        // outcome of rule 2 in the prompt contract, not a missing slot, and a reviewer triaging
+        // the queue needs to be able to tell them apart.
+        if ($reason === 'interpretation_declined') {
+            return 'declined_by_interpreter';
+        }
 
         if ($reason === 'no_target_candidates') {
             if (in_array($item_type, ['page_title', 'page_description'], true)) {

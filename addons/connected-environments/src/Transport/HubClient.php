@@ -67,6 +67,105 @@ final class HubClient
     }
 
     /**
+     * GET a media blob from the hub pull channel (A2-2c). Identical to
+     * {@see get_json} except the response-size limit is sized for a full-ceiling
+     * media file: the blob is base64-wrapped (×4/3) in the JSON body, so the
+     * shared {@see get_json} limit (`MAX_BATCH_BYTES` × 4 = 1 MiB) truncates any
+     * file over ~768 KiB — i.e. every fetch file. Allow the pull ceiling plus
+     * encoding and envelope overhead, and a longer timeout for the larger body.
+     *
+     * @param string               $hub_url
+     * @param string               $route
+     * @param array<string, mixed> $auth
+     * @return array{ok: bool, status: int, body: array<string, mixed>|null, error: string, error_code: string}
+     */
+    public static function get_media_blob($hub_url, $route, array $auth = [])
+    {
+        $base = self::validate_hub_url($hub_url);
+        if (is_wp_error($base)) {
+            return ['ok' => false, 'status' => 0, 'body' => null, 'error' => $base->get_error_message(), 'error_code' => $base->get_error_code()];
+        }
+
+        $headers = [
+            'Accept' => 'application/json',
+            Protocol::HEADER_SITE_URL => home_url('/'),
+            Protocol::HEADER_PROTOCOL => Protocol::PROTOCOL_VERSION,
+        ];
+        if (isset($auth['username'], $auth['password'])) {
+            $headers['Authorization'] = 'Basic ' . base64_encode((string) $auth['username'] . ':' . (string) $auth['password']);
+        }
+
+        $url = $base . '/index.php?rest_route=' . rawurlencode('/' . Protocol::REST_NAMESPACE . $route);
+        $response = wp_remote_request($url, [
+            'method' => 'GET',
+            'timeout' => Protocol::REQUEST_TIMEOUT_SECONDS * 6,
+            'redirection' => 0,
+            'sslverify' => true,
+            'headers' => $headers,
+            'limit_response_size' => (int) (Protocol::MAX_PULL_FILE_BYTES * 2),
+        ]);
+        if (is_wp_error($response)) {
+            return ['ok' => false, 'status' => 0, 'body' => null, 'error' => $response->get_error_message(), 'error_code' => 'transport:' . $response->get_error_code()];
+        }
+
+        $status = (int) wp_remote_retrieve_response_code($response);
+        $decoded = json_decode((string) wp_remote_retrieve_body($response), true);
+        $decoded = is_array($decoded) ? $decoded : null;
+
+        return ['ok' => $status >= 200 && $status < 300 && $decoded !== null, 'status' => $status, 'body' => $decoded, 'error' => '', 'error_code' => ''];
+    }
+
+    /**
+     * PUT raw bytes (octet-stream) to a hub route — the media pull-channel upload.
+     * The body is the raw file, not a JSON envelope, so a large file is streamed
+     * rather than base64-inflated past post_max_size. Returns the same result
+     * shape as {@see post_json}.
+     *
+     * @param string               $hub_url
+     * @param string               $route
+     * @param string               $raw
+     * @param array<string, mixed> $auth
+     * @return array{ok: bool, status: int, body: array<string, mixed>|null, error: string, error_code: string}
+     */
+    public static function put_bytes($hub_url, $route, $raw, array $auth = [])
+    {
+        $base = self::validate_hub_url($hub_url);
+        if (is_wp_error($base)) {
+            return ['ok' => false, 'status' => 0, 'body' => null, 'error' => $base->get_error_message(), 'error_code' => $base->get_error_code()];
+        }
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/octet-stream',
+            Protocol::HEADER_SITE_URL => home_url('/'),
+            Protocol::HEADER_PROTOCOL => Protocol::PROTOCOL_VERSION,
+        ];
+        if (isset($auth['username'], $auth['password'])) {
+            $headers['Authorization'] = 'Basic ' . base64_encode((string) $auth['username'] . ':' . (string) $auth['password']);
+        }
+
+        $url = $base . '/index.php?rest_route=' . rawurlencode('/' . Protocol::REST_NAMESPACE . $route);
+        $response = wp_remote_request($url, [
+            'method' => 'PUT',
+            'timeout' => Protocol::REQUEST_TIMEOUT_SECONDS * 3,
+            'redirection' => 0,
+            'sslverify' => true,
+            'headers' => $headers,
+            'body' => (string) $raw,
+            'limit_response_size' => 65536,
+        ]);
+        if (is_wp_error($response)) {
+            return ['ok' => false, 'status' => 0, 'body' => null, 'error' => $response->get_error_message(), 'error_code' => 'transport:' . $response->get_error_code()];
+        }
+
+        $status = (int) wp_remote_retrieve_response_code($response);
+        $decoded = json_decode((string) wp_remote_retrieve_body($response), true);
+        $decoded = is_array($decoded) ? $decoded : null;
+
+        return ['ok' => $status >= 200 && $status < 300 && $decoded !== null, 'status' => $status, 'body' => $decoded, 'error' => '', 'error_code' => ''];
+    }
+
+    /**
      * @param string                    $method
      * @param string                    $hub_url
      * @param string                    $route

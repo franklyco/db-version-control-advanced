@@ -84,6 +84,22 @@ final class Controller
             'callback' => [$this, 'apply_receipts'],
             'permission_callback' => [$this, 'require_enrolled_principal'],
         ]);
+        // Post-M9 A-2: the fetch-by-hash media pull channel. A large file (over the
+        // inline cap) rides this dedicated route instead of a payload JSON — the
+        // source PUTs raw bytes (streamed, so a 25 MiB file never inflates a JSON
+        // body past post_max_size); a release target GETs them by hash at apply.
+        register_rest_route(Protocol::REST_NAMESPACE, '/releases/(?P<release_uid>[A-Za-z0-9._:-]{1,128})/media/(?P<hash>[a-f0-9]{64})', [
+            [
+                'methods' => \WP_REST_Server::EDITABLE,
+                'callback' => [$this, 'upload_media'],
+                'permission_callback' => [$this, 'require_enrolled_principal'],
+            ],
+            [
+                'methods' => \WP_REST_Server::READABLE,
+                'callback' => [$this, 'serve_media'],
+                'permission_callback' => [$this, 'require_enrolled_principal'],
+            ],
+        ]);
     }
 
     /**
@@ -371,6 +387,52 @@ final class Controller
         }
 
         return $this->no_store(rest_ensure_response($result));
+    }
+
+    /**
+     * Source → hub: accept one large media blob by content hash over the pull
+     * channel. The body is the raw file bytes (octet-stream), streamed so a large
+     * file never inflates a JSON body past post_max_size.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function upload_media(\WP_REST_Request $request)
+    {
+        $environment = $this->enabled_environment();
+        if (is_wp_error($environment)) {
+            return $environment;
+        }
+        $hash = 'sha256:' . (string) $request->get_param('hash');
+        $result = (new ReleaseService())->accept_media_blob($environment, (string) $request->get_param('release_uid'), $hash, (string) $request->get_body());
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return $this->no_store(rest_ensure_response($result));
+    }
+
+    /**
+     * Hub → target: serve one media blob by content hash. The raw bytes are
+     * base64-wrapped in the JSON response (one request per file, so the inline
+     * cost is bounded); the target re-hashes before sideloading.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function serve_media(\WP_REST_Request $request)
+    {
+        $environment = $this->enabled_environment();
+        if (is_wp_error($environment)) {
+            return $environment;
+        }
+        $hash = 'sha256:' . (string) $request->get_param('hash');
+        $bytes = (new ReleaseService())->serve_media_blob($environment, (string) $request->get_param('release_uid'), $hash);
+        if (is_wp_error($bytes)) {
+            return $bytes;
+        }
+
+        return $this->no_store(rest_ensure_response(['hash' => $hash, 'bytes' => base64_encode($bytes), 'filesize' => strlen($bytes)]));
     }
 
     /**

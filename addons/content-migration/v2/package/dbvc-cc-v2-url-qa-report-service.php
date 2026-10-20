@@ -7,6 +7,22 @@ if (! defined('WPINC')) {
 final class DBVC_CC_V2_URL_QA_Report_Service
 {
     /**
+     * Issue codes that report whether an optional context provider is installed on this
+     * site, not anything about the captured content or the review decisions. They are
+     * reported so the operator knows which verification was skipped, but they must not
+     * consume the per-page quality budget: a site without the Vertical providers would
+     * otherwise spend most of that budget before any page is looked at.
+     *
+     * @var array<int, string>
+     */
+    private const PROVIDER_AVAILABILITY_ISSUE_CODES = [
+        'field_context_provider_missing',
+        'field_context_provider_current_missing',
+        'object_type_context_provider_missing',
+        'object_type_context_provider_current_missing',
+    ];
+
+    /**
      * @var DBVC_CC_V2_URL_QA_Report_Service|null
      */
     private static $instance = null;
@@ -114,7 +130,6 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             $schema_fingerprint === ''
         );
         $this->append_field_context_issues(
-            $blocking_issues,
             $warnings,
             $row,
             $artifact_relatives,
@@ -417,7 +432,6 @@ final class DBVC_CC_V2_URL_QA_Report_Service
     }
 
     /**
-     * @param array<int, array<string, mixed>> $blocking_issues
      * @param array<int, array<string, mixed>> $warnings
      * @param array<string, mixed>             $row
      * @param array<string, mixed>             $artifact_relatives
@@ -426,7 +440,6 @@ final class DBVC_CC_V2_URL_QA_Report_Service
      * @return void
      */
     private function append_field_context_issues(
-        array &$blocking_issues,
         array &$warnings,
         array $row,
         array $artifact_relatives,
@@ -437,10 +450,10 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         $provider_context = $this->build_field_context_issue_context($row, $artifact_relatives, $field_context_provider);
 
         if ($provider_status === '' || in_array($provider_status, ['missing', 'unavailable'], true)) {
-            $blocking_issues[] = $this->make_issue(
+            $warnings[] = $this->make_issue(
                 'field_context_provider_missing',
-                __('Field Context provider metadata is missing for this URL, so runtime mapping constraints cannot be verified.', 'dbvc'),
-                'blocking',
+                __('Field Context provider metadata is missing for this URL, so runtime mapping constraints could not be verified.', 'dbvc'),
+                'warning',
                 $provider_context
             );
         } elseif (in_array($provider_status, ['degraded', 'legacy_only'], true)) {
@@ -506,6 +519,11 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         array $field_context_provider_current,
         array $field_context_provider_drift
     ) {
+        $recorded_status = isset($field_context_provider['status']) ? sanitize_key((string) $field_context_provider['status']) : '';
+        if ($recorded_status === '' || empty($field_context_provider)) {
+            return;
+        }
+
         $drift_context = array_merge(
             $this->build_field_context_issue_context($row, $artifact_relatives, $field_context_provider),
             [
@@ -525,10 +543,10 @@ final class DBVC_CC_V2_URL_QA_Report_Service
 
         $current_status = isset($field_context_provider_current['status']) ? sanitize_key((string) $field_context_provider_current['status']) : '';
         if ($current_status === '' || in_array($current_status, ['missing', 'unavailable'], true)) {
-            $blocking_issues[] = $this->make_issue(
+            $warnings[] = $this->make_issue(
                 'field_context_provider_current_missing',
-                __('The current slot graph does not expose verifiable Field Context provider metadata for this URL, so readiness cannot confirm the active schema.', 'dbvc'),
-                'blocking',
+                __('The current slot graph does not expose verifiable Field Context provider metadata for this URL, so readiness could not confirm the active schema.', 'dbvc'),
+                'warning',
                 $drift_context
             );
             return;
@@ -545,7 +563,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
 
         if (
             in_array($current_status, ['degraded', 'legacy_only'], true)
-            && $current_status !== (isset($field_context_provider['status']) ? sanitize_key((string) $field_context_provider['status']) : '')
+            && $current_status !== $recorded_status
         ) {
             $warnings[] = $this->make_issue(
                 'field_context_provider_current_degraded',
@@ -833,11 +851,29 @@ final class DBVC_CC_V2_URL_QA_Report_Service
     {
         $score = 100;
         $score -= count($blocking_issues) * 25;
-        $score -= count($warnings) * 8;
+        $score -= count($this->filter_scored_warnings($warnings)) * 8;
         $score -= min(12, absint($manual_override_count) * 3);
         $score -= min(8, absint($rerun_count) * 2);
 
         return max(0, min(100, $score));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $warnings
+     * @return array<int, array<string, mixed>>
+     */
+    private function filter_scored_warnings(array $warnings)
+    {
+        return array_values(
+            array_filter(
+                $warnings,
+                static function ($warning) {
+                    $code = is_array($warning) && isset($warning['code']) ? sanitize_key((string) $warning['code']) : '';
+
+                    return ! in_array($code, self::PROVIDER_AVAILABILITY_ISSUE_CODES, true);
+                }
+            )
+        );
     }
 
     /**

@@ -1,0 +1,141 @@
+{
+  "schema": "corpus-expected-mappings.v1",
+  "target_schema": "target-schema.v1.json",
+  "authored_at": "2026-10-11",
+  "authored_by": "human-reviewable ground truth, derived from source-html and verified against the live site",
+
+  "matching": {
+    "comment": "Expectations are keyed on a distinctive source text probe, never on a generated section or element id. Ids change whenever acquisition changes; the client's words do not. An evaluator matches a recommendation to an expectation by locating the probe in that recommendation's source evidence.",
+    "probe_match": "case-insensitive substring of the recommendation's source evidence"
+  },
+
+  "pages": [
+    {
+      "slug": "home",
+      "expected_object_key": "page",
+      "expected_object_rationale": "A single landing page. cardinality one_per_source_url.",
+
+      "mappings": [
+        { "source_probe": "Creating Healthy & Happy Smiles",                     "target_ref": "acf:page_hero:heading" },
+        { "source_probe": "Welcome to Mircea Olteanu DDS Family Dentistry",       "target_ref": "acf:page_intro:heading" },
+        { "source_probe": "On behalf of the entire team, we welcome you",         "target_ref": "acf:page_intro:body" },
+        { "source_probe": "Extensive knowledge and skill, along with our sincere","target_ref": "acf:page_intro:body" },
+
+        { "source_probe": "Meet Dr. Olteanu",                                     "target_ref": "acf:page_cards:items.card_title" },
+        { "source_probe": "Providing quality dental care at an affordable price", "target_ref": "acf:page_cards:items.card_body" },
+        { "source_probe": "Services Offered",                                     "target_ref": "acf:page_cards:items.card_title" },
+        { "source_probe": "Your smile is in great hands at Mircea Olteanu",       "target_ref": "acf:page_cards:items.card_body" },
+        { "source_probe": "Qs & As",                                              "target_ref": "acf:page_cards:items.card_title" },
+        { "source_probe": "Your questions and concerns are important",            "target_ref": "acf:page_cards:items.card_body" },
+        { "source_probe": "Schedule an Appt",                                     "target_ref": "acf:page_cards:items.card_title" },
+        { "source_probe": "Receive the highest quality care every time you see us","target_ref": "acf:page_cards:items.card_body" },
+
+        { "source_probe": "Complimentary Second Opinion and Consultation",        "target_ref": "acf:page_offers:items.offer_text" },
+        { "source_probe": "Senior citizens 55 years and older",                   "target_ref": "acf:page_offers:items.offer_text" },
+
+        { "source_probe": "Family Dentist in Broadview Heights, OH - Mircea Olteanu DDS", "target_ref": "meta:_seo_title",       "from": "head" },
+        { "source_probe": "offers a full range of preventative and general dentistry",    "target_ref": "meta:_seo_description", "from": "head" },
+        { "source_probe": "index, follow, max-image-preview:large",                       "target_ref": "meta:_seo_robots",      "from": "head" }
+      ],
+
+      "expected_null": [
+        { "target_ref": "meta:_seo_canonical", "reason": "the source declares no canonical tag anywhere on the site. Must be null, never synthesised." },
+        { "target_ref": "acf:page_hero:background", "reason": "the hero background is a Divi CSS background-image and is absent from the HTML and from any image list. Must be reported as missing media, never guessed." }
+      ],
+
+      "expected_unmapped": [
+        { "source_probe": "Honest · Affordable · Caring",                      "reason": "no field in this schema fits a mid-page value band. Declining is correct; forcing it into page_intro:body or a card is a precision failure." },
+        { "source_probe": "We are fully committed to your health, well-being", "reason": "body copy of the unmapped value band above." }
+      ],
+
+      "must_not_map": [
+        { "source_probe": "(440) 746-9030",                 "belongs_to": "acf:practice_info:phone",   "reason": "site chrome. Mapping the footer phone onto a page field is wrong on every page." },
+        { "source_probe": "7500 Town Centre Dr Suite 100",  "belongs_to": "acf:practice_info:address", "reason": "site chrome." },
+        { "source_probe": "europedentalcare@gmail.com",     "belongs_to": "acf:practice_info:email",   "reason": "site chrome." },
+        { "source_probe": "Facebook",                       "belongs_to": "acf:practice_info:social",  "reason": "site chrome." },
+        { "source_probe": "© 2026 Mircea Olteanu - All Rights Reserved", "belongs_to": null,           "reason": "footer credit. Not content." },
+        { "source_probe": "Select Page",                    "belongs_to": null,                        "reason": "Divi mobile nav artifact. Not content." },
+        { "source_probe": "Skip to content",                "belongs_to": null,                        "reason": "accessibility skip link. Not content." }
+      ],
+
+      "issues_expected": [
+        { "code": "broken_cta_target", "detail": "The hero CTA and the 'Meet Dr. Olteanu' card both link to /meet-the-team, which returns 403. The correct page is /dental-team. This must surface as an issue and a redirect-map decision, not be silently repointed.", "affects": ["acf:page_hero:cta_url", "acf:page_cards:items.card_link"] },
+        { "code": "collapsed_hero_slides", "detail": "The hero is one slider with three slides carrying identical text and three different CTA destinations. One hero expected, not three." }
+      ]
+    },
+
+    {
+      "slug": "dental-team",
+      "expected_object_key": "team_member",
+      "expected_entity_count": 5,
+
+      "structural_blocker": {
+        "code": "one_source_url_many_entities",
+        "detail": "This page must yield FIVE team_member entities. The V2 recommendation contract cannot express that: mapping-recommendations.v2 carries a single `recommended_target_object`, and entity resolution resolves one target per page. So this page is unmappable under the current data model regardless of how good the interpreter is.",
+        "evidence": "addons/content-migration/v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php - `recommended_target_object` is a single object, not a list",
+        "consequence": "The evaluator reports this page as a structural blocker and excludes it from the G-4 and G-5 scores rather than scoring an impossible task. Fixing it is a contract change, which belongs in its own slice.",
+        "schema_note": "target-schema.v1.json declares team_member cardinality one_per_person precisely so this shows up as a measurement, not a surprise."
+      },
+
+      "expected_entities": [
+        { "entity": "Mircea Olteanu, DDS", "mappings": [
+          { "source_probe": "Mircea Olteanu, DDS",                                           "target_ref": "core:post_title" },
+          { "source_probe": "Dr. Olteanu is always looking out for the best interest",        "target_ref": "acf:team_member:bio" },
+          { "source_probe": "Dr. Olteanu earned his dental degree in Romania",                "target_ref": "acf:team_member:bio" },
+          { "source_probe": "I genuinely understand the importance of running a patient-centered", "target_ref": "acf:team_member:pull_quote" },
+          { "source_probe": "family-dentist-broadview-heights-ohio.jpg",                      "target_ref": "acf:team_member:photo", "from": "image" }
+        ]},
+        { "entity": "Nicole Langford", "mappings": [
+          { "source_probe": "Nicole Langford",                                   "target_ref": "core:post_title" },
+          { "source_probe": "Registered Dental Hygienist",                       "target_ref": "acf:team_member:role" },
+          { "source_probe": "Nicole earned her dental hygiene degree in 2013",    "target_ref": "acf:team_member:bio" },
+          { "source_probe": "dental-hygienist-nicole.jpg",                        "target_ref": "acf:team_member:photo", "from": "image",
+            "issue": { "code": "alt_text_name_mismatch", "detail": "alt text reads 'Nicole Jeglie is a registered dental hygienist' under a heading reading 'Nicole Langford'. Flag for the client; do not pick one." } }
+        ]},
+        { "entity": "Nancy Gezymalla", "mappings": [
+          { "source_probe": "Nancy Gezymalla",                                 "target_ref": "core:post_title" },
+          { "source_probe": "Certified Dental Assistant",                      "target_ref": "acf:team_member:role" },
+          { "source_probe": "Nancy became interested in dentistry many years ago", "target_ref": "acf:team_member:bio" },
+          { "source_probe": "dental-assistant-nancy.jpg",                       "target_ref": "acf:team_member:photo", "from": "image" }
+        ]},
+        { "entity": "Mariana Cristea", "mappings": [
+          { "source_probe": "Mariana Cristea",                                    "target_ref": "core:post_title" },
+          { "source_probe": "Mariana earned her dental assisting degree in 2006",  "target_ref": "acf:team_member:bio" },
+          { "source_probe": "dental-assistant-mariana.jpg",                        "target_ref": "acf:team_member:photo", "from": "image" }
+        ]},
+        { "entity": "Connie Viola", "mappings": [
+          { "source_probe": "Connie Viola",                                           "target_ref": "core:post_title" },
+          { "source_probe": "Office Manager",                                         "target_ref": "acf:team_member:role" },
+          { "source_probe": "Connie has been working in the field of dentistry",      "target_ref": "acf:team_member:bio" },
+          { "source_probe": "dentist-office-manager-connie.jpg",                      "target_ref": "acf:team_member:photo", "from": "image" }
+        ]}
+      ],
+
+      "must_not_map": [
+        { "source_probe": "(440) 746-9030",                "belongs_to": "acf:practice_info:phone",   "reason": "site chrome." },
+        { "source_probe": "7500 Town Centre Dr Suite 100", "belongs_to": "acf:practice_info:address", "reason": "site chrome." },
+        { "source_probe": "Designed by",                   "belongs_to": null,                        "reason": "theme credit. Not content." }
+      ],
+
+      "issues_expected": [
+        { "code": "heading_nesting_split", "detail": "Names are h2 and roles are h3 directly beneath them. V2's segmenter opens a section at every heading regardless of level (D-9), producing a section holding only 'Nicole Langford' and another headed 'Registered Dental Hygienist' owning her bio. Role and bio must stay with the person." },
+        { "code": "missing_role", "detail": "Mariana Cristea has no role heading in the source, unlike the other four. acf:team_member:role must be null for her, not inferred from a sibling." }
+      ]
+    }
+  ],
+
+  "scoring": {
+    "g4_auto_resolve_rate": {
+      "definition": "recommendations with requires_review === false, over all recommendations produced for scorable pages",
+      "threshold": 0.80,
+      "faithful_to": "DBVC_CC_V2_Recommendation_Finalizer_Service::build_recommendations() sets requires_review from autoAcceptMinConfidence (0.92), default_decision, reason_codes, transform warnings and value_contract status"
+    },
+    "g5_mapping_precision": {
+      "definition": "of the auto-accepted recommendations (requires_review === false), the fraction whose target_ref matches this file's expectation for the matched source probe. A recommendation landing on a must_not_map probe counts as wrong, as does one forcing an expected_unmapped probe into a field.",
+      "threshold_max_wrong": 0.02,
+      "rationale": "A wrong confident mapping costs more than an escalation: the reviewer never sees it."
+    },
+    "excluded_pages": ["dental-team"],
+    "excluded_reason": "structural_blocker one_source_url_many_entities"
+  }
+}
