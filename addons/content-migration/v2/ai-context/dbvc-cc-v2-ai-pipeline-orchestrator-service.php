@@ -621,6 +621,46 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                 ]
             );
 
+            // Interpretation, when an operator has turned it on. This is the caller D-20 was
+            // about: S1b measured the interpreter at 100% field accuracy and S1c adapted
+            // WordPress into its contracts, but nothing in the pipeline asked it anything, so a
+            // run's recommendations were still lexical. The result is persisted beside the
+            // mapping artifacts whether a model answered or the floor did, because the named
+            // reason for a fallback is the part a reviewer needs and V2's single `fallback_mode`
+            // flag could not express it.
+            $interpretation_service = DBVC_CC_V2_Mapping_Interpretation_Service::get_instance();
+            $interpretation_result = [];
+            $interpretation_relative = '';
+            if ($interpretation_service->is_enabled()) {
+                $interpretation_result = $interpretation_service->interpret_page(
+                    $page_context,
+                    $page_context['classification_artifact'],
+                    isset($page_context['routing_artifact']) && is_array($page_context['routing_artifact'])
+                        ? $page_context['routing_artifact']
+                        : [],
+                    isset($pipeline_bundle['catalog']) && is_array($pipeline_bundle['catalog'])
+                        ? $pipeline_bundle['catalog']
+                        : []
+                );
+
+                if (isset($write_artifact_paths['interpretation_result'])) {
+                    // A write failure here does not fail the run: interpretation is advisory and
+                    // the mapping stage still has a lexical answer. It does mean the artifact ref
+                    // is empty, so the mapping index records no pointer it cannot honour.
+                    if ($artifact_service->write_page_artifact(
+                        $write_artifact_paths['interpretation_result'],
+                        $interpretation_result,
+                        $journey_id
+                    )) {
+                        $interpretation_relative = isset($write_artifact_relatives['interpretation_result'])
+                            ? (string) $write_artifact_relatives['interpretation_result']
+                            : '';
+                        $artifacts_written[] = $interpretation_relative;
+                        $page_context['interpretation_result_artifact'] = $interpretation_result;
+                    }
+                }
+            }
+
             $mapping_index_artifact = DBVC_CC_V2_Mapping_Index_Service::get_instance()->build_artifact(
                 $page_context,
                 $page_context['classification_artifact'],
@@ -633,12 +673,19 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                     'classification_ref' => $artifact_relatives['initial_classification'],
                     'routing_ref' => isset($artifact_relatives['routing_artifact']) ? (string) $artifact_relatives['routing_artifact'] : '',
                     'pattern_memory_ref' => $pattern_memory_relative,
-                    'input_artifacts' => [
-                        $artifact_relatives['initial_classification'],
-                        isset($artifact_relatives['routing_artifact']) ? (string) $artifact_relatives['routing_artifact'] : '',
-                        $artifact_relatives['ingestion_package'],
-                        isset($pipeline_bundle['catalog_artifact_relative_path']) ? (string) $pipeline_bundle['catalog_artifact_relative_path'] : '',
-                    ],
+                    'interpretation_result' => $interpretation_result,
+                    'interpretation_ref' => $interpretation_relative,
+                    // The interpretation ref is appended only when one was written, so the
+                    // list with the flag off is the list V2 has always recorded.
+                    'input_artifacts' => array_merge(
+                        [
+                            $artifact_relatives['initial_classification'],
+                            isset($artifact_relatives['routing_artifact']) ? (string) $artifact_relatives['routing_artifact'] : '',
+                            $artifact_relatives['ingestion_package'],
+                            isset($pipeline_bundle['catalog_artifact_relative_path']) ? (string) $pipeline_bundle['catalog_artifact_relative_path'] : '',
+                        ],
+                        $interpretation_relative === '' ? [] : [$interpretation_relative]
+                    ),
                 ]
             );
 
@@ -696,10 +743,13 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         $artifact_relatives['ingestion_package'],
                         $pattern_memory_relative,
                     ],
-                    'output_artifacts' => [
-                        $write_artifact_relatives['mapping_index'],
-                        $write_artifact_relatives['media_candidates'],
-                    ],
+                    'output_artifacts' => array_merge(
+                        [
+                            $write_artifact_relatives['mapping_index'],
+                            $write_artifact_relatives['media_candidates'],
+                        ],
+                        $interpretation_relative === '' ? [] : [$interpretation_relative]
+                    ),
                     'source_fingerprint' => $source_fingerprint,
                     'schema_fingerprint' => $effective_schema_fingerprint,
                     'actor' => $actor,
@@ -708,7 +758,22 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         'content_item_count' => isset($mapping_index_artifact['stats']['content_item_count']) ? (int) $mapping_index_artifact['stats']['content_item_count'] : 0,
                         'unresolved_count' => isset($mapping_index_artifact['stats']['unresolved_count']) ? (int) $mapping_index_artifact['stats']['unresolved_count'] : 0,
                         'media_item_count' => isset($media_candidates_artifact['stats']['media_item_count']) ? (int) $media_candidates_artifact['stats']['media_item_count'] : 0,
-                    ],
+                    ] + (
+                        // Added only when interpretation ran, so a run with the flag off records
+                        // the metadata it always has.
+                        isset($mapping_index_artifact['interpretation'])
+                        && is_array($mapping_index_artifact['interpretation'])
+                            ? [
+                                'interpreter' => (string) ($mapping_index_artifact['interpretation']['interpreter'] ?? ''),
+                                'interpretation_fallback_reason' => (string) (
+                                    $mapping_index_artifact['interpretation']['model_attempt']['reason'] ?? ''
+                                ),
+                                'items_ranked_by_interpreter' => (int) (
+                                    $mapping_index_artifact['interpretation']['items_ranked_by_interpreter'] ?? 0
+                                ),
+                            ]
+                            : []
+                    ),
                     'message' => 'Mapping index and media candidate artifacts written.',
                 ]
             );

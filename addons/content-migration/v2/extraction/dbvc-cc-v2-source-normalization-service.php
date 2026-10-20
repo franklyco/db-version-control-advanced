@@ -29,7 +29,9 @@ final class DBVC_CC_V2_Source_Normalization_Service
      */
     public function build_artifact(array $raw_artifact)
     {
-        $normalized_headings = $this->normalize_string_list(isset($raw_artifact['headings']) ? $raw_artifact['headings'] : []);
+        $normalized_headings = $this->normalize_string_list(
+            dbvc_cc_heading_texts(isset($raw_artifact['headings']) ? $raw_artifact['headings'] : [])
+        );
         $normalized_text_blocks = $this->normalize_string_list(isset($raw_artifact['text_blocks']) ? $raw_artifact['text_blocks'] : []);
         $normalized_links = $this->normalize_links(isset($raw_artifact['links']) ? $raw_artifact['links'] : []);
         $normalized_sections = $this->normalize_sections(isset($raw_artifact['sections_raw']) ? $raw_artifact['sections_raw'] : []);
@@ -90,6 +92,18 @@ final class DBVC_CC_V2_Source_Normalization_Service
 
         $normalized = [];
         foreach ($values as $value) {
+            // An externally produced page-artifact.v1 carries levelled headings — {level, text} —
+            // rather than the flat strings V2's own capture emitted. Casting an array to string
+            // here would yield "Array" and a notice, so the text is taken from the object. The
+            // level is not lost: it stays in the stored artifact, which is what fixes D-7.
+            if (is_array($value)) {
+                $value = isset($value['text']) ? $value['text'] : '';
+            }
+
+            if (! is_scalar($value)) {
+                continue;
+            }
+
             $clean = preg_replace('/\s+/u', ' ', trim((string) $value));
             if (! is_string($clean) || $clean === '') {
                 continue;

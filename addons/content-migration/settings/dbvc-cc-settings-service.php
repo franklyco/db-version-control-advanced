@@ -7,6 +7,60 @@ if (! defined('WPINC')) {
 final class DBVC_CC_Settings_Service
 {
     /**
+     * Placeholder rendered in place of a stored key. Never a usable credential.
+     */
+    public const API_KEY_MASK = '********';
+
+    /**
+     * Resolve the OpenAI key without requiring it to live in the database.
+     *
+     * Order: a PHP constant, then the environment, then the stored option. A constant in
+     * wp-config.php keeps the secret out of wp_options entirely - out of database dumps, out of
+     * migration packages, and out of anything that reads settings - which is the only way to hold
+     * a credential that a site owner can audit.
+     *
+     * @return string
+     */
+    public static function get_openai_api_key()
+    {
+        if (defined('DBVC_CC_OPENAI_API_KEY') && (string) constant('DBVC_CC_OPENAI_API_KEY') !== '') {
+            return (string) constant('DBVC_CC_OPENAI_API_KEY');
+        }
+
+        foreach (['DBVC_CC_OPENAI_API_KEY', 'OPENAI_API_KEY'] as $variable) {
+            $value = getenv($variable);
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        $options = self::get_options();
+
+        return isset($options['openai_api_key']) ? (string) $options['openai_api_key'] : '';
+    }
+
+    /**
+     * Where the resolved key came from, for display without revealing it.
+     *
+     * @return string One of 'constant', 'environment', 'option', 'absent'.
+     */
+    public static function get_openai_api_key_source()
+    {
+        if (defined('DBVC_CC_OPENAI_API_KEY') && (string) constant('DBVC_CC_OPENAI_API_KEY') !== '') {
+            return 'constant';
+        }
+        foreach (['DBVC_CC_OPENAI_API_KEY', 'OPENAI_API_KEY'] as $variable) {
+            $value = getenv($variable);
+            if (is_string($value) && $value !== '') {
+                return 'environment';
+            }
+        }
+        $options = self::get_options();
+
+        return ! empty($options['openai_api_key']) ? 'option' : 'absent';
+    }
+
+    /**
      * @return void
      */
     public static function bootstrap()
@@ -78,7 +132,19 @@ final class DBVC_CC_Settings_Service
         }
 
         $sanitized['ai_fallback_mode'] = self::sanitize_checkbox($input, 'ai_fallback_mode', $options);
-        $sanitized['openai_api_key'] = isset($input['openai_api_key']) ? sanitize_text_field(trim((string) $input['openai_api_key'])) : (string) $options['openai_api_key'];
+        $sanitized['artifact_retention_days'] = isset($input['artifact_retention_days'])
+            ? max(0, min(3650, (int) $input['artifact_retention_days']))
+            : (int) $options['artifact_retention_days'];
+        $sanitized['delete_data_on_uninstall'] = ! empty($input['delete_data_on_uninstall']) ? '1' : '0';
+
+        // The form posts a fixed mask when a key is already stored, so an unchanged submission
+        // must not overwrite the real value with the mask.
+        $submitted_key = isset($input['openai_api_key']) ? trim((string) $input['openai_api_key']) : null;
+        if ($submitted_key === null || $submitted_key === DBVC_CC_Settings_Service::API_KEY_MASK) {
+            $sanitized['openai_api_key'] = (string) $options['openai_api_key'];
+        } else {
+            $sanitized['openai_api_key'] = sanitize_text_field($submitted_key);
+        }
         $sanitized['openai_model'] = isset($input['openai_model']) ? sanitize_text_field(trim((string) $input['openai_model'])) : (string) $options['openai_model'];
         if ($sanitized['openai_model'] === '') {
             $sanitized['openai_model'] = 'gpt-4o-mini';

@@ -749,7 +749,7 @@ final class DBVC_CC_AI_Service
     private function build_ai_outputs($artifact, $context) {
         $this->refresh_options();
 
-        $api_key = isset($this->options['openai_api_key']) ? trim((string) $this->options['openai_api_key']) : '';
+        $api_key = trim(DBVC_CC_Settings_Service::get_openai_api_key());
         if ('' === $api_key) {
             return new WP_Error('dbvc_cc_ai_missing_key', __('OpenAI API key is not configured.', 'dbvc'));
         }

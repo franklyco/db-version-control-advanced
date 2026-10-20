@@ -86,9 +86,20 @@ final class FrameworkRolloutScheduler
         try {
             $drift = (new \Dbvc\AgencyControl\Notifications\DriftNotifier())->scan(200);
             $flushed = (new \Dbvc\AgencyControl\Notifications\NotificationService())->flush(50);
+            // Post-M9 A-2a: reclaim media blobs no release item references any more
+            // (orphaned by withdrawn/pruned releases). Never removes a live blob.
+            \Dbvc\AgencyControl\Storage\MediaBlobStore::gc();
         } catch (\Throwable $e) {
             unset($e);
         }
+
+        // Heartbeat so an operator can confirm this tick actually fired (WP-Cron is
+        // request-gated and can silently stall on a quiet hub).
+        \Dbvc\AgencyControl\Scheduler\SchedulerHeartbeat::record('framework', [
+            'ran' => $ran,
+            'drift_queued' => isset($drift['queued']) ? (int) $drift['queued'] : 0,
+            'flushed_sent' => isset($flushed['sent']) ? (int) $flushed['sent'] : 0,
+        ]);
 
         return ['ran' => $ran, 'results' => $results, 'drift' => $drift, 'notifications_flushed' => $flushed];
     }

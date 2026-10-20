@@ -222,8 +222,43 @@ final class RolloutService
         }
 
         $fresh = $this->rollouts->get($rollout['rollout_id']);
+        // M9 slice 7d follow-up: notify when this advance drove the rollout to a
+        // terminal/paused state (best-effort; mirrors the framework-rollout emit in
+        // FrameworkRolloutService::advance). RUNNING means still in flight, so only
+        // a non-RUNNING state — completed or paused — raises a notification.
+        if (is_array($fresh) && isset($fresh['state']) && $fresh['state'] !== RolloutStore::STATE_RUNNING) {
+            $this->notify_terminal($fresh);
+        }
 
         return $this->status_of($fresh ?? $rollout);
+    }
+
+    /**
+     * Best-effort notification for a rollout reaching a terminal/paused state. A
+     * notification failure never affects the rollout. Deduped per
+     * (rollout_uid, state) so a re-advance of an already-terminal rollout does not
+     * re-announce. Event names: rollout.completed / rollout.paused.
+     *
+     * @param array<string, mixed> $rollout
+     * @return void
+     */
+    private function notify_terminal(array $rollout)
+    {
+        try {
+            (new \Dbvc\AgencyControl\Notifications\NotificationService())->enqueue(
+                (string) ($rollout['agency_id'] ?? ''),
+                'rollout.' . (string) $rollout['state'],
+                (string) ($rollout['rollout_uid'] ?? '') . ':' . (string) $rollout['state'],
+                [
+                    'rollout_uid' => (string) ($rollout['rollout_uid'] ?? ''),
+                    'state' => (string) $rollout['state'],
+                    'release_uid' => (string) ($rollout['release_uid'] ?? ''),
+                    'source_environment_id' => (string) ($rollout['source_environment_id'] ?? ''),
+                ]
+            );
+        } catch (\Throwable $e) {
+            unset($e);
+        }
     }
 
     /**

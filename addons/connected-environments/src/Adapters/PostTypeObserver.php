@@ -165,6 +165,22 @@ class PostTypeObserver implements DomainObserver
     }
 
     /**
+     * Seam: the transportable media bundle (descriptors + inline bytes) for a
+     * tokenized body served as a release payload. Base: the string-referenced
+     * media {@see MediaReferences::collect_for_transport} catches (`_thumbnail_id`,
+     * `wp-image-<id>`, upload URLs). A Bricks-aware subclass also collects the
+     * structured image references in the element tree. Called by the connector's
+     * {@see \Dbvc\Connected\Transport\ReleaseWorker} when it serves a post payload.
+     *
+     * @param array<string, mixed> $body Tokenized canonical body.
+     * @return array{media: array<int, array<string, mixed>>, deferred: array<int, array<string, mixed>>}
+     */
+    public function collect_transport_media(array $body)
+    {
+        return MediaReferences::collect_for_transport($body);
+    }
+
+    /**
      * @return string
      */
     public function post_type()

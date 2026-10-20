@@ -15,10 +15,18 @@
         ],
         "agent-docs:check": "php scripts/agent-docs.php check",
         "agent-docs:query": "php scripts/agent-docs.php query",
+        "dist:drift": "php scripts/check-distribution-drift.php",
+        "dist:drift-json": "php scripts/check-distribution-drift.php --json",
         "test": "phpunit --testsuite \"DBVC Plugin\"",
         "test:smoke": "phpunit --filter PluginBootstrapSmokeTest",
         "test:proposal-diff": "phpunit --group proposal-diff",
         "test:proposal-diff-resolved": "phpunit --group proposal-diff --exclude-group proposal-diff-pending --do-not-cache-result",
-        "test:proposal-diff-pending": "phpunit --group proposal-diff-pending --do-not-cache-result"
+        "test:proposal-diff-pending": "phpunit --group proposal-diff-pending --do-not-cache-result",
+        "corpus:eval": "php addons/content-migration/tests/corpus/eval/run.php",
+        "corpus:eval-json": "php addons/content-migration/tests/corpus/eval/run.php --json",
+        "corpus:baseline": "php addons/content-migration/tests/corpus/eval/run.php --no-fail",
+        "corpus:self-test": "php addons/content-migration/tests/corpus/eval/run.php --self-test",
+        "corpus:verify-scorer": "php addons/content-migration/tests/corpus/eval/run.php --verify-scorer",
+        "corpus:eval-model": "php addons/content-migration/tests/corpus/eval/run.php --interpreter=model"
     }
 }

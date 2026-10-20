@@ -24,10 +24,19 @@ final class DBVC_CC_V2_URL_Inventory_Service
     }
 
     /**
+     * Build the run's URL inventory from a sitemap, an externally supplied list, or both.
+     *
+     * A sitemap is no longer required. Measurement against a real client site showed sitemap-only
+     * discovery finding 0 of 8 live pages because the site serves no sitemap at any standard path,
+     * and that no single discovery strategy reaches the 95% recall target on its own: a crawler's
+     * site map missed a page that is in the main navigation, while a link graph missed a page only
+     * reachable as a form-submit destination. The union of strategies found all eight. Accepting an
+     * external list is what lets a caller supply that union.
+     *
      * @param string               $domain
      * @param string               $journey_id
-     * @param string               $sitemap_url
-     * @param array<string, mixed> $args
+     * @param string               $sitemap_url Optional when $args['urls'] is supplied.
+     * @param array<string, mixed> $args        Supports 'crawl_overrides' and 'urls'.
      * @return array<string, mixed>|WP_Error
      */
     public function build_inventory($domain, $journey_id, $sitemap_url, array $args = [])
@@ -40,20 +49,41 @@ final class DBVC_CC_V2_URL_Inventory_Service
 
         $journey_id = sanitize_text_field((string) $journey_id);
         $sitemap_url = esc_url_raw((string) $sitemap_url);
-        if ($journey_id === '' || $sitemap_url === '') {
+        $external_urls = $this->sanitize_external_urls(isset($args['urls']) ? $args['urls'] : []);
+
+        if ($journey_id === '' || ($sitemap_url === '' && $external_urls === [])) {
             return new WP_Error(
                 'dbvc_cc_v2_inventory_request_invalid',
-                __('Journey ID and sitemap URL are required to build URL inventory.', 'dbvc'),
+                __('A journey ID and either a sitemap URL or a list of URLs are required to build URL inventory.', 'dbvc'),
                 ['status' => 400]
             );
         }
 
         $crawl_overrides = isset($args['crawl_overrides']) && is_array($args['crawl_overrides']) ? $args['crawl_overrides'] : [];
-        $all_urls = [];
-        $urls = DBVC_CC_Crawler_Service::parse_sitemap($sitemap_url, $all_urls, $crawl_overrides);
-        if (is_wp_error($urls)) {
-            return $urls;
+
+        // Keyed by URL so the discovery reason survives the merge and a URL found by both
+        // strategies keeps the sitemap attribution it was first seen with.
+        $discovery_reasons = [];
+        if ($sitemap_url !== '') {
+            $all_urls = [];
+            $sitemap_urls = DBVC_CC_Crawler_Service::parse_sitemap($sitemap_url, $all_urls, $crawl_overrides);
+            if (is_wp_error($sitemap_urls)) {
+                return $sitemap_urls;
+            }
+            foreach ((array) $sitemap_urls as $sitemap_candidate) {
+                $discovery_reasons[(string) $sitemap_candidate] = 'sitemap';
+            }
         }
+        foreach ($external_urls as $external_candidate) {
+            if (! isset($discovery_reasons[$external_candidate])) {
+                $discovery_reasons[$external_candidate] = 'external';
+            }
+        }
+
+        $urls = array_keys($discovery_reasons);
+        $source_type = $sitemap_url !== '' && $external_urls !== []
+            ? 'sitemap+external'
+            : ($sitemap_url !== '' ? 'sitemap' : 'external');
 
         $scope_service = DBVC_CC_V2_URL_Scope_Service::get_instance();
         $inventory_rows = [];
@@ -69,7 +99,11 @@ final class DBVC_CC_V2_URL_Inventory_Service
 
         foreach ($urls as $url) {
             ++$stats['raw_url_count'];
-            $entry = $scope_service->evaluate_url($context['domain'], (string) $url);
+            $entry = $scope_service->evaluate_url(
+                $context['domain'],
+                (string) $url,
+                isset($discovery_reasons[(string) $url]) ? (string) $discovery_reasons[(string) $url] : 'sitemap'
+            );
             if ($entry['normalized_url'] === '') {
                 ++$stats['invalid_count'];
                 continue;
@@ -99,8 +133,9 @@ final class DBVC_CC_V2_URL_Inventory_Service
             'domain' => $context['domain'],
             'generated_at' => current_time('c'),
             'source' => [
-                'type' => 'sitemap',
+                'type' => $source_type,
                 'sitemap_url' => $sitemap_url,
+                'external_url_count' => count($external_urls),
             ],
             'urls' => $inventory_rows,
             'stats' => $stats,
@@ -126,7 +161,9 @@ final class DBVC_CC_V2_URL_Inventory_Service
                     'page_id' => $entry['page_id'],
                     'path' => $entry['path'],
                     'source_url' => $entry['source_url'],
-                    'message' => 'URL discovered during sitemap expansion.',
+                    'message' => $entry['discovery_reason'] === 'external'
+                        ? 'URL supplied by an external discovery source.'
+                        : 'URL discovered during sitemap expansion.',
                     'metadata' => [
                         'discovery_status' => $entry['discovery_status'],
                         'discovery_reason' => $entry['discovery_reason'],
@@ -162,7 +199,7 @@ final class DBVC_CC_V2_URL_Inventory_Service
                 'status' => 'completed',
                 'output_artifacts' => [$relative_path],
                 'source_fingerprint' => hash('sha256', (string) wp_json_encode($inventory_rows, JSON_UNESCAPED_SLASHES)),
-                'message' => 'URL inventory materialized from sitemap input.',
+                'message' => sprintf('URL inventory materialized from %s input.', $source_type),
                 'metadata' => $stats,
             ]
         );
@@ -249,6 +286,37 @@ final class DBVC_CC_V2_URL_Inventory_Service
         }
 
         return $this->build_inventory_from_events($domain, $run_id, $latest, $events);
+    }
+
+    /**
+     * Normalise an externally supplied URL list.
+     *
+     * Scope and eligibility are still decided by the scope service, exactly as for sitemap URLs:
+     * supplying a URL here does not exempt it from the same-domain, non-HTML-asset or utility-path
+     * rules. This only establishes that the caller offered it.
+     *
+     * @param mixed $urls
+     * @return array<int, string>
+     */
+    private function sanitize_external_urls($urls)
+    {
+        if (! is_array($urls)) {
+            return [];
+        }
+
+        $sanitized = [];
+        foreach ($urls as $url) {
+            if (! is_string($url) && ! is_numeric($url)) {
+                continue;
+            }
+            $candidate = esc_url_raw(trim((string) $url));
+            if ($candidate === '') {
+                continue;
+            }
+            $sanitized[$candidate] = $candidate;
+        }
+
+        return array_values($sanitized);
     }
 
     /**

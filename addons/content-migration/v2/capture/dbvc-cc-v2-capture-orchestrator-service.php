@@ -26,8 +26,8 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
     /**
      * @param string               $domain
      * @param string               $journey_id
-     * @param string               $sitemap_url
-     * @param array<string, mixed> $args
+     * @param string               $sitemap_url Optional when $args['urls'] is supplied.
+     * @param array<string, mixed> $args        Supports 'urls' for externally discovered URLs.
      * @return array<string, mixed>|WP_Error
      */
     public function run_domain($domain, $journey_id, $sitemap_url, array $args = [])
@@ -44,6 +44,7 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
         $schema_fingerprint = isset($args['schema_fingerprint']) ? sanitize_text_field((string) $args['schema_fingerprint']) : '';
         $crawl_overrides = isset($args['crawl_overrides']) && is_array($args['crawl_overrides']) ? $args['crawl_overrides'] : [];
         $max_urls = isset($args['max_urls']) ? absint($args['max_urls']) : 0;
+        $external_urls = isset($args['urls']) && is_array($args['urls']) ? $args['urls'] : [];
 
         $inventory_result = DBVC_CC_V2_URL_Inventory_Service::get_instance()->build_inventory(
             $context['domain'],
@@ -51,6 +52,7 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
             $sitemap_url,
             [
                 'crawl_overrides' => $crawl_overrides,
+                'urls' => $external_urls,
             ]
         );
         if (is_wp_error($inventory_result)) {
@@ -156,25 +158,29 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
             ]
         );
 
-        $parsed = DBVC_CC_V2_Page_Capture_Service::get_instance()->capture_page($journey_id, $row, $options);
+        // V3's acquisition boundary. An external producer may supply a complete, already
+        // validated artifact bundle for this row; when none does, the in-WordPress capture path
+        // runs exactly as before. See DBVC_CC_V2_Contracts::FILTER_EXTERNAL_PAGE_ARTIFACTS.
+        $parsed = apply_filters(
+            DBVC_CC_V2_Contracts::FILTER_EXTERNAL_PAGE_ARTIFACTS,
+            null,
+            $journey_id,
+            $row,
+            $options
+        );
+        $capture_producer = 'external';
+        if (! is_array($parsed) || empty($parsed['raw_artifact'])) {
+            if (is_wp_error($parsed)) {
+                $this->append_capture_failure($context, $parsed, $journey_id, $row, $schema_fingerprint, $actor, $trigger);
+
+                return $parsed;
+            }
+
+            $capture_producer = 'wordpress';
+            $parsed = DBVC_CC_V2_Page_Capture_Service::get_instance()->capture_page($journey_id, $row, $options);
+        }
         if (is_wp_error($parsed)) {
-            $journey->append_event(
-                $context['domain'],
-                [
-                    'journey_id' => $journey_id,
-                    'step_key' => DBVC_CC_V2_Contracts::STEP_PAGE_CAPTURE_COMPLETED,
-                    'step_name' => 'Page capture completed',
-                    'status' => 'failed',
-                    'page_id' => $page_id,
-                    'path' => $path,
-                    'source_url' => $source_url,
-                    'schema_fingerprint' => $schema_fingerprint,
-                    'actor' => $actor,
-                    'trigger' => $trigger,
-                    'error_code' => $parsed->get_error_code(),
-                    'message' => $parsed->get_error_message(),
-                ]
-            );
+            $this->append_capture_failure($context, $parsed, $journey_id, $row, $schema_fingerprint, $actor, $trigger);
 
             return $parsed;
         }
@@ -211,7 +217,10 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
                 'schema_fingerprint' => $schema_fingerprint,
                 'actor' => $actor,
                 'trigger' => $trigger,
-                'message' => 'Raw page artifact captured.',
+                'capture_producer' => $capture_producer,
+                'message' => $capture_producer === 'external'
+                    ? 'Raw page artifact ingested from an external producer.'
+                    : 'Raw page artifact captured.',
             ]
         );
 
@@ -246,12 +255,28 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
             ]
         );
 
-        $extracted = DBVC_CC_V2_Structured_Extraction_Service::get_instance()->build_artifacts(
-            $parsed['raw_artifact'],
-            $parsed['xpath'],
-            $parsed['context_nodes'],
-            $options
-        );
+        if ($capture_producer === 'external') {
+            // The producer already segmented and packaged. Re-deriving elements from a DOM we
+            // never fetched is not possible, and re-deriving them at all would discard the whole
+            // point of moving acquisition out of PHP.
+            $extracted = [
+                'elements' => isset($parsed['elements']) && is_array($parsed['elements']) ? $parsed['elements'] : [],
+                'sections' => isset($parsed['sections']) && is_array($parsed['sections']) ? $parsed['sections'] : [],
+                'ingestion_package' => isset($parsed['ingestion_package']) && is_array($parsed['ingestion_package'])
+                    ? $parsed['ingestion_package']
+                    : [],
+                'scrub_report' => isset($parsed['scrub_report']) && is_array($parsed['scrub_report'])
+                    ? $parsed['scrub_report']
+                    : [],
+            ];
+        } else {
+            $extracted = DBVC_CC_V2_Structured_Extraction_Service::get_instance()->build_artifacts(
+                $parsed['raw_artifact'],
+                $parsed['xpath'],
+                $parsed['context_nodes'],
+                $options
+            );
+        }
         if (is_wp_error($extracted)) {
             return $extracted;
         }
@@ -324,6 +349,41 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
             'sourceUrl' => $source_url,
             'artifacts' => array_merge([$raw_relative, $source_normalization_relative], $artifact_paths),
         ];
+    }
+
+    /**
+     * Record a page-capture failure on the journey, whichever producer failed.
+     *
+     * @param array<string, mixed> $context
+     * @param WP_Error             $error
+     * @param string               $journey_id
+     * @param array<string, mixed> $row
+     * @param string               $schema_fingerprint
+     * @param string               $actor
+     * @param string               $trigger
+     * @return void
+     */
+    private function append_capture_failure(array $context, $error, $journey_id, array $row, $schema_fingerprint, $actor, $trigger)
+    {
+        $normalized_url = isset($row['normalized_url']) ? (string) $row['normalized_url'] : '';
+
+        DBVC_CC_V2_Domain_Journey_Service::get_instance()->append_event(
+            $context['domain'],
+            [
+                'journey_id' => $journey_id,
+                'step_key' => DBVC_CC_V2_Contracts::STEP_PAGE_CAPTURE_COMPLETED,
+                'step_name' => 'Page capture completed',
+                'status' => 'failed',
+                'page_id' => isset($row['page_id']) ? (string) $row['page_id'] : '',
+                'path' => isset($row['path']) ? (string) $row['path'] : '',
+                'source_url' => isset($row['source_url']) ? (string) $row['source_url'] : $normalized_url,
+                'schema_fingerprint' => $schema_fingerprint,
+                'actor' => $actor,
+                'trigger' => $trigger,
+                'error_code' => $error->get_error_code(),
+                'message' => $error->get_error_message(),
+            ]
+        );
     }
 
     /**

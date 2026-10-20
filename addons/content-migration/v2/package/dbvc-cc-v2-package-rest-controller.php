@@ -45,25 +45,28 @@ final class DBVC_CC_V2_Package_REST_Controller
             ]
         );
 
-        register_rest_route(
-            DBVC_CC_V2_Contracts::REST_NAMESPACE,
-            '/runs/(?P<run_id>[\w-]+)/package/qa/execution-observability-fixture',
-            [
-                'methods' => WP_REST_Server::CREATABLE,
-                'callback' => [$this, 'set_execution_observability_fixture'],
-                'permission_callback' => [$this, 'qa_fixture_permissions_check'],
-                'args' => [
-                    'enabled' => [
-                        'required' => false,
-                        'sanitize_callback' => 'rest_sanitize_boolean',
+        // Development-only, so it is not published in REST discovery on production.
+        if (DBVC_CC_V2_Package_Execution_QA_Fixture_Service::get_instance()->is_available()) {
+            register_rest_route(
+                DBVC_CC_V2_Contracts::REST_NAMESPACE,
+                '/runs/(?P<run_id>[\w-]+)/package/qa/execution-observability-fixture',
+                [
+                    'methods' => WP_REST_Server::CREATABLE,
+                    'callback' => [$this, 'set_execution_observability_fixture'],
+                    'permission_callback' => [$this, 'qa_fixture_permissions_check'],
+                    'args' => [
+                        'enabled' => [
+                            'required' => false,
+                            'sanitize_callback' => 'rest_sanitize_boolean',
+                        ],
+                        'packageId' => [
+                            'required' => false,
+                            'sanitize_callback' => 'sanitize_text_field',
+                        ],
                     ],
-                    'packageId' => [
-                        'required' => false,
-                        'sanitize_callback' => 'sanitize_text_field',
-                    ],
-                ],
-            ]
-        );
+                ]
+            );
+        }
     }
 
     /**

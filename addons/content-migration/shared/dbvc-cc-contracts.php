@@ -31,6 +31,10 @@ final class DBVC_CC_Contracts
     public const OPTION_FLAG_ATTRIBUTE_SCRUB_CONTROLS = 'dbvc_cc_flag_attribute_scrub_controls';
     public const OPTION_FLAG_MAPPING_CATALOG_BRIDGE = 'dbvc_cc_flag_mapping_catalog_bridge';
     public const OPTION_FLAG_MEDIA_MAPPING_BRIDGE = 'dbvc_cc_flag_media_mapping_bridge';
+    // The outbound model call in the interpretation boundary. Off by default: enabling a
+    // paid call per page must be a deliberate act, and the deterministic floor is the
+    // honest fallback when it is off (V3 guide, section 7.2).
+    public const OPTION_FLAG_MODEL_INTERPRETATION = 'dbvc_cc_flag_model_interpretation';
 
     public const SETTINGS_GROUP = 'dbvc_cc_options';
     public const ADMIN_CAPABILITY = 'manage_options';
@@ -109,8 +113,19 @@ final class DBVC_CC_Contracts
         return [
             self::OPTION_FLAG_COLLECTOR => '1',
             self::OPTION_FLAG_EXPLORER => '1',
-            self::OPTION_FLAG_AI_MAPPING => '0',
-            self::OPTION_FLAG_MAPPING_WORKBENCH => '0',
+            // On by default. ensure_phase_zero_defaults() has force-set both to '1' since
+            // FEATURE_FLAG_VERSION reached 6, so '1' is the shipped rollout intent; this array is
+            // also the is_feature_enabled() fallback, so a '0' here reported them disabled on any
+            // site whose option rows were never written, disagreeing with the gate and with the
+            // admin UI. Both only register administrator-capability surfaces over local artifacts:
+            // the workbench adds a submenu page that reads mapping artifacts from addon storage,
+            // and AI mapping adds the dbvc_cc/v1/ai/* routes plus the job cron handler. Neither
+            // can make an outbound request without an operator-supplied key -- build_ai_outputs()
+            // fails closed with dbvc_cc_ai_missing_key before any wp_remote_post() while
+            // openai_api_key is '', which is its default. Site writes stay behind
+            // OPTION_FLAG_IMPORT_EXECUTE below.
+            self::OPTION_FLAG_AI_MAPPING => '1',
+            self::OPTION_FLAG_MAPPING_WORKBENCH => '1',
             self::OPTION_FLAG_IMPORT_PLAN => '0',
             self::OPTION_FLAG_IMPORT_EXECUTE => '0',
             self::OPTION_FLAG_EXPORT => '0',
@@ -120,6 +135,7 @@ final class DBVC_CC_Contracts
             self::OPTION_FLAG_ATTRIBUTE_SCRUB_CONTROLS => '1',
             self::OPTION_FLAG_MAPPING_CATALOG_BRIDGE => '1',
             self::OPTION_FLAG_MEDIA_MAPPING_BRIDGE => '1',
+            self::OPTION_FLAG_MODEL_INTERPRETATION => '0',
         ];
     }
 
@@ -152,6 +168,13 @@ final class DBVC_CC_Contracts
             'prompt_version' => 'v1',
             'ai_fallback_mode' => 1,
             'openai_api_key' => '',
+            // Retention. 0 keeps crawled artifacts indefinitely, which is the current behaviour and
+            // stays the default: a migration can run for weeks and silently deleting a client's
+            // captured content mid-project would be worse than keeping it.
+            'artifact_retention_days' => 0,
+            // Uninstall. Default off on purpose. Crawled third-party content and built packages are
+            // work product; removing the plugin must not destroy them without being asked.
+            'delete_data_on_uninstall' => '0',
             'openai_model' => 'gpt-4o-mini',
             'ai_request_timeout' => 90,
             'slug_collision_policy' => 'append-path-hash',
@@ -222,6 +245,11 @@ final class DBVC_CC_Contracts
             add_option($option_key, $default_value);
         }
 
+        // Rollout gate. Every value below matches get_feature_flag_defaults(), so a fresh install
+        // is unaffected and the two sources cannot drift. On an upgrade the gate re-asserts the
+        // shipped value, which also discards an administrator's explicit choice for these keys.
+        // That override is longstanding behaviour and is left as-is: changing it is a rollout
+        // decision, not part of keeping the defaults and the gate in agreement.
         $feature_flag_version = (int) get_option(self::OPTION_FEATURE_FLAG_VERSION, 0);
         if ($feature_flag_version < self::FEATURE_FLAG_VERSION) {
             update_option(self::OPTION_FLAG_COLLECTOR, '1');

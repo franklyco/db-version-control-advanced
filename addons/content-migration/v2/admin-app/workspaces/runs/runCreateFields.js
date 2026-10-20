@@ -247,6 +247,25 @@ export const normalizeRunCreateBootstrap = ( runCreateBootstrap = {} ) => {
 	};
 };
 
+export const parseUrlList = ( value ) =>
+	normalizeText( value )
+		.split( /[\s,]+/ )
+		.map( ( entry ) => entry.trim() )
+		.filter( ( entry ) => entry !== '' );
+
+export const deriveDomainFromUrlList = ( value ) => {
+	const [ first ] = parseUrlList( value );
+	if ( ! first ) {
+		return '';
+	}
+
+	try {
+		return new URL( first ).host.replace( /^www\./, '' ).trim();
+	} catch ( error ) {
+		return '';
+	}
+};
+
 export const deriveDomainFromSitemap = ( sitemapUrl ) => {
 	const value = normalizeText( sitemapUrl ).trim();
 	if ( ! value ) {
@@ -262,9 +281,11 @@ export const deriveDomainFromSitemap = ( sitemapUrl ) => {
 };
 
 export const buildRunCreatePayload = ( formState ) => {
+	const urls = parseUrlList( formState.urls );
 	const domain =
 		normalizeText( formState.domain ).trim() ||
-		deriveDomainFromSitemap( formState.sitemapUrl );
+		deriveDomainFromSitemap( formState.sitemapUrl ) ||
+		deriveDomainFromUrlList( formState.urls );
 	const sitemapUrl = normalizeText( formState.sitemapUrl ).trim();
 	const maxUrls = parseInt( `${ formState.maxUrls || '' }`, 10 );
 	const crawlOverrides = {};
@@ -279,6 +300,12 @@ export const buildRunCreatePayload = ( formState ) => {
 		forceRebuild: !! formState.forceRebuild,
 		crawlOverrides,
 	};
+
+	// A supplied list is what makes a run possible on a site that serves no usable sitemap, which
+	// is most of the older sites this add-on exists for. Scope rules still apply to every entry.
+	if ( urls.length > 0 ) {
+		payload.urls = urls;
+	}
 
 	if ( Number.isFinite( maxUrls ) && maxUrls > 0 ) {
 		payload.maxUrls = maxUrls;
@@ -295,6 +322,7 @@ export const buildRunCreatePayloadFromProfile = ( runProfile = {} ) =>
 export const getInitialRunCreateState = ( crawlDefaults ) => ( {
 	domain: '',
 	sitemapUrl: '',
+	urls: '',
 	maxUrls: '',
 	forceRebuild: false,
 	...crawlDefaults,
@@ -315,6 +343,9 @@ export const buildRunCreateStateFromProfile = (
 		...crawlOverrides,
 		domain: normalizeText( runProfile.domain ).trim(),
 		sitemapUrl: normalizeText( runProfile.sitemapUrl ).trim(),
+		urls: Array.isArray( runProfile.urls )
+			? runProfile.urls.join( '\n' )
+			: normalizeText( runProfile.urls ),
 		maxUrls:
 			Number.isFinite( Number( runProfile.maxUrls ) ) &&
 			Number( runProfile.maxUrls ) > 0

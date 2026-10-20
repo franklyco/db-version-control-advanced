@@ -2,6 +2,7 @@
 
 namespace Dbvc\Connected\Adapters;
 
+use Dbvc\Connected\Preparation\BricksMediaReferences;
 use Dbvc\ConnectedProtocol\Canonicalizer;
 use Dbvc\ConnectedProtocol\DomainObserver;
 
@@ -319,7 +320,25 @@ class BricksOptionCollectionObserver implements DomainObserver
      */
     protected function project_member(array $entry, array $volatile)
     {
-        return Canonicalizer::project($entry, $volatile);
+        // Structured media: a member (e.g. a global class's `_background.image`) can
+        // carry a site-local attachment id. Rewrite each to a content-hash token so
+        // the projection hash is identity-independent across the fleet; apply
+        // materializes the bytes and resolves the token back to a local id. A member
+        // without media is returned unchanged (conservative image-control detection).
+        return Canonicalizer::project(BricksMediaReferences::tokenize($entry), $volatile);
+    }
+
+    /**
+     * The transportable media bundle (descriptors + inline bytes) for a tokenized
+     * member body, served beside the release payload. Mirrors the post observer's
+     * seam so the connector's ReleaseWorker collects collection media the same way.
+     *
+     * @param array<string, mixed> $body Tokenized member body.
+     * @return array{media: array<int, array<string, mixed>>, deferred: array<int, array<string, mixed>>}
+     */
+    public function collect_transport_media(array $body)
+    {
+        return BricksMediaReferences::collect_for_transport($body);
     }
 
     /**

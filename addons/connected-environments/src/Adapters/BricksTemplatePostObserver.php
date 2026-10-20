@@ -2,6 +2,8 @@
 
 namespace Dbvc\Connected\Adapters;
 
+use Dbvc\Connected\Preparation\BricksMediaReferences;
+use Dbvc\Connected\Preparation\MediaReferences;
 use Dbvc\Connected\Preparation\ReferenceTokens;
 
 /**
@@ -67,6 +69,14 @@ final class BricksTemplatePostObserver extends PostTypeObserver
      */
     protected function tokenize_references(array $data)
     {
+        // Non-portable editor-only state: the builder preview post id/type point at
+        // a source-site post that is meaningless on the target. Drop them from the
+        // projection so they neither travel nor register as cross-site drift.
+        $data = self::strip_editor_preview($data);
+        // Structured media: rewrite each element-tree image object's local id to a
+        // content-hash token (its bytes ride the media channel; see collect_transport_media).
+        $data = BricksMediaReferences::tokenize($data);
+
         return ReferenceTokens::tokenize($data, $this->bricks_class_id_to_name(), $this->bricks_component_id_to_name());
     }
 
@@ -79,6 +89,57 @@ final class BricksTemplatePostObserver extends PostTypeObserver
      */
     protected function detokenize_references(array $body)
     {
+        $body = BricksMediaReferences::detokenize($body);
+
         return ReferenceTokens::detokenize($body, $this->bricks_class_name_to_id(), $this->bricks_component_name_to_id());
+    }
+
+    /**
+     * A template's media rides the post media channel: the base string-referenced
+     * media ({@see MediaReferences}) PLUS the structured element-tree image
+     * references ({@see BricksMediaReferences}), deduped by content hash.
+     *
+     * @param array<string, mixed> $body Tokenized canonical body.
+     * @return array{media: array<int, array<string, mixed>>, deferred: array<int, array<string, mixed>>}
+     */
+    public function collect_transport_media(array $body)
+    {
+        $base = MediaReferences::collect_for_transport($body);
+        $bricks = BricksMediaReferences::collect_for_transport($body);
+        $media = $base['media'];
+        $seen = [];
+        foreach ($media as $item) {
+            if (isset($item['hash'])) {
+                $seen[(string) $item['hash']] = true;
+            }
+        }
+        foreach ($bricks['media'] as $item) {
+            $hash = (string) ($item['hash'] ?? '');
+            if ($hash === '' || ! isset($seen[$hash])) {
+                $media[] = $item;
+                $seen[$hash] = true;
+            }
+        }
+
+        return ['media' => $media, 'deferred' => array_merge($base['deferred'], $bricks['deferred'])];
+    }
+
+    /**
+     * Recursively remove the Bricks builder preview keys from any node.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private static function strip_editor_preview(array $data)
+    {
+        $out = [];
+        foreach ($data as $key => $value) {
+            if ($key === 'templatePreviewPostId' || $key === 'templatePreviewType') {
+                continue;
+            }
+            $out[$key] = is_array($value) ? self::strip_editor_preview($value) : $value;
+        }
+
+        return $out;
     }
 }

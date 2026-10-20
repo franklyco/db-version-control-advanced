@@ -121,6 +121,20 @@ final class DBVC_CC_V2_Run_Profile_Service
         $run_id = isset($profile['run_id']) ? sanitize_text_field((string) $profile['run_id']) : '';
         $sitemap_url = isset($profile['sitemap_url']) ? esc_url_raw((string) $profile['sitemap_url']) : '';
         $max_urls = isset($profile['max_urls']) ? absint($profile['max_urls']) : 0;
+        // S2a made a run startable from a URL list and S4b gave the admin form a field for it,
+        // but the profile never stored it — so duplicating a URL-list run dropped every URL, and
+        // because such a run has no sitemap either, the duplicate was unstartable.
+        $urls = [];
+        if (isset($profile['urls']) && is_array($profile['urls'])) {
+            foreach ($profile['urls'] as $url) {
+                $clean = esc_url_raw((string) $url);
+                if ($clean !== '') {
+                    $urls[$clean] = $clean;
+                }
+            }
+        }
+        $urls = array_values($urls);
+        $ingest_dir = isset($profile['ingest_dir']) ? wp_normalize_path((string) $profile['ingest_dir']) : '';
         $force_rebuild = ! empty($profile['force_rebuild']);
         $crawl_overrides = DBVC_CC_Crawler_Service::sanitize_crawl_overrides(
             isset($profile['crawl_overrides']) && is_array($profile['crawl_overrides'])
@@ -137,6 +151,8 @@ final class DBVC_CC_V2_Run_Profile_Service
             'request' => [
                 'domain' => sanitize_text_field((string) $domain),
                 'sitemap_url' => $sitemap_url,
+                'urls' => $urls,
+                'ingest_dir' => $ingest_dir,
                 'max_urls' => $max_urls,
                 'force_rebuild' => $force_rebuild,
                 'crawl_overrides' => is_array($crawl_overrides) ? $crawl_overrides : [],

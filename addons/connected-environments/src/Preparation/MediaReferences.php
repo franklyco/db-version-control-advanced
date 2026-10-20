@@ -192,11 +192,40 @@ final class MediaReferences
      */
     public static function collect_for_transport(array $body)
     {
+        return self::collect_for_hashes(self::tokens_in_body($body));
+    }
+
+    /**
+     * The content hash (sha256 hex) of a local attachment, cached on it; '' when
+     * unreadable. Public accessor so a Bricks-structured-media tokenizer can key
+     * its own tokens by the same content hash this class uses.
+     *
+     * @param int $attachment_id
+     * @return string
+     */
+    public static function content_hash($attachment_id)
+    {
+        return self::attachment_hash((int) $attachment_id);
+    }
+
+    /**
+     * Gather a transportable media bundle — a descriptor plus inline base64 bytes
+     * — for an explicit set of content hashes, under the protocol's per-file,
+     * per-item-total and count caps. Shared by the wp.service body collection
+     * ({@see collect_for_transport}) and the Bricks structured-media collection
+     * ({@see BricksMediaReferences::collect_for_transport}). Anything unreadable or
+     * over a cap is `deferred` (descriptor kept, bytes not) — never silently dropped.
+     *
+     * @param array<int, string> $hashes Distinct sha256 hex content hashes.
+     * @return array{media: array<int, array<string, mixed>>, deferred: array<int, array<string, mixed>>}
+     */
+    public static function collect_for_hashes(array $hashes)
+    {
         $media = [];
         $deferred = [];
         $total = 0;
 
-        foreach (self::tokens_in_body($body) as $hash) {
+        foreach ($hashes as $hash) {
             $ref = self::TOKEN_PREFIX . $hash;
             $local = self::local_by_hash($hash);
             if ($local <= 0) {
@@ -209,7 +238,19 @@ final class MediaReferences
                 continue;
             }
             if ((int) $descriptor['filesize'] > Protocol::MAX_MEDIA_FILE_BYTES) {
-                $deferred[] = ['ref' => $ref, 'hash' => $descriptor['hash'], 'reason' => 'too_large'];
+                // Over the inline cap: within the pull ceiling, carry it as a fetch
+                // descriptor (no inline bytes) — the source streams the bytes to the
+                // media pull channel and the target fetches by hash at apply. Over
+                // the pull ceiling it is still deferred.
+                if ((int) $descriptor['filesize'] > Protocol::MAX_PULL_FILE_BYTES) {
+                    $deferred[] = ['ref' => $ref, 'hash' => $descriptor['hash'], 'reason' => 'too_large'];
+                } elseif (count($media) >= Protocol::MAX_MEDIA_ITEMS) {
+                    $deferred[] = ['ref' => $ref, 'hash' => $descriptor['hash'], 'reason' => 'too_many'];
+                } else {
+                    $descriptor['refs'] = [$ref];
+                    $descriptor['fetch'] = true;
+                    $media[] = $descriptor;
+                }
                 continue;
             }
             if (count($media) >= Protocol::MAX_MEDIA_ITEMS) {

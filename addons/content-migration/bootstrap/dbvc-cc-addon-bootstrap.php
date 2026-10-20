@@ -45,6 +45,19 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/transform/dbvc-cc-v
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-v2-ai-pipeline-orchestrator-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/capture/dbvc-cc-v2-capture-orchestrator-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ingest/dbvc-cc-v2-external-artifact-ingest-service.php';
+
+// The interpretation boundary. These five files are deliberately WordPress-independent so the
+// corpus evaluator can measure them headless; they are required here because until S1c nothing in
+// the plugin loaded them at all, which is why D-2 was still true of the shipping product after
+// S1b measured the interpreter. The adapter that gives them WordPress context follows.
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/interpretation/dbvc-cc-interp-contracts.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/interpretation/dbvc-cc-interp-prompt.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/interpretation/dbvc-cc-interp-floor.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/interpretation/dbvc-cc-interp-model.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/interpretation/dbvc-cc-interp-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/interpretation/dbvc-cc-v2-interpretation-bridge-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/interpretation/dbvc-cc-v2-mapping-interpretation-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-object-inventory-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-slot-graph-service.php';
@@ -161,6 +174,10 @@ final class DBVC_CC_Addon_Bootstrap
 
         DBVC_CC_V2_Addon::bootstrap();
         DBVC_CC_V2_Historical_Review_QA_Fixture_Service::get_instance()->register_http_stub_filter();
+
+        // The acquisition joint. Registering the filter is inert: it supplies nothing until a run
+        // is pointed at an artifact directory with stage(). See D-21 in the V3 guide.
+        DBVC_CC_V2_External_Artifact_Ingest_Service::get_instance()->register();
 
         dbvc_cc_guard_no_source_runtime_imports('dbvc_cc_bootstrap_complete');
     }

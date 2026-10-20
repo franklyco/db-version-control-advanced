@@ -1,0 +1,360 @@
+{
+  "schema": "corpus-target-schema.v1",
+  "name": "dental-practice-rebuild",
+  "pinned_at": "2026-10-11",
+  "rationale": "A frozen, representative rebuild target. V2 measured mapping accuracy against the live VerticalFramework theme's ACF arrays, so a regression and a theme change were indistinguishable (V3 guide F-5). This schema is deliberately committed, small, and VerticalFramework-shaped without being VerticalFramework: a real theme's catalog is read into this same shape by the WordPress adapter, so the interpreter never sees a live schema.",
+  "field_ref_format": "core:<field> | meta:<key> | acf:<group>:<field>",
+  "objects": [
+    {
+      "object_key": "page",
+      "type_family": "post_type",
+      "label": "Page",
+      "content_model": "landing_page",
+      "entity_role": "page",
+      "cardinality": "one_per_source_url",
+      "fields": [
+        {
+          "field_ref": "core:post_title",
+          "label": "Title",
+          "type": "text",
+          "purpose": "The page title shown in the browser tab and as the H1 fallback.",
+          "value_contract": {
+            "shape": "scalar_string"
+          },
+          "required": true
+        },
+        {
+          "field_ref": "core:post_name",
+          "label": "Slug",
+          "type": "slug",
+          "purpose": "URL slug for the page.",
+          "value_contract": {
+            "shape": "slug"
+          }
+        },
+        {
+          "field_ref": "acf:page_hero:heading",
+          "label": "Hero heading",
+          "type": "text",
+          "purpose": "The large headline in the hero band at the top of the page.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:page_hero:subheading",
+          "label": "Hero subheading",
+          "type": "text",
+          "purpose": "Supporting line under the hero headline.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:page_hero:cta_label",
+          "label": "Hero CTA label",
+          "type": "text",
+          "purpose": "Button text for the hero call to action.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:page_hero:cta_url",
+          "label": "Hero CTA link",
+          "type": "link",
+          "purpose": "Destination for the hero call to action button.",
+          "value_contract": {
+            "shape": "url"
+          }
+        },
+        {
+          "field_ref": "acf:page_hero:background",
+          "label": "Hero background",
+          "type": "image",
+          "purpose": "Full-width background image behind the hero band.",
+          "value_contract": {
+            "shape": "attachment_id"
+          }
+        },
+        {
+          "field_ref": "acf:page_intro:heading",
+          "label": "Intro heading",
+          "type": "text",
+          "purpose": "Heading introducing the body copy under the hero.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:page_intro:body",
+          "label": "Intro body",
+          "type": "wysiwyg",
+          "purpose": "The opening paragraphs of body copy under the hero.",
+          "value_contract": {
+            "shape": "html"
+          }
+        },
+        {
+          "field_ref": "acf:page_cards:items",
+          "label": "Feature cards",
+          "type": "repeater",
+          "purpose": "A row of linked cards promoting other pages or services.",
+          "value_contract": {
+            "shape": "repeater"
+          },
+          "repeatable": true,
+          "sub_fields": [
+            {
+              "field_ref": "acf:page_cards:items.card_title",
+              "label": "Card title",
+              "type": "text",
+              "purpose": "Short heading on the card.",
+              "value_contract": {
+                "shape": "scalar_string"
+              }
+            },
+            {
+              "field_ref": "acf:page_cards:items.card_body",
+              "label": "Card body",
+              "type": "textarea",
+              "purpose": "One or two sentences of card copy.",
+              "value_contract": {
+                "shape": "scalar_string"
+              }
+            },
+            {
+              "field_ref": "acf:page_cards:items.card_link",
+              "label": "Card link",
+              "type": "link",
+              "purpose": "Where the card sends the visitor.",
+              "value_contract": {
+                "shape": "url"
+              }
+            }
+          ]
+        },
+        {
+          "field_ref": "acf:page_offers:items",
+          "label": "Current offers",
+          "type": "repeater",
+          "purpose": "Time-limited promotions or discounts advertised on the page.",
+          "value_contract": {
+            "shape": "repeater"
+          },
+          "repeatable": true,
+          "sub_fields": [
+            {
+              "field_ref": "acf:page_offers:items.offer_text",
+              "label": "Offer",
+              "type": "text",
+              "purpose": "The promotion as written for patients.",
+              "value_contract": {
+                "shape": "scalar_string"
+              }
+            }
+          ]
+        },
+        {
+          "field_ref": "meta:_seo_title",
+          "label": "SEO title",
+          "type": "text",
+          "purpose": "Search engine result title. Distinct from the on-page H1.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "meta:_seo_description",
+          "label": "SEO description",
+          "type": "textarea",
+          "purpose": "Search engine result snippet.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "meta:_seo_robots",
+          "label": "Robots directive",
+          "type": "text",
+          "purpose": "Indexing directive carried over from the source page.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "meta:_seo_canonical",
+          "label": "Canonical URL",
+          "type": "text",
+          "purpose": "Canonical URL if the source declared one.",
+          "value_contract": {
+            "shape": "url"
+          }
+        }
+      ]
+    },
+    {
+      "object_key": "team_member",
+      "type_family": "post_type",
+      "label": "Team member",
+      "content_model": "detail_page",
+      "entity_role": "person",
+      "cardinality": "one_per_person",
+      "fields": [
+        {
+          "field_ref": "core:post_title",
+          "label": "Name",
+          "type": "text",
+          "purpose": "The person's full name as patients see it.",
+          "value_contract": {
+            "shape": "scalar_string"
+          },
+          "required": true
+        },
+        {
+          "field_ref": "acf:team_member:role",
+          "label": "Role",
+          "type": "text",
+          "purpose": "Job title, e.g. Registered Dental Hygienist.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:team_member:bio",
+          "label": "Biography",
+          "type": "wysiwyg",
+          "purpose": "Several paragraphs about the person's background and manner.",
+          "value_contract": {
+            "shape": "html"
+          }
+        },
+        {
+          "field_ref": "acf:team_member:photo",
+          "label": "Photo",
+          "type": "image",
+          "purpose": "Headshot of the person.",
+          "value_contract": {
+            "shape": "attachment_id"
+          }
+        },
+        {
+          "field_ref": "acf:team_member:pull_quote",
+          "label": "Pull quote",
+          "type": "textarea",
+          "purpose": "A quotation from the person, displayed emphasised.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        }
+      ]
+    },
+    {
+      "object_key": "service",
+      "type_family": "post_type",
+      "label": "Service",
+      "content_model": "detail_page",
+      "entity_role": "offering",
+      "cardinality": "one_per_service",
+      "fields": [
+        {
+          "field_ref": "core:post_title",
+          "label": "Service name",
+          "type": "text",
+          "purpose": "Name of the treatment or service.",
+          "value_contract": {
+            "shape": "scalar_string"
+          },
+          "required": true
+        },
+        {
+          "field_ref": "acf:service:summary",
+          "label": "Summary",
+          "type": "textarea",
+          "purpose": "One-sentence description used in listings.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:service:body",
+          "label": "Description",
+          "type": "wysiwyg",
+          "purpose": "Full description of the service.",
+          "value_contract": {
+            "shape": "html"
+          }
+        }
+      ]
+    },
+    {
+      "object_key": "practice_info",
+      "type_family": "options_page",
+      "label": "Practice information",
+      "content_model": "site_singleton",
+      "entity_role": "site_settings",
+      "cardinality": "singleton",
+      "fields": [
+        {
+          "field_ref": "acf:practice_info:phone",
+          "label": "Phone",
+          "type": "text",
+          "purpose": "Primary practice telephone number.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:practice_info:fax",
+          "label": "Fax",
+          "type": "text",
+          "purpose": "Practice fax number.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:practice_info:email",
+          "label": "Email",
+          "type": "email",
+          "purpose": "Public contact email address.",
+          "value_contract": {
+            "shape": "email"
+          }
+        },
+        {
+          "field_ref": "acf:practice_info:address",
+          "label": "Address",
+          "type": "textarea",
+          "purpose": "Street address of the practice.",
+          "value_contract": {
+            "shape": "scalar_string"
+          }
+        },
+        {
+          "field_ref": "acf:practice_info:social",
+          "label": "Social links",
+          "type": "repeater",
+          "purpose": "Links to the practice's social profiles.",
+          "value_contract": {
+            "shape": "repeater"
+          },
+          "repeatable": true
+        }
+      ]
+    }
+  ],
+  "taxonomies": [
+    {
+      "object_key": "service_category",
+      "label": "Service category",
+      "applies_to": [
+        "service"
+      ]
+    }
+  ],
+  "notes": [
+    "Site chrome (phone, address, email, social) belongs to the practice_info singleton, not to each page. An interpreter that maps the footer phone number onto every page is wrong, and the eval scores that as a precision failure.",
+    "team_member has cardinality one_per_person. One source URL therefore legitimately yields five entities, which the current V2 recommendation contract cannot express - see expected-mappings.json."
+  ]
+}

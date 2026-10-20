@@ -33,7 +33,24 @@ if (! defined('ABSPATH')) {
         <tr valign="top">
             <th scope="row"><label for="openai_api_key"><?php esc_html_e('OpenAI API Key', 'dbvc'); ?></label></th>
             <td>
-                <input type="password" id="openai_api_key" name="dbvc_cc_settings[openai_api_key]" value="<?php echo esc_attr($options['openai_api_key']); ?>" class="regular-text" autocomplete="off" />
+                <?php
+                $dbvc_cc_key_source = DBVC_CC_Settings_Service::get_openai_api_key_source();
+                $dbvc_cc_key_stored = $dbvc_cc_key_source === 'option';
+                ?>
+                <input type="password" id="openai_api_key" name="dbvc_cc_settings[openai_api_key]" value="<?php echo $dbvc_cc_key_stored ? esc_attr(DBVC_CC_Settings_Service::API_KEY_MASK) : ''; ?>" class="regular-text" autocomplete="off" />
+                <p class="description">
+                    <?php
+                    if ($dbvc_cc_key_source === 'constant') {
+                        esc_html_e('Supplied by the DBVC_CC_OPENAI_API_KEY constant. This field is ignored while that constant is set.', 'dbvc');
+                    } elseif ($dbvc_cc_key_source === 'environment') {
+                        esc_html_e('Supplied by an environment variable. This field is ignored while that variable is set.', 'dbvc');
+                    } elseif ($dbvc_cc_key_stored) {
+                        esc_html_e('A key is stored. It is never sent back to the browser; leave the mask untouched to keep it, or type a new key to replace it.', 'dbvc');
+                    } else {
+                        esc_html_e('Prefer defining DBVC_CC_OPENAI_API_KEY in wp-config.php so the key never enters the database.', 'dbvc');
+                    }
+                    ?>
+                </p>
             </td>
         </tr>
         <tr valign="top">

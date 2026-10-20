@@ -3708,7 +3708,6 @@ final class DBVC_CC_Import_Executor_Service
             'default_entity_reason' => isset($phase4_context['default_entity_reason']) ? sanitize_key((string) $phase4_context['default_entity_reason']) : '',
             'override_post_type' => isset($phase4_context['override_post_type']) ? sanitize_key((string) $phase4_context['override_post_type']) : '',
             'handoff_schema_version' => isset($phase4_context['handoff_schema_version']) ? sanitize_text_field((string) $phase4_context['handoff_schema_version']) : '',
-            'handoff_generated_at' => isset($phase4_context['handoff_generated_at']) ? sanitize_text_field((string) $phase4_context['handoff_generated_at']) : '',
             'catalog_fingerprint' => isset($phase4_input['catalog_fingerprint']) ? sanitize_text_field((string) $phase4_input['catalog_fingerprint']) : '',
             'source_pipeline_id' => isset($trace['source_pipeline_id']) ? sanitize_text_field((string) $trace['source_pipeline_id']) : '',
             'artifact_refs' => $artifact_refs,
@@ -3717,6 +3716,11 @@ final class DBVC_CC_Import_Executor_Service
     }
 
     /**
+     * Fingerprints the source material behind a dry run so an approval can be recognised as
+     * stale when that material changes. Deliberately excludes the handoff and plan
+     * generation timestamps: those are stamped with the current time on every rebuild, and
+     * an approval must stay valid for its TTL rather than for the remainder of one second.
+     *
      * @param array<string, mixed> $dry_run_execution
      * @return string
      */
@@ -3745,8 +3749,6 @@ final class DBVC_CC_Import_Executor_Service
             'graph_fingerprint' => isset($dry_run_execution['operation_graph']['graph_fingerprint'])
                 ? sanitize_text_field((string) $dry_run_execution['operation_graph']['graph_fingerprint'])
                 : '',
-            'handoff_generated_at' => isset($dry_run_plan['handoff_generated_at']) ? sanitize_text_field((string) $dry_run_plan['handoff_generated_at']) : '',
-            'plan_generated_at' => isset($dry_run_plan['generated_at']) ? sanitize_text_field((string) $dry_run_plan['generated_at']) : '',
             'catalog_fingerprint' => isset($phase4_input['catalog_fingerprint']) ? sanitize_text_field((string) $phase4_input['catalog_fingerprint']) : '',
             'source_pipeline_id' => isset($trace['source_pipeline_id']) ? sanitize_text_field((string) $trace['source_pipeline_id']) : '',
             'artifact_refs' => $artifact_refs,

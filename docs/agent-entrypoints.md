@@ -50,9 +50,14 @@ Use the addon-local docs as the source of truth for Visual Editor implementation
 
 Read:
 
-1. `addons/content-migration/README.md`
-2. `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
-3. `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
+1. `docs/implementation/proposed/content-collection-v3/README.md`
+2. `addons/content-migration/README.md`
+3. `addons/content-migration/docs/MIGRATION_MAPPER_V2_CONTRACTS.md` when touching artifact shapes
+
+The V3 guide is the planning entry point as of 2026-10-10. It carries the defect register, the
+measured evidence, and the acceptance gates. `MIGRATION_MAPPER_V2_*` remains accurate about what V2
+does and is the historical record, but it is no longer the plan; do not resume from
+`MIGRATION_MAPPER_V2_WORKING_STATE.md`, whose branch anchor is stale.
 
 ## Bricks Add-on or Bricks Portability
 
@@ -97,8 +102,9 @@ This library is opt-in task context. Do not load the full manifest for unrelated
 Read:
 
 1. `docs/implementation/active/connected-environments-agency-control.md`
-2. `docs/dropins/dbvc-connected-agency/START-HERE.md` and `IMPLEMENTATION-GUIDE.md` (design baseline; `.php.stub` templates are inert)
-3. `docs/dropins/dbvc-connected-agency/tracking/SESSION-HANDOFF.md` for the compact continuation state
+2. `docs/implementation/active/connected-environments-operator-runbook.md` (operator how-to for the two weekly verbs — distribute + govern drift; CLI + admin-page cross-reference)
+3. `docs/dropins/dbvc-connected-agency/START-HERE.md` and `IMPLEMENTATION-GUIDE.md` (design baseline; `.php.stub` templates are inert)
+4. `docs/dropins/dbvc-connected-agency/tracking/SESSION-HANDOFF.md` for the compact continuation state
 
 Never load code from `docs/dropins`; runtime owners are `addons/connected-environments/`, `addons/agency-control/`, and `includes/Dbvc/ConnectedProtocol/`. The earlier docs-only proposal `docs/implementation/proposed/agency-control-connected-environments/` (separate hub repository, source package dated 2026-09-13) is superseded by the in-repository architecture above where the two differ; keep it as historical context only.
 

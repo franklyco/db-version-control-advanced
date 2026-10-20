@@ -54,6 +54,14 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                             'required' => false,
                             'sanitize_callback' => 'sanitize_text_field',
                         ],
+                        // Externally discovered URLs, for sources that serve no usable sitemap.
+                        // Scope and eligibility rules still apply to every entry.
+                        'urls' => [
+                            'required' => false,
+                            'validate_callback' => static function ($value) {
+                                return is_array($value) || null === $value;
+                            },
+                        ],
                         'maxUrls' => [
                             'required' => false,
                             'sanitize_callback' => 'absint',
@@ -99,6 +107,9 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             ]
         );
 
+        // Development-only. Registering it unconditionally and refusing in the handler still
+        // publishes it in REST discovery on production, which is surface nobody asked for.
+        if (DBVC_CC_V2_Run_Recovery_QA_Fixture_Service::get_instance()->is_available()) {
         register_rest_route(
             DBVC_CC_V2_Contracts::REST_NAMESPACE,
             '/runs/(?P<run_id>[\w-]+)/qa/recovery-fixture',
@@ -122,6 +133,7 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                 ],
             ]
         );
+        }
 
         register_rest_route(
             DBVC_CC_V2_Contracts::REST_NAMESPACE,
@@ -206,11 +218,13 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         $domain = isset($params['domain']) ? (string) $params['domain'] : '';
         $force_rebuild = ! empty($params['forceRebuild']);
         $sitemap_url = isset($params['sitemapUrl']) ? esc_url_raw((string) $params['sitemapUrl']) : '';
+        $external_urls = $this->sanitize_url_list(isset($params['urls']) ? $params['urls'] : []);
         $max_urls = isset($params['maxUrls']) ? absint($params['maxUrls']) : 0;
         $crawl_overrides = $this->sanitize_crawl_overrides(isset($params['crawlOverrides']) ? $params['crawlOverrides'] : []);
         $qa_replay_source_run_id = isset($params['qaReplaySourceRunId'])
             ? sanitize_text_field((string) $params['qaReplaySourceRunId'])
             : '';
+        $ingest_dir = isset($params['ingestDir']) ? wp_normalize_path((string) $params['ingestDir']) : '';
         $journey_context = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_domain_context($domain);
         if (is_wp_error($journey_context)) {
             return $journey_context;
@@ -219,11 +233,48 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         $resolved_domain = isset($journey_context['domain']) ? (string) $journey_context['domain'] : '';
         $run_id = DBVC_CC_V2_Contracts::generate_run_id($resolved_domain);
 
+        // Acquisition source. Staging validates every bundle before the run writes anything, so a
+        // malformed capture refuses the request rather than producing a half-ingested run.
+        if ($ingest_dir !== '') {
+            $ingest = DBVC_CC_V2_External_Artifact_Ingest_Service::get_instance();
+            if (! $ingest->is_path_permitted($ingest_dir)) {
+                return new WP_Error(
+                    'dbvc_cc_v2_ingest_path_not_permitted',
+                    __('That artifact directory is not reachable over REST. Define DBVC_CC_INGEST_ROOT for the directory you capture into, or start the run with WP-CLI.', 'dbvc'),
+                    ['status' => 400]
+                );
+            }
+
+            $staged = $ingest->stage($run_id, $ingest_dir);
+            if (is_wp_error($staged)) {
+                return $staged;
+            }
+
+            // A staged directory already knows which URLs it captured, so it is a complete run
+            // request on its own. Without this, an ingest-only run would discover nothing and
+            // capture nothing, which looks like success and delivers an empty package.
+            if ($external_urls === []) {
+                $discovered = [];
+                foreach ($staged['pages'] as $page) {
+                    $url = isset($page['normalized_url']) && $page['normalized_url'] !== ''
+                        ? (string) $page['normalized_url']
+                        : (string) ($page['source_url'] ?? '');
+                    if ($url !== '') {
+                        $discovered[$url] = $url;
+                    }
+                }
+
+                $external_urls = $this->sanitize_url_list(array_values($discovered));
+            }
+        }
+
         $profile_result = DBVC_CC_V2_Run_Profile_Service::get_instance()->persist_latest_profile(
             $resolved_domain,
             [
                 'run_id' => $run_id,
                 'sitemap_url' => $sitemap_url,
+                'urls' => $external_urls,
+                'ingest_dir' => $ingest_dir,
                 'max_urls' => $max_urls,
                 'force_rebuild' => $force_rebuild,
                 'crawl_overrides' => $crawl_overrides,
@@ -262,7 +313,7 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         }
 
         $result = $schema_sync;
-        if ($sitemap_url !== '') {
+        if ($sitemap_url !== '' || $external_urls !== []) {
             $captured = DBVC_CC_V2_Capture_Orchestrator_Service::get_instance()->run_domain(
                 $resolved_domain,
                 $run_id,
@@ -273,6 +324,7 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                     'trigger' => 'rest',
                     'max_urls' => $max_urls,
                     'crawl_overrides' => $crawl_overrides,
+                    'urls' => $external_urls,
                 ]
             );
             if (is_wp_error($captured)) {
@@ -644,6 +696,7 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             'domain' => isset($request['domain']) ? (string) $request['domain'] : '',
             'storedAt' => isset($run_profile['stored_at']) ? (string) $run_profile['stored_at'] : '',
             'sitemapUrl' => isset($request['sitemap_url']) ? (string) $request['sitemap_url'] : '',
+            'urls' => isset($request['urls']) && is_array($request['urls']) ? array_values($request['urls']) : [],
             'maxUrls' => isset($request['max_urls']) ? absint($request['max_urls']) : 0,
             'forceRebuild' => ! empty($request['force_rebuild']),
             'crawlOverrides' => isset($request['crawl_overrides']) && is_array($request['crawl_overrides']) ? $request['crawl_overrides'] : [],
@@ -663,6 +716,30 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         }
 
         return is_array($params) ? $params : [];
+    }
+
+    /**
+     * @param mixed $urls
+     * @return array<int, string>
+     */
+    private function sanitize_url_list($urls)
+    {
+        if (! is_array($urls)) {
+            return [];
+        }
+
+        $sanitized = [];
+        foreach ($urls as $url) {
+            if (! is_string($url) && ! is_numeric($url)) {
+                continue;
+            }
+            $candidate = esc_url_raw(trim((string) $url));
+            if ($candidate !== '') {
+                $sanitized[$candidate] = $candidate;
+            }
+        }
+
+        return array_values($sanitized);
     }
 
     /**

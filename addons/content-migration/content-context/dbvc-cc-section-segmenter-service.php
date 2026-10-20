@@ -116,6 +116,42 @@ final class DBVC_CC_Section_Segmenter_Service
             }
         }
 
+        // Nesting, recorded additively. Section boundaries are deliberately NOT changed: the
+        // mapping index, handoff bridge and import executor all consume these boundaries, and a
+        // fixture-locked section count is asserted downstream. What was actually broken is that a
+        // deeper heading's content became unreachable from the heading it belongs under - a role in
+        // an h3 under a name in an h2 ended up owning that person's biography while the name owned
+        // nothing. parent_section_id makes the relationship expressible, so a consumer can walk it.
+        // Teaching the mapper to use it is a separate change with its own measurement.
+        $heading_stack = [];
+        foreach ($sections as $index => $section) {
+            $level = isset($section['signals']['heading_level']) ? (int) $section['signals']['heading_level'] : 0;
+            if ($level <= 0) {
+                $sections[$index]['parent_section_id'] = null;
+                $sections[$index]['heading_path'] = [];
+                continue;
+            }
+
+            while ($heading_stack !== [] && $heading_stack[count($heading_stack) - 1]['level'] >= $level) {
+                array_pop($heading_stack);
+            }
+
+            $parent = $heading_stack === [] ? null : $heading_stack[count($heading_stack) - 1];
+            $sections[$index]['parent_section_id'] = $parent === null ? null : $parent['section_id'];
+            $sections[$index]['heading_path'] = array_values(array_map(
+                static function ($entry) {
+                    return $entry['label'];
+                },
+                $heading_stack
+            ));
+
+            $heading_stack[] = [
+                'section_id' => isset($section['section_id']) ? (string) $section['section_id'] : '',
+                'level' => $level,
+                'label' => isset($section['section_label_candidate']) ? (string) $section['section_label_candidate'] : '',
+            ];
+        }
+
         foreach ($sections as &$section) {
             $element_total = count(isset($section['element_ids']) && is_array($section['element_ids']) ? $section['element_ids'] : []);
             if ($element_total > 0) {

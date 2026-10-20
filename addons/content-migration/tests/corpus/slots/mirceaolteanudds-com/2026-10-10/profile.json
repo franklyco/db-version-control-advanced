@@ -1,0 +1,109 @@
+{
+  "schema": "corpus-slot-profile.v1",
+  "slot": 1,
+  "slot_purpose": "WordPress + Divi, server-rendered, no sitemap, lazy-loaded images, index spam",
+  "domain": "mirceaolteanudds.com",
+  "captured_at": "2026-10-10",
+  "verified_at": "2026-10-11",
+  "platform": {
+    "cms": "WordPress 6.1.8",
+    "builder": "Divi Child v.1.0",
+    "rendering": "server_rendered",
+    "js_required_for_content": false,
+    "notable_plugins": [
+      "W3 Total Cache (lazyload)"
+    ],
+    "built_by": "EOS Healthcare Marketing"
+  },
+  "why_this_slot_matters": [
+    "No sitemap anywhere, which is what blocks V2 entirely (D-1).",
+    "Divi wraps body copy in divs outside the element selector set (D-5).",
+    "Every <img src> is a W3 Total Cache lazyload data-URI placeholder; the real URL is in data-src (D-18).",
+    "Hero and section backgrounds are CSS background-image, recoverable from no HTML-level extractor.",
+    "Internal links are relative and target index.html, with no canonical tag sitewide.",
+    "Three injected SEO-spam URLs remain in the search index.",
+    "A broken internal target (/meet-the-team, 403) is linked five times from the homepage.",
+    "The team page nests h3 roles under h2 names, which the V2 segmenter splits wrongly (D-9).",
+    "Every <img src> on all eight pages is a lazyload data: placeholder, so the whole site exercises D-18, not just one page."
+  ],
+  "fixtures": {
+    "comment": "Raw HTML is deliberately NOT committed. It is a third party's copyrighted content collected to rebuild their own site. The corpus holds assertions; the bytes stay outside the repository and are matched by sha256.",
+    "root_env": "DBVC_CORPUS_FIXTURES",
+    "default_root": "~/Documents/LocalProjects/dbvc-content-migration-trials/mirceaolteanudds.com/2026-10-12",
+    "required_files": [
+      "raw-html/contact.html",
+      "raw-html/dental-team.html",
+      "raw-html/faq.html",
+      "raw-html/home.html",
+      "raw-html/in-house-dental-plan.html",
+      "raw-html/patient-info.html",
+      "raw-html/services.html",
+      "raw-html/thank-you.html",
+      "pages/contact.json",
+      "pages/dental-team.json",
+      "pages/faq.json",
+      "pages/home.json",
+      "pages/in-house-dental-plan.json",
+      "pages/patient-info.json",
+      "pages/services.json",
+      "pages/thank-you.json"
+    ],
+    "additional_raw_html_available": {
+      "path": "~/Documents/LocalProjects/lead-site-audit/prospects/mirceaolteanudds.com/2026-09-18/raw/pages/",
+      "usable": [
+        "services.html",
+        "contact.html"
+      ],
+      "note": "The other .html files there are ~290-byte 301 stubs and are worthless."
+    },
+    "capture_format": "pages/<slug>.json carries {url, markdown, links, images, metadata, provenance} as emitted by capture.py; raw-html/<slug>.html is the authoritative fetched bytes and is what every raw_html_sha256 is taken from.",
+    "note": "The 2026-10-10 capture covered 2 of 8 pages and its markdown was hand transcribed. The 2026-10-12 capture covers all 8 with no transcription step. The slot directory keeps its original date because that is when the slot was established."
+  },
+  "coverage": {
+    "content_urls_total": 8,
+    "pages_with_ground_truth": 8,
+    "pages_pending_capture": 0,
+    "note": "All eight content URLs captured 2026-10-12. G-2 and G-3 now score the whole site."
+  },
+  "target_schema": "target-schema.v1.json",
+  "client_findings": {
+    "comment": "Facts about the source site that the capture surfaced. They are not gate inputs; they are what a migration has to tell the client. Recorded here so a later run can check they were reported rather than silently carried across.",
+    "items": [
+      {
+        "code": "nap_mismatch_on_thank_you_page",
+        "severity": "high",
+        "detail": "/contact/thank-you shows 8193 Avery Rd #100, Broadview Heights OH 44147 while every other page and the sitewide footer show 7500 Town Centre Dr Suite 100. Both strings appear on that one page. A patient who books an appointment lands on it and is given the wrong address. Capture it verbatim, flag it, and let the client decide which is correct - never reconcile it silently."
+      },
+      {
+        "code": "broken_hero_cta",
+        "severity": "high",
+        "detail": "/meet-the-team returns 403 and is linked five times from the homepage, including the hero call to action and the 'Meet Dr. Olteanu' card. The real page is /dental-team."
+      },
+      {
+        "code": "malformed_tel_link",
+        "severity": "low",
+        "detail": "The fax number is written as href=\"440.746.9070\", so /440.746.9070 404s."
+      },
+      {
+        "code": "index_spam_in_search_index",
+        "severity": "medium",
+        "detail": "Injected .shtml URLs with Japanese product titles remain in Google's index from an old compromise. The set drifts between crawls; three to four are visible at a time."
+      },
+      {
+        "code": "alt_text_name_mismatch",
+        "severity": "medium",
+        "detail": "dental-hygienist-nicole.jpg carries alt 'Nicole Jeglie is a registered dental hygienist' under a heading reading 'Nicole Langford'."
+      },
+      {
+        "code": "content_age",
+        "severity": "medium",
+        "detail": "article:modified_time per page: faq 2018-09-28, dental-team 2019-04-29, home 2023-08-01. Most of the site has not been touched in six or seven years."
+      },
+      {
+        "code": "downloadable_document",
+        "severity": "low",
+        "detail": "/wp-content/uploads/2018/06/New-patient-packet.pdf is linked client content and must be transferred; an asset-extension filter would discard it as noise."
+      }
+    ]
+  }
+}

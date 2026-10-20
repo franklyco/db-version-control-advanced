@@ -137,7 +137,7 @@ final class PreparationService
                 if (isset($item['media']) && is_string($item['media']) && $item['media'] !== '') {
                     $decoded = json_decode($item['media'], true);
                     if (is_array($decoded) && isset($decoded['media']) && is_array($decoded['media'])) {
-                        $media = $decoded['media'];
+                        $media = \Dbvc\AgencyControl\Storage\MediaBlobStore::hydrate($decoded['media']);
                     }
                 }
                 $items[] = [

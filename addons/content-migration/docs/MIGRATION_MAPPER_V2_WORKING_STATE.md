@@ -1,5 +1,15 @@
 # Migration Mapper V2 Working State
 
+> **Superseded as a plan (2026-10-10).** Do not resume V2 implementation from this file.
+> The planning entry point is `docs/implementation/proposed/content-collection-v3/README.md`,
+> which carries the defect register, the measured evidence, and the acceptance gates.
+> Two things in this file will mislead a fresh session: the `Branch: codex/content-addon-v2`
+> anchor (that branch is an ancestor of `master`, which is 346 commits ahead — the V2 runtime is
+> on `master`), and the framing of Phase 32 as the next step. The blocking problems are earlier
+> in the pipeline than mapping accuracy: URL discovery cannot start without a sitemap, and the
+> stages labelled "AI Layer" make no model call. This file remains accurate as a record of what
+> V2 does.
+
 ## Purpose
 
 This file is the low-token resume anchor for active V2 implementation work.

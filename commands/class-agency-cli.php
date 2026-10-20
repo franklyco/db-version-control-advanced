@@ -993,6 +993,38 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 		}
 
 		/**
+		 * Run every hub scheduler tick once (parity + framework rollouts), scan
+		 * drift and flush notifications. The single entrypoint for an external
+		 * scheduler.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function scheduler_run(array $assoc_args) {
+			unset($assoc_args);
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return \Dbvc\AgencyControl\Scheduler\SchedulerRunner::run_all();
+		}
+
+		/**
+		 * Report hub scheduler health (last run, age, overdue flag, next WP-Cron
+		 * run). A pure read — reports regardless of gate state so a stalled or
+		 * never-run scheduler is still visible.
+		 *
+		 * @param array $assoc_args
+		 * @return array
+		 */
+		public static function scheduler_status(array $assoc_args) {
+			unset($assoc_args);
+
+			return \Dbvc\AgencyControl\Scheduler\SchedulerRunner::health();
+		}
+
+		/**
 		 * Read one framework rollout campaign's status.
 		 *
 		 * @param array $assoc_args
@@ -1681,6 +1713,62 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 			}
 
 			return (new \Dbvc\AgencyControl\Governance\FreezeService())->clear((string) ($assoc_args['environment'] ?? ''));
+		}
+
+		/**
+		 * M9 slice 7b (completion): list the non-administrator users holding each
+		 * hub capability (publisher / approver). Read-only.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function roles(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Governance\RoleService())->assignments(
+				self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT)
+			);
+		}
+
+		/**
+		 * M9 slice 7b (completion): grant one hub capability (publisher|approver)
+		 * to a non-administrator user.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function role_grant(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Governance\RoleService())->grant(
+				(string) ($assoc_args['user'] ?? ''),
+				(string) ($assoc_args['role'] ?? '')
+			);
+		}
+
+		/**
+		 * M9 slice 7b (completion): revoke one hub capability (publisher|approver)
+		 * from a user.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function role_revoke(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Governance\RoleService())->revoke(
+				(string) ($assoc_args['user'] ?? ''),
+				(string) ($assoc_args['role'] ?? '')
+			);
 		}
 
 		/**
@@ -3124,6 +3212,32 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		}
 
 		/**
+		 * Run every hub scheduler tick once (parity + framework rollouts), then scan drift and flush notifications. The single entrypoint for an external scheduler: set define('DISABLE_WP_CRON', true) and add a system crontab line such as `* * * * * cd <wp> && wp dbvc agency scheduler-run` so ticks no longer depend on a page being visited. Idempotent and safe at any cadence.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand scheduler-run
+		 */
+		public function scheduler_run($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::scheduler_run($assoc_args));
+		}
+
+		/**
+		 * Report hub scheduler health: each tick's last run time, age, overdue flag, and next WP-Cron run. overdue=true means a tick has not run within two hours — check that WP-Cron is firing or that your external scheduler-run cron is installed.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand scheduler-status
+		 */
+		public function scheduler_status($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::scheduler_status($assoc_args));
+		}
+
+		/**
 		 * Show one framework rollout campaign's status (per-target release/rollout state).
 		 *
 		 * ## OPTIONS
@@ -3688,6 +3802,76 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function freeze_clear($args, $assoc_args) {
 			unset($args);
 			$this->emit_json(DBVC_Agency_CLI_Inspector::freeze_clear($assoc_args));
+		}
+
+		/**
+		 * List the non-administrator users holding a hub capability (publisher / approver). Administrators hold both via manage_options and are not listed.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--limit=<n>]
+		 * : Maximum number of users to scan. Default 50, max 500.
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand roles
+		 */
+		public function roles($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::roles($assoc_args));
+		}
+
+		/**
+		 * Grant one hub capability (publisher or approver) to a non-administrator user, so an operator can delegate framework publishing or client approving without granting full manage_options.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --user=<ref>
+		 * : Target user as a numeric ID, login, or email.
+		 *
+		 * --role=<role>
+		 * : Which capability to grant: publisher (dbvc_agency_publish) or approver (dbvc_agency_approve).
+		 * ---
+		 * options:
+		 *   - publisher
+		 *   - approver
+		 * ---
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand role-grant
+		 */
+		public function role_grant($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::role_grant($assoc_args));
+		}
+
+		/**
+		 * Revoke one hub capability (publisher or approver) from a user.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --user=<ref>
+		 * : Target user as a numeric ID, login, or email.
+		 *
+		 * --role=<role>
+		 * : Which capability to revoke: publisher (dbvc_agency_publish) or approver (dbvc_agency_approve).
+		 * ---
+		 * options:
+		 *   - publisher
+		 *   - approver
+		 * ---
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 * @subcommand role-revoke
+		 */
+		public function role_revoke($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::role_revoke($assoc_args));
 		}
 
 		/**

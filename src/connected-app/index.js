@@ -7606,6 +7606,241 @@ function toDomainToken( token ) {
 		: t;
 }
 
+// Hub Roles (Phase B): delegate the publisher / approver capabilities to a
+// non-administrator from the page, over the manage_options-gated
+// connected-admin/roles routes (wrapping RoleService). Administrators hold both
+// caps via manage_options and are never listed.
+function Roles( { notify, onChanged } ) {
+	const [ data, setData ] = useState( null );
+	const [ loading, setLoading ] = useState( true );
+	const [ busy, setBusy ] = useState( '' );
+	const [ form, setForm ] = useState( { user: '', role: 'publisher' } );
+
+	const load = useCallback( async () => {
+		setLoading( true );
+		try {
+			setData( await apiFetch( { path: 'connected-admin/roles' } ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setLoading( false );
+	}, [ notify ] );
+
+	useEffect( () => {
+		load();
+	}, [ load ] );
+
+	const change = async ( action, user, role ) => {
+		setBusy( `${ action }:${ user }:${ role }` );
+		try {
+			await apiFetch( {
+				path: 'connected-admin/roles',
+				method: 'POST',
+				data: { action, user: String( user ), role },
+			} );
+			notify(
+				'success',
+				action === 'grant'
+					? sprintf(
+							/* translators: 1: role name, 2: user reference */
+							__( 'Granted %1$s to %2$s.', 'dbvc' ),
+							role,
+							user
+					  )
+					: sprintf(
+							/* translators: 1: role name, 2: user reference */
+							__( 'Revoked %1$s from %2$s.', 'dbvc' ),
+							role,
+							user
+					  )
+			);
+			if ( action === 'grant' ) {
+				setForm( ( prev ) => ( { ...prev, user: '' } ) );
+			}
+			await load();
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const grant = ( event ) => {
+		event.preventDefault();
+		if ( ! form.user.trim() ) {
+			notify(
+				'error',
+				__( 'Enter a user id, login, or email.', 'dbvc' )
+			);
+			return;
+		}
+		change( 'grant', form.user.trim(), form.role );
+	};
+
+	const rolePanel = ( heading, rows, role, empty ) => (
+		<div className="dbvc-tools-panel" style={ { marginBottom: 12 } }>
+			<div className="dbvc-ce-panel__head">
+				<h3 style={ { margin: 0 } }>{ heading }</h3>
+				<span className="dbvc-ce-asof">
+					{ sprintf(
+						/* translators: %d: number of delegate users */
+						_n( '%d user', '%d users', rows.length, 'dbvc' ),
+						rows.length
+					) }
+				</span>
+			</div>
+			{ rows.length === 0 && <p className="dbvc-ce-empty">{ empty }</p> }
+			{ rows.length > 0 && (
+				<table className="widefat striped">
+					<thead>
+						<tr>
+							<th>{ __( 'User', 'dbvc' ) }</th>
+							<th />
+						</tr>
+					</thead>
+					<tbody>
+						{ rows.map( ( row ) => (
+							<tr key={ `${ role }:${ row.id }` }>
+								<td>
+									<code>{ row.login }</code>{ ' ' }
+									<span className="dbvc-ce-asof">
+										{ sprintf(
+											/* translators: %d: user id */
+											__( '#%d', 'dbvc' ),
+											row.id
+										) }
+									</span>
+								</td>
+								<td>
+									<button
+										type="button"
+										className="btn btn--small"
+										aria-busy={
+											busy ===
+											`revoke:${ row.id }:${ role }`
+										}
+										onClick={ () =>
+											change( 'revoke', row.id, role )
+										}
+									>
+										{ __( 'Revoke', 'dbvc' ) }
+									</button>
+								</td>
+							</tr>
+						) ) }
+					</tbody>
+				</table>
+			) }
+		</div>
+	);
+
+	const initialLoading = loading && ! data;
+	const publishers = ( data && data.publishers ) || [];
+	const approvers = ( data && data.approvers ) || [];
+
+	return (
+		<div className="dbvc-ce-grid">
+			<div>
+				<div className="dbvc-tools-panel">
+					<div className="dbvc-ce-panel__head">
+						<h2>{ __( 'Hub roles', 'dbvc' ) }</h2>
+						<span className="dbvc-ce-asof">
+							{ __( 'publisher / approver delegates', 'dbvc' ) }
+						</span>
+					</div>
+					{ initialLoading && (
+						<p className="dbvc-ce-loading">
+							{ __( 'Loading…', 'dbvc' ) }
+						</p>
+					) }
+					{ ! initialLoading && (
+						<Fragment>
+							{ rolePanel(
+								__( 'Publishers', 'dbvc' ),
+								publishers,
+								'publisher',
+								__(
+									'No publisher delegates. Administrators publish via manage_options.',
+									'dbvc'
+								)
+							) }
+							{ rolePanel(
+								__( 'Approvers', 'dbvc' ),
+								approvers,
+								'approver',
+								__(
+									'No approver delegates. Administrators approve via manage_options.',
+									'dbvc'
+								)
+							) }
+						</Fragment>
+					) }
+				</div>
+			</div>
+			<div>
+				<div className="dbvc-tools-panel">
+					<div className="dbvc-ce-panel__head">
+						<h2>{ __( 'Delegate a capability', 'dbvc' ) }</h2>
+					</div>
+					<p className="dbvc-ce-empty" style={ { paddingTop: 0 } }>
+						{ __(
+							'Grant publisher (framework authoring and distribution) or approver (review, approve, rollback) to a non-administrator. Administrators already hold both via manage_options.',
+							'dbvc'
+						) }
+					</p>
+					<form className="dbvc-ce-inv-form" onSubmit={ grant }>
+						<div className="dbvc-ce-field">
+							<label htmlFor="dbvc-ce-role-user">
+								{ __( 'User (id, login, or email)', 'dbvc' ) }
+							</label>
+							<input
+								id="dbvc-ce-role-user"
+								type="text"
+								value={ form.user }
+								onChange={ ( event ) =>
+									setForm( {
+										...form,
+										user: event.target.value,
+									} )
+								}
+							/>
+						</div>
+						<div className="dbvc-ce-field">
+							<label htmlFor="dbvc-ce-role-role">
+								{ __( 'Role', 'dbvc' ) }
+							</label>
+							<select
+								id="dbvc-ce-role-role"
+								value={ form.role }
+								onChange={ ( event ) =>
+									setForm( {
+										...form,
+										role: event.target.value,
+									} )
+								}
+							>
+								<option value="publisher">
+									{ __( 'Publisher', 'dbvc' ) }
+								</option>
+								<option value="approver">
+									{ __( 'Approver', 'dbvc' ) }
+								</option>
+							</select>
+						</div>
+						<button
+							type="submit"
+							className="btn btn--primary"
+							aria-busy={ busy.startsWith( 'grant:' ) }
+						>
+							{ __( 'Grant', 'dbvc' ) }
+						</button>
+					</form>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function Subscriptions( { notify, onChanged } ) {
 	const [ environments, setEnvironments ] = useState( [] );
 	const [ subs, setSubs ] = useState( null );
@@ -10245,6 +10480,7 @@ function App() {
 					{ key: 'publish', label: __( 'Publish', 'dbvc' ) },
 					{ key: 'releases', label: __( 'Releases', 'dbvc' ) },
 					{ key: 'rollouts', label: __( 'Rollouts', 'dbvc' ) },
+					{ key: 'roles', label: __( 'Roles', 'dbvc' ) },
 			  ]
 			: [] ),
 		...( overview?.roles?.connector
@@ -10379,6 +10615,9 @@ function App() {
 					notify={ notify }
 					onChanged={ load }
 				/>
+			) }
+			{ overview && overview.roles.hub && view === 'roles' && (
+				<Roles notify={ notify } onChanged={ load } />
 			) }
 			{ overview && overview.roles.connector && view === 'activity' && (
 				<ConnectorActivity

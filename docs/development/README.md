@@ -4,6 +4,7 @@ Setup, QA, local workflow, and maintenance docs belong here.
 
 ## Current Docs
 
+- `distribution-drift.md` - comparing this repo against the db-version-control-advanced distribution copy.
 - `entity-editor-manual-qa.md` - Entity Editor manual QA notes.
 - `repomix-maintenance.md` - Repomix maintenance notes.
 - `repomix-preflight.md` - Repomix preflight notes.

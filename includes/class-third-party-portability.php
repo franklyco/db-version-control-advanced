@@ -1063,6 +1063,25 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                     }
 
                     $ws_form->db_import_reset();
+
+                    /**
+                     * Fires after the target form's tree has been torn down and
+                     * before it is rebuilt from the payload.
+                     *
+                     * This is the point of no return: the form's groups, sections
+                     * and fields are gone and have not been replaced yet. Throwing
+                     * from this hook aborts the import, which rolls back when a
+                     * transaction is active (ID preservation on InnoDB) and
+                     * otherwise leaves the form torn down. Intended for
+                     * fault-injection in tests and for callers that need to
+                     * observe the mid-import boundary; do not mutate the form here.
+                     *
+                     * @param int    $form_id  Form being imported into.
+                     * @param bool   $preserve Whether IDs are being preserved.
+                     * @param string $uid      Portability uid of the payload.
+                     */
+                    do_action('dbvc_third_party_wsform_import_after_reset', (int) $ws_form->id, $preserve, $uid);
+
                     $ws_form->db_update_from_object($form_object, true, ! $preserve, true);
                     $ws_form->db_conditional_repair();
                     $ws_form->db_action_repair();

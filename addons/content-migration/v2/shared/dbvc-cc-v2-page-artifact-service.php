@@ -172,6 +172,7 @@ final class DBVC_CC_V2_Page_Artifact_Service
             'initial_classification' => $page_dir . $slug . DBVC_CC_V2_Contracts::STORAGE_INITIAL_CLASSIFICATION_SUFFIX,
             'routing_artifact' => $page_dir . $slug . DBVC_CC_V2_Contracts::STORAGE_ROUTING_ARTIFACT_SUFFIX,
             'mapping_index' => $page_dir . $slug . DBVC_CC_V2_Contracts::STORAGE_MAPPING_INDEX_SUFFIX,
+            'interpretation_result' => $page_dir . $slug . DBVC_CC_V2_Contracts::STORAGE_INTERPRETATION_RESULT_SUFFIX,
             'target_transform' => $page_dir . $slug . DBVC_CC_V2_Contracts::STORAGE_TARGET_TRANSFORM_SUFFIX,
             'mapping_recommendations' => $page_dir . $slug . DBVC_CC_V2_Contracts::STORAGE_MAPPING_RECOMMENDATIONS_SUFFIX,
             'mapping_decisions' => $page_dir . $slug . DBVC_CC_V2_Contracts::STORAGE_MAPPING_DECISIONS_SUFFIX,

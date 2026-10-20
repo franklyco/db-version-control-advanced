@@ -8,9 +8,12 @@ use Dbvc\Connected\Adapters\DomainRegistry;
 use Dbvc\Connected\Adapters\PostTypeObserver;
 use Dbvc\Connected\Capture\DirtyCapture;
 use Dbvc\Connected\Identity\InstanceIdentity;
+use Dbvc\Connected\Preparation\BricksMediaReferences;
 use Dbvc\Connected\Storage\JobStore;
 use Dbvc\Connected\Storage\OperationStore;
 use Dbvc\Connected\Storage\PreparationStore;
+use Dbvc\Connected\Storage\StateStore;
+use Dbvc\Connected\Transport\HubClient;
 use Dbvc\ConnectedProtocol\Canonicalizer;
 use Dbvc\ConnectedProtocol\Protocol;
 
@@ -41,10 +44,58 @@ final class Applier
      */
     private $preparations;
 
-    public function __construct(?OperationStore $operations = null, ?PreparationStore $preparations = null)
+    /**
+     * @var StateStore
+     */
+    private $state_store;
+
+    /**
+     * @var callable|null Per-apply media pull resolver (A2-2c); null during rollback.
+     */
+    private $media_puller;
+
+    public function __construct(?OperationStore $operations = null, ?PreparationStore $preparations = null, ?StateStore $state_store = null)
     {
         $this->operations = $operations ?: new OperationStore();
         $this->preparations = $preparations ?: new PreparationStore();
+        $this->state_store = $state_store ?: new StateStore();
+        $this->media_puller = null;
+    }
+
+    /**
+     * Build the media pull resolver for one apply: it GETs a large file's bytes
+     * from the hub by content hash (the target side of the A2-2 pull channel),
+     * authenticating as this connector. Returns null when credentials or context
+     * are missing, so a fetch descriptor then simply fails closed.
+     *
+     * @param string $principal
+     * @param string $hub_url
+     * @param string $release_uid
+     * @return callable|null
+     */
+    private function build_media_puller($principal, $hub_url, $release_uid)
+    {
+        $secret = $this->state_store->hub_secret();
+        if (! is_string($secret) || $secret === '' || (string) $principal === '' || (string) $hub_url === '' || (string) $release_uid === '') {
+            return null;
+        }
+        $auth = ['username' => (string) $principal, 'password' => $secret];
+        $hub_url = (string) $hub_url;
+        $release_uid = (string) $release_uid;
+
+        return static function ($hash) use ($hub_url, $auth, $release_uid) {
+            $hex = strpos((string) $hash, 'sha256:') === 0 ? substr((string) $hash, 7) : (string) $hash;
+            if (! preg_match('/^[a-f0-9]{64}$/', $hex)) {
+                return null;
+            }
+            $res = HubClient::get_media_blob($hub_url, '/releases/' . rawurlencode($release_uid) . '/media/' . $hex, $auth);
+            if (empty($res['ok']) || ! isset($res['body']['bytes']) || ! is_string($res['body']['bytes'])) {
+                return null;
+            }
+            $raw = base64_decode($res['body']['bytes'], true);
+
+            return is_string($raw) && $raw !== '' ? $raw : null;
+        };
     }
 
     /**
@@ -67,6 +118,9 @@ final class Applier
             'target' => ['environment_id' => (string) $state['environment_id'], 'epoch' => (string) $state['installation_epoch']],
             'started_at' => gmdate('c', $started),
         ];
+        // Target side of the media pull channel (A2-2c): resolve a large file's
+        // bytes by hash from the hub when a carried descriptor has none.
+        $this->media_puller = $this->build_media_puller((string) ($state['hub_principal'] ?? ''), (string) $hub_url, $base['release_uid']);
 
         // The approval must bind the receipt this environment produced, unexpired.
         $local = $this->preparations->find($base['operation_id']);
@@ -179,6 +233,11 @@ final class Applier
         }
         foreach ($plan as $option => $entries) {
             $container = $entries[0]['observer']->read_container();
+            $present = (bool) ($container['present'] ?? false);
+            // An absent option has no fingerprint; '' is its sentinel and matches a
+            // receipt whose storage_fingerprint is null — a create into an option that
+            // does not exist yet. A present option must still fingerprint-match exactly.
+            $current_fp = $present ? (string) $container['fingerprint'] : '';
             $expected = (string) ($entries[0]['prepared']['storage_fingerprint'] ?? '');
             foreach ($entries as $entry) {
                 if ((string) ($entry['prepared']['storage_fingerprint'] ?? '') !== $expected) {
@@ -186,11 +245,11 @@ final class Applier
                     break;
                 }
             }
-            if ($expected === null || ! $container['present'] || $container['fingerprint'] !== $expected) {
-                $stale_containers[$option] = $container['fingerprint'];
+            if ($expected === null || $current_fp !== $expected) {
+                $stale_containers[$option] = $current_fp;
                 continue;
             }
-            $before_images[$option] = ['fingerprint' => $container['fingerprint'], 'raw' => $container['raw']];
+            $before_images[$option] = ['fingerprint' => $current_fp, 'raw' => $present ? $container['raw'] : null, 'absent' => ! $present];
         }
         $journal = [];
         $started_row = $this->operations->start([
@@ -315,7 +374,7 @@ final class Applier
         $created_media = [];
         $carried_media = is_array($manifest['media'] ?? null) ? $manifest['media'] : [];
         if ($carried_media !== []) {
-            $materialized = MediaMaterializer::materialize($carried_media);
+            $materialized = MediaMaterializer::materialize($carried_media, $this->media_puller);
             $created_media = array_values($materialized['created']);
             $journal[] = ['container' => $container, 'step' => 'media', 'result' => $materialized['errors'] === [] ? 'materialized' : 'failed', 'created' => count($created_media), 'reused' => count($materialized['reused']), 'created_ids' => $created_media, 'errors' => $materialized['errors']];
             if ($materialized['errors'] !== []) {
@@ -382,6 +441,8 @@ final class Applier
             'target' => ['environment_id' => (string) $state['environment_id'], 'epoch' => (string) $state['installation_epoch']],
             'started_at' => gmdate('c', $started),
         ];
+        // Rollback restores journalled before-images and never materializes media.
+        $this->media_puller = null;
         if (strtotime((string) ($approval['expires_at'] ?? '') . ' UTC') <= time()) {
             return $this->finish_rollback($base, 'stale', 'approval_expired', [], [], $hub_url);
         }
@@ -549,12 +610,23 @@ final class Applier
             }
 
             $option = $key;
-            $affected = $wpdb->query($wpdb->prepare(
-                "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND SHA2(option_value, 256) = %s",
-                (string) $target_image['raw'],
-                $option,
-                $afp
-            ));
+            $absent_before = ! empty($target_image['absent']);
+            if ($absent_before) {
+                // The option did not exist before the operation created it: restore
+                // absence by deleting it, guarded by the operation's after fingerprint.
+                $affected = $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$wpdb->options} WHERE option_name = %s AND SHA2(option_value, 256) = %s",
+                    $option,
+                    $afp
+                ));
+            } else {
+                $affected = $wpdb->query($wpdb->prepare(
+                    "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND SHA2(option_value, 256) = %s",
+                    (string) $target_image['raw'],
+                    $option,
+                    $afp
+                ));
+            }
             self::flush_option_cache($option);
             if ($affected !== 1) {
                 $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'rejected', 'affected' => (int) $affected];
@@ -564,9 +636,16 @@ final class Applier
                 continue;
             }
             $verify = $observer->read_container();
-            $ok = $verify['fingerprint'] === $target_fp;
+            $ok = $absent_before ? ! $verify['present'] : ($verify['fingerprint'] === $target_fp);
             $journal[] = ['container' => $container, 'step' => 'write', 'result' => 'restored', 'fingerprint_before' => $afp, 'fingerprint_after' => $verify['fingerprint']];
             $journal[] = ['container' => $container, 'step' => 'verify', 'result' => $ok ? 'verified' : 'failed'];
+            // The restored before image no longer references the attachments the reversed
+            // apply sideloaded into this collection, so delete exactly those (only after a
+            // verified restore; a reused/pre-existing attachment is never recorded here).
+            if ($ok && ($created_media[$container] ?? []) !== []) {
+                MediaMaterializer::discard($created_media[$container]);
+                $journal[] = ['container' => $container, 'step' => 'media', 'result' => 'discarded', 'discarded_ids' => $created_media[$container]];
+            }
             foreach ($item_result($ok ? 'restored' : 'failed', $ok, $ok ? '' : 'restore_verification_failed') as $r) {
                 $results[] = $r;
             }
@@ -644,7 +723,10 @@ final class Applier
 
         $observer = $entries[0]['observer'];
         $items = [];
-        $value = maybe_unserialize($before['raw']);
+        // A create into an option that does not exist yet starts from an empty
+        // collection; the insert below is an add_option rather than a guarded UPDATE.
+        $absent = ! empty($before['absent']);
+        $value = $absent ? [] : maybe_unserialize($before['raw']);
         if (! is_array($value)) {
             foreach ($entries as $entry) {
                 $items[$entry['key']] = ['outcome' => 'failed', 'verified' => false, 'error' => 'container_not_array'];
@@ -748,7 +830,41 @@ final class Applier
             }
         }
         $new_raw = maybe_serialize($new_value);
-        if ($new_raw === $before['raw']) {
+
+        // Structured media (M9 collection-media follow-up): a created/replaced member may
+        // reference an attachment by content-hash token (BricksMediaReferences) this site
+        // does not yet hold. Materialize the carried bytes, then resolve every token to the
+        // local attachment id so the write never stores a literal token. Created attachment
+        // ids are journalled (for rollback) and discarded on every non-persisting return
+        // below. No tokens → nothing carried → $created_media stays [] and this is inert.
+        $created_media = [];
+        if (BricksMediaReferences::tokens_in_body($new_value) !== []) {
+            $carried_media = [];
+            foreach ($entries as $media_entry) {
+                foreach ((is_array($media_entry['manifest']['media'] ?? null) ? $media_entry['manifest']['media'] : []) as $descriptor) {
+                    $carried_media[] = $descriptor;
+                }
+            }
+            if ($carried_media !== []) {
+                $materialized = MediaMaterializer::materialize($carried_media, $this->media_puller);
+                $created_media = array_values($materialized['created']);
+                $journal[] = ['container' => 'option:' . $option, 'step' => 'media', 'result' => $materialized['errors'] === [] ? 'materialized' : 'failed', 'created' => count($created_media), 'reused' => count($materialized['reused']), 'created_ids' => $created_media, 'errors' => $materialized['errors']];
+            }
+            // Resolve now that the bytes exist (reuses a pre-existing local copy by hash).
+            $new_value = BricksMediaReferences::detokenize($new_value);
+            $new_raw = maybe_serialize($new_value);
+            if (BricksMediaReferences::tokens_in_body($new_value) !== []) {
+                MediaMaterializer::discard($created_media);
+                foreach ($entries as $entry) {
+                    $items[$entry['key']] = ['outcome' => 'failed', 'verified' => false, 'error' => 'media_unresolved'];
+                }
+                $journal[] = ['container' => 'option:' . $option, 'step' => 'media', 'result' => 'unresolved'];
+                return ['written' => false, 'fingerprint_after' => $before['fingerprint'], 'items' => $items];
+            }
+        }
+
+        if (! $absent && $new_raw === $before['raw']) {
+            MediaMaterializer::discard($created_media);
             foreach ($entries as $entry) {
                 $items[$entry['key']] = ['outcome' => 'noop', 'verified' => true, 'error' => ''];
             }
@@ -756,15 +872,23 @@ final class Applier
             return ['written' => false, 'fingerprint_after' => $before['fingerprint'], 'items' => $items];
         }
 
-        // Conditional write: only if the stored value is still exactly the one the receipt was taken against.
-        $affected = $wpdb->query($wpdb->prepare(
-            "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND SHA2(option_value, 256) = %s",
-            $new_raw,
-            $option,
-            $before['fingerprint']
-        ));
+        if ($absent) {
+            // The option did not exist when the before image was captured: insert it.
+            // add_option writes only if it still does not exist, so a concurrent create
+            // loses the race (returns false) and the items are reported stale below.
+            $affected = add_option($option, $new_value) ? 1 : 0;
+        } else {
+            // Conditional write: only if the stored value is still exactly the one the receipt was taken against.
+            $affected = $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND SHA2(option_value, 256) = %s",
+                $new_raw,
+                $option,
+                $before['fingerprint']
+            ));
+        }
         self::flush_option_cache($option);
         if ($affected !== 1) {
+            MediaMaterializer::discard($created_media);
             foreach ($entries as $entry) {
                 $items[$entry['key']] = ['outcome' => 'stale', 'verified' => false, 'error' => 'conditional_write_rejected'];
             }
@@ -807,22 +931,40 @@ final class Applier
             return ['written' => true, 'fingerprint_after' => $fingerprint_after, 'items' => $items];
         }
 
-        // Compensate with the same conditional write back to the journalled before image; verify the restore.
-        $restored = $wpdb->query($wpdb->prepare(
-            "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND SHA2(option_value, 256) = %s",
-            $before['raw'],
-            $option,
-            $fingerprint_after
-        ));
+        // Compensate back to the journalled before image and verify the restore. A
+        // create into a previously-absent option is reversed by deleting the option we
+        // just added (guarded by the written fingerprint); any other write is reversed
+        // by the same conditional UPDATE back to the before raw.
+        if ($absent) {
+            $restored = $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$wpdb->options} WHERE option_name = %s AND SHA2(option_value, 256) = %s",
+                $option,
+                $fingerprint_after
+            ));
+        } else {
+            $restored = $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND SHA2(option_value, 256) = %s",
+                $before['raw'],
+                $option,
+                $fingerprint_after
+            ));
+        }
         self::flush_option_cache($option);
         $now = $observer->read_container();
-        $restored_ok = $restored === 1 && $now['fingerprint'] === $before['fingerprint'];
+        $now_fp = ($now['present'] ?? false) ? (string) $now['fingerprint'] : '';
+        $restored_ok = $restored === 1 && $now_fp === (string) $before['fingerprint'];
         foreach ($entries as $entry) {
             $items[$entry['key']] = ['outcome' => $restored_ok ? 'compensated' : 'failed', 'verified' => false, 'error' => $restored_ok ? 'verification_failed_restored' : 'verification_failed_restore_unverified'];
         }
-        $journal[] = ['container' => 'option:' . $option, 'step' => 'compensate', 'result' => $restored_ok ? 'restored_verified' : 'restore_unverified', 'affected' => (int) $restored, 'fingerprint_now' => $now['fingerprint']];
+        $journal[] = ['container' => 'option:' . $option, 'step' => 'compensate', 'result' => $restored_ok ? 'restored_verified' : 'restore_unverified', 'affected' => (int) $restored, 'fingerprint_now' => $now_fp];
+        if ($restored_ok) {
+            // The restore reverted the new members, so any attachment this apply sideloaded
+            // is now unreferenced — remove it. A restore that did not verify keeps it (the
+            // member may still be written and referencing it).
+            MediaMaterializer::discard($created_media);
+        }
 
-        return ['written' => true, 'fingerprint_after' => $now['fingerprint'], 'items' => $items];
+        return ['written' => true, 'fingerprint_after' => $now_fp, 'items' => $items];
     }
 
     /**

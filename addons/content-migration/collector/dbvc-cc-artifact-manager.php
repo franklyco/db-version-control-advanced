@@ -789,4 +789,130 @@ final class DBVC_CC_Artifact_Manager
             @copy($source_path, $destination_path);
         }
     }
+
+    /**
+     * Report, and optionally remove, crawled domain collections older than a retention window.
+     *
+     * Dry run by default. The content under these directories is a third party's, collected to
+     * rebuild their own site, so deletion is always an explicit act: nothing here runs on a
+     * schedule and nothing deletes unless $execute is true.
+     *
+     * Age is taken from the most recently modified file in the collection, not the directory's own
+     * mtime, because a directory's mtime does not move when a file inside it is rewritten.
+     *
+     * @param int  $retention_days Collections untouched for longer than this are eligible. 0 disables.
+     * @param bool $execute        Remove them. Default false, which only reports.
+     * @return array<string, mixed>
+     */
+    public static function prune_domains($retention_days, $execute = false)
+    {
+        $retention_days = max(0, (int) $retention_days);
+        $base_dir = self::get_storage_base_dir();
+        $result = [
+            'retention_days' => $retention_days,
+            'executed' => false,
+            'eligible' => [],
+            'retained' => [],
+            'removed' => [],
+            'failed' => [],
+        ];
+
+        if ($retention_days === 0 || $base_dir === '' || ! is_dir($base_dir)) {
+            $result['reason'] = $retention_days === 0 ? 'retention_disabled' : 'storage_absent';
+
+            return $result;
+        }
+
+        $cutoff = time() - ($retention_days * DAY_IN_SECONDS);
+
+        foreach (self::list_domain_keys() as $domain_key) {
+            $domain_dir = trailingslashit($base_dir) . $domain_key;
+            if (! is_dir($domain_dir) || ! dbvc_cc_path_is_within($domain_dir, $base_dir)) {
+                continue;
+            }
+
+            $newest = self::newest_mtime_within($domain_dir);
+            $row = [
+                'domain' => $domain_key,
+                'last_modified' => $newest > 0 ? gmdate('c', $newest) : null,
+                'age_days' => $newest > 0 ? (int) floor((time() - $newest) / DAY_IN_SECONDS) : null,
+            ];
+
+            if ($newest === 0 || $newest >= $cutoff) {
+                $result['retained'][] = $row;
+                continue;
+            }
+
+            $result['eligible'][] = $row;
+            if (! $execute) {
+                continue;
+            }
+
+            if (self::delete_directory_within_storage($domain_dir)) {
+                $result['removed'][] = $row;
+            } else {
+                $result['failed'][] = $row;
+            }
+        }
+
+        $result['executed'] = (bool) $execute;
+
+        return $result;
+    }
+
+    /**
+     * @param string $directory
+     * @return int Newest mtime found, or 0.
+     */
+    private static function newest_mtime_within($directory)
+    {
+        $newest = 0;
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($iterator as $item) {
+                if ($item instanceof SplFileInfo && $item->isFile()) {
+                    $newest = max($newest, (int) $item->getMTime());
+                }
+            }
+        } catch (Exception $exception) {
+            return 0;
+        }
+
+        return $newest;
+    }
+
+    /**
+     * @param string $directory
+     * @return bool
+     */
+    private static function delete_directory_within_storage($directory)
+    {
+        $base_dir = self::get_storage_base_dir();
+        if ($base_dir === '' || ! dbvc_cc_path_is_within($directory, $base_dir)) {
+            return false;
+        }
+
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+            foreach ($iterator as $item) {
+                if (! ($item instanceof SplFileInfo)) {
+                    continue;
+                }
+                if ($item->isDir()) {
+                    @rmdir($item->getPathname());
+                } else {
+                    @unlink($item->getPathname());
+                }
+            }
+        } catch (Exception $exception) {
+            return false;
+        }
+
+        return @rmdir($directory) || ! is_dir($directory);
+    }
 }

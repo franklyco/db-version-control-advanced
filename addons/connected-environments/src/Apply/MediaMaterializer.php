@@ -23,10 +23,11 @@ use Dbvc\ConnectedProtocol\Protocol;
 final class MediaMaterializer
 {
     /**
-     * @param array<int, array<string, mixed>> $media Carried descriptors with base64 `bytes`.
+     * @param array<int, array<string, mixed>> $media  Carried descriptors with base64 `bytes`, or `fetch` descriptors pulled by hash.
+     * @param callable|null $puller Resolver for a `fetch` descriptor: given the `sha256:<hex>` hash, returns the raw bytes (or null). A2-2c.
      * @return array{created: array<int,int>, reused: array<int,int>, errors: array<string,string>}
      */
-    public static function materialize(array $media)
+    public static function materialize(array $media, $puller = null)
     {
         $created = [];
         $reused = [];
@@ -45,12 +46,21 @@ final class MediaMaterializer
                 $reused[$hash] = $existing;
                 continue;
             }
+            $is_fetch = ! empty($entry['fetch']);
             $bytes = is_string($entry['bytes'] ?? null) ? base64_decode((string) $entry['bytes'], true) : false;
+            if (($bytes === false || $bytes === '') && $is_fetch && is_callable($puller)) {
+                // A large file (over the inline cap) carries no inline bytes — pull
+                // it by content hash over the media pull channel, then verify and
+                // sideload exactly as an inline file. A failed pull leaves the token
+                // unresolved → the guarded write fails closed (media_unresolved).
+                $pulled = $puller('sha256:' . $hash);
+                $bytes = is_string($pulled) && $pulled !== '' ? $pulled : false;
+            }
             if ($bytes === false || $bytes === '') {
                 $errors[$hash] = 'invalid_bytes';
                 continue;
             }
-            if (strlen($bytes) > Protocol::MAX_MEDIA_FILE_BYTES) {
+            if (strlen($bytes) > ($is_fetch ? Protocol::MAX_PULL_FILE_BYTES : Protocol::MAX_MEDIA_FILE_BYTES)) {
                 $errors[$hash] = 'too_large';
                 continue;
             }

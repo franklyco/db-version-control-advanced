@@ -166,7 +166,8 @@ final class DBVC_CC_V2_Initial_Classification_Service
         $path_tokens = $this->tokenize($path);
         $title = isset($raw_artifact['metadata']['title']) ? (string) $raw_artifact['metadata']['title'] : '';
         $title_tokens = $this->tokenize($title);
-        $headings = isset($raw_artifact['headings']) && is_array($raw_artifact['headings']) ? array_values($raw_artifact['headings']) : [];
+        // Flattened because an externally captured artifact carries {level, text} entries.
+        $headings = dbvc_cc_heading_texts(isset($raw_artifact['headings']) ? $raw_artifact['headings'] : []);
         $heading_tokens = $this->tokenize(implode(' ', array_slice($headings, 0, 5)));
         $context_tags = isset($context_artifact['summary']['dominant_context_tags']) && is_array($context_artifact['summary']['dominant_context_tags'])
             ? array_values($context_artifact['summary']['dominant_context_tags'])
