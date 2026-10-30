@@ -716,6 +716,100 @@ class DBVC_WP_CLI_Commands {
 
 		\WP_CLI\Utils\format_items( 'table', $items, [ 'id', 'type', 'created', 'user', 'counts', 'source' ] );
 	}
+
+	/**
+	 * Harden stored backups and re-redact the secrets they copied.
+	 *
+	 * Backups in uploads/sync/db-version-control-backups/ copy options.json,
+	 * options/*.json and WS Form form exports verbatim, so backups taken before
+	 * redaction existed hold licence keys, API keys and webhook credentials.
+	 * This adds deny files to every backup folder and rewrites those values to
+	 * [dbvc-redacted]; a later restore keeps the site's own value for them.
+	 *
+	 * Always previews first and asks before writing. Output lists folder and
+	 * file names and counts only, never values. Requires --user with the
+	 * manage_options capability.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--dry-run]
+	 * : Report what would change and exit without writing.
+	 *
+	 * [--backup=<name>]
+	 * : Limit to one backup folder.
+	 *
+	 * [--yes]
+	 * : Skip the confirmation prompt after the preview.
+	 *
+	 * ## EXAMPLES
+	 *
+	 * wp dbvc redact-backups --dry-run --user=admin
+	 * wp dbvc redact-backups --user=admin
+	 * wp dbvc redact-backups --backup=10-29-2026-120000 --yes --user=admin
+	 *
+	 * @subcommand redact-backups
+	 *
+	 * @param array $args
+	 * @param array $assoc_args
+	 * @return void
+	 */
+	public function redact_backups( $args, $assoc_args ) {
+		if ( ! class_exists( 'DBVC_Backup_Manager' ) || ! current_user_can( 'manage_options' ) ) {
+			WP_CLI::error( 'Run as a user with manage_options, for example --user=admin.' );
+		}
+
+		$only    = isset( $assoc_args['backup'] ) ? (string) $assoc_args['backup'] : '';
+		$preview = DBVC_Backup_Manager::redact_existing_backups( true, $only );
+		if ( is_wp_error( $preview ) ) {
+			WP_CLI::error( $preview->get_error_message() );
+		}
+
+		$this->print_backup_redaction_report( $preview );
+		if ( ! $preview['redaction_enabled'] ) {
+			WP_CLI::warning( 'The dbvc_redact_restored_option_exports filter turns redaction off on this site; only folders would be hardened.' );
+		}
+
+		$pending = $preview['totals']['redacted_files'] + $preview['totals']['secured_dirs'] + ( $preview['base_secured'] ? 1 : 0 );
+		if ( \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false ) ) {
+			WP_CLI::success( sprintf( 'Dry run: %d file(s) to redact, %d folder(s) to harden. Nothing was written.', $preview['totals']['redacted_files'], $preview['totals']['secured_dirs'] ) );
+			return;
+		}
+		if ( $pending === 0 ) {
+			WP_CLI::success( 'Every backup is already hardened and redacted.' );
+			return;
+		}
+
+		WP_CLI::confirm( 'Rewrite the listed files and harden the listed folders?', $assoc_args );
+
+		$result = DBVC_Backup_Manager::redact_existing_backups( false, $only );
+		if ( is_wp_error( $result ) ) {
+			WP_CLI::error( $result->get_error_message() );
+		}
+
+		WP_CLI::success( sprintf( 'Redacted %d file(s) and hardened %d folder(s) across %d backup(s).', $result['totals']['redacted_files'], $result['totals']['secured_dirs'], $result['totals']['backups'] ) );
+	}
+
+	/**
+	 * @param array $report From DBVC_Backup_Manager::redact_existing_backups().
+	 * @return void
+	 */
+	private function print_backup_redaction_report( array $report ) {
+		if ( empty( $report['backups'] ) ) {
+			WP_CLI::log( 'No backups found.' );
+			return;
+		}
+
+		$rows = [];
+		foreach ( $report['backups'] as $backup ) {
+			$rows[] = [
+				'backup'            => $backup['backup'],
+				'folders_to_harden' => $backup['secured_dirs'],
+				'files_to_redact'   => $backup['redacted_files'],
+				'files'             => implode( ', ', $backup['files'] ),
+			];
+		}
+		\WP_CLI\Utils\format_items( 'table', $rows, [ 'backup', 'folders_to_harden', 'files_to_redact', 'files' ] );
+	}
 }
 
 if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) ) {

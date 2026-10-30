@@ -3533,6 +3533,114 @@
       "runtime_entrypoint": "wp dbvc snapshots"
     },
     {
+      "id": "cli.core.backups.redact",
+      "title": "Backup re-redaction command",
+      "summary": "Hardens every stored backup folder and rewrites secret values in backed-up options.json, options/*.json and WS Form form files to [dbvc-redacted], after a preview and a confirmation.",
+      "status": "active",
+      "primary_category": "cli_automation",
+      "tags": [
+        "object:option",
+        "object:snapshot",
+        "operation:preview",
+        "operation:apply",
+        "risk:filesystem_write",
+        "scope:core",
+        "surface:cli"
+      ],
+      "aliases": [
+        "wp dbvc redact-backups",
+        "re-redact backups",
+        "S1 backup cleanup"
+      ],
+      "addon_or_owner": "DBVC Core",
+      "runtime_entrypoint": "wp dbvc redact-backups",
+      "surfaces": [
+        {
+          "type": "cli",
+          "identifier": "wp dbvc redact-backups",
+          "discovery_ids": [
+            "cli.command.dbvc.redact-backups"
+          ],
+          "source_ref": {
+            "path": "commands/class-wp-cli-commands.php",
+            "line": 756
+          }
+        }
+      ],
+      "requirements": [
+        "WP-CLI with WordPress loaded",
+        "--user with manage_options"
+      ],
+      "inputs": [
+        "--dry-run",
+        "--backup",
+        "--yes"
+      ],
+      "outputs": [
+        "Per-backup table of folders to harden, files to redact and their relative names; never values"
+      ],
+      "artifacts": [],
+      "storage_touched": [
+        "Backup folders under uploads/sync/db-version-control-backups/ (rewrites options.json, options/*.json, third-party/ws-form/forms/*.json; adds .htaccess and index.php)"
+      ],
+      "settings": [],
+      "hooks": [
+        "dbvc_redact_restored_option_exports",
+        "dbvc_is_secret_option_key"
+      ],
+      "safety": {
+        "classification": "filesystem_write",
+        "human_reviewed": true,
+        "dry_run": "yes",
+        "idempotency": "yes",
+        "backup_required": false,
+        "rollback": "None in place: the redacted values are not kept anywhere. The site's own values stay in the database, and a restore keeps them for every placeholder.",
+        "warnings": [
+          "Always previews first and asks for confirmation (--yes skips the prompt); --dry-run exits after the preview without writing.",
+          "Capability gated: DBVC_Backup_Manager::redact_existing_backups() returns dbvc_forbidden without manage_options, so run it with --user.",
+          "Locked backups and uploaded proposal folders in the backup base are included.",
+          "When dbvc_redact_restored_option_exports returns false the command only hardens folders and warns."
+        ]
+      },
+      "source_refs": [
+        {
+          "path": "commands/class-wp-cli-commands.php",
+          "line": 756
+        },
+        {
+          "path": "includes/class-backup-manager.php"
+        },
+        {
+          "path": "includes/class-sync-posts.php"
+        }
+      ],
+      "test_refs": [
+        "tests/phpunit/WSFormAndBackupSecretExposureTest.php"
+      ],
+      "doc_refs": [
+        "docs/reference/meta-masking.md"
+      ],
+      "related": [
+        "storage.core.snapshots",
+        "engine.core.import",
+        "portability.third_party.wsform_form_export"
+      ],
+      "known_gaps": [
+        "The WP-CLI wrapper itself has no automated test; the service method it calls is covered.",
+        "Entity Editor snapshots in .dbvc_entity_editor_backups/ are not in scope."
+      ],
+      "verification": {
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-10-29",
+        "evidence_types": [
+          "source_review",
+          "focused_unit_test"
+        ],
+        "live_runtime_verified": false,
+        "notes": "WSFormAndBackupSecretExposureTest covers the service method: an editor gets dbvc_forbidden and nothing changes, the preview writes nothing and reports 3 file names with no values, apply redacts all three and hardens the folders, a second preview reports 0, and an unknown backup name is an error. Not run against a live site."
+      }
+    },
+    {
       "id": "configuration.core.portability",
       "title": "Configuration portability",
       "summary": "Administrator workflows register configuration domains, export/import configuration packages, preview changes, apply approved values, and download or restore related artifacts.",
@@ -4114,7 +4222,7 @@
         "warnings": [
           "Direct import is a write path; proposal intake offers stronger review gates.",
           "New-entity and filename policies change match behavior.",
-          "Upload sync and backup restore harden every sync folder (.htaccess + index.php, which nginx ignores) and re-redact options.json and options/*.json, so a restored pre-redaction export does not re-expose secrets or carry them to this site; opt out with dbvc_redact_restored_option_exports. A [dbvc-redacted] value in options.json or an options-group file keeps the target's own value on import."
+          "Upload sync and backup restore harden every sync folder (.htaccess + index.php, which nginx ignores) and re-redact options.json, options/*.json and WS Form form files, so a restored pre-redaction export does not re-expose secrets or carry them to this site; opt out with dbvc_redact_restored_option_exports. A [dbvc-redacted] value in options.json or an options-group file keeps the target's own value on import."
         ]
       },
       "source_refs": [
@@ -4134,7 +4242,8 @@
       ],
       "test_refs": [
         "tests/phpunit/OptionsExportSecretRedactionTest.php",
-        "tests/phpunit/SyncFolderSecretExposureTest.php"
+        "tests/phpunit/SyncFolderSecretExposureTest.php",
+        "tests/phpunit/WSFormAndBackupSecretExposureTest.php"
       ],
       "doc_refs": [
         "docs/architecture/README.md"
@@ -6777,7 +6886,8 @@
       ],
       "settings": [],
       "hooks": [
-        "dbvc_enable_snapshot_capture"
+        "dbvc_enable_snapshot_capture",
+        "dbvc_redact_restored_option_exports"
       ],
       "safety": {
         "classification": "filesystem_write",
@@ -6787,7 +6897,8 @@
         "backup_required": false,
         "warnings": [
           "A snapshot is evidence, not automatically a complete database/uploads rollback.",
-          "Retention and cleanup behavior should be verified before relying on history."
+          "Retention and cleanup behavior should be verified before relying on history.",
+          "Backups (uploads/sync/db-version-control-backups/) are usually web-served. New backups run DBVC_Sync_Posts::secure_sync_tree() before the manifest is written: every subfolder gets .htaccess/index.php and options.json, options/*.json and third-party/ws-form/forms/*.json are re-redacted (opt out: dbvc_redact_restored_option_exports). Backups taken before redaction keep their secrets until wp dbvc redact-backups rewrites them."
         ]
       },
       "source_refs": [
@@ -6807,19 +6918,22 @@
         }
       ],
       "test_refs": [
-        "tests/phpunit/ProposalDiffContractTest.php"
+        "tests/phpunit/ProposalDiffContractTest.php",
+        "tests/phpunit/WSFormAndBackupSecretExposureTest.php"
       ],
       "doc_refs": [
         "docs/architecture/media-sync-design.md",
         "docs/architecture/README.md"
       ],
       "related": [
+        "cli.core.backups.redact",
         "cli.core.snapshots.list",
         "proposal.core.decisions",
         "transport.core.sync_packages"
       ],
       "known_gaps": [
-        "Capture, database history, cleanup, retention, and other snapshot lifecycle writers remain broader write-capable behavior; reviewed inspection no longer assigns stable identity."
+        "Capture, database history, cleanup, retention, and other snapshot lifecycle writers remain broader write-capable behavior; reviewed inspection no longer assigns stable identity.",
+        "Proposal folders uploaded into the backup base are not re-redacted on upload; wp dbvc redact-backups covers them on demand."
       ],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
@@ -8828,7 +8942,8 @@
         }
       ],
       "test_refs": [
-        "tests/phpunit/WSFormPreserveIdsTest.php"
+        "tests/phpunit/WSFormPreserveIdsTest.php",
+        "tests/phpunit/WSFormSecretRedactionLiveTest.php"
       ],
       "doc_refs": [
         "docs/implementation/active/wsform-reference-portability.md"
@@ -8855,13 +8970,13 @@
           "pre_post_table_row_counts"
         ],
         "live_runtime_verified": true,
-        "notes": "13 focused PHPUnit cases cover the opt-in gate, the filter override, payload ID collection including nested sections, the collision set arithmetic, the fail-closed empty-owned case, and that prepare_wsform_form_import_object() still carries every payload ID. LIVE MATRIX 2026-10-10 on dbvc-connectedsite-butler against form 1 (12 fields, 48 real submissions, 687 submit_meta rows). Default OFF: fields renumbered 1..73 -> 144..155 and 479 submission meta keys orphaned, reproducing the original defect on real data. Preserved ON: field IDs byte-identical and 0 orphaned keys. Collision guard: injecting field 83, owned by form 7, returned WP_Error dbvc_wsform_id_collision naming field 83, mutated nothing, and left both forms intact. WS Form tables were dumped before the run and restored after; all counters plus orphan_sub_keys returned to baseline and the deployed files were reverted with 0 tracked drift. Phase 2 reference rewriting and Phase 3 data-source mapping were not executed."
+        "notes": "13 focused PHPUnit cases cover the opt-in gate, the filter override, payload ID collection including nested sections, the collision set arithmetic, the fail-closed empty-owned case, and that prepare_wsform_form_import_object() still carries every payload ID. LIVE MATRIX 2026-10-10 on dbvc-connectedsite-butler against form 1 (12 fields, 48 real submissions, 687 submit_meta rows). Default OFF: fields renumbered 1..73 -> 144..155 and 479 submission meta keys orphaned, reproducing the original defect on real data. Preserved ON: field IDs byte-identical and 0 orphaned keys. Collision guard: injecting field 83, owned by form 7, returned WP_Error dbvc_wsform_id_collision naming field 83, mutated nothing, and left both forms intact. WS Form tables were dumped before the run and restored after; all counters plus orphan_sub_keys returned to baseline and the deployed files were reverted with 0 tracked drift. Phase 2 reference rewriting and Phase 3 data-source mapping were not executed. 2026-10-29: WSFormSecretRedactionLiveTest re-imports a redacted snapshot with preservation on and confirms the uid-matched form keeps its ID and its own action secrets; WSFormPreserveIdsLiveTest still passes with WS Form loaded."
       }
     },
     {
       "id": "portability.third_party.wsform_form_export",
       "title": "WS Form form and settings export to the sync folder",
-      "summary": "Writes each selected WS Form form to third-party/ws-form/forms/ as a portable payload carrying a uid and source_id, plus a filtered settings.json. Reports every form that was considered but could not be written, because a file count alone cannot express a form the operator asked for and did not get.",
+      "summary": "Writes each selected WS Form form to third-party/ws-form/forms/ as a portable payload carrying a uid and source_id, plus a filtered settings.json. Reports every form that was considered but could not be written, because a file count alone cannot express a form the operator asked for and did not get. Form exports redact action credentials, webhook endpoints, HTTP header values and literal email addresses to [dbvc-redacted]; import keeps the uid-matched local form's own values.",
       "status": "active",
       "primary_category": "import_export",
       "tags": [
@@ -8899,7 +9014,7 @@
         "Optional dbvc_third_party_wsform_setting_options filter for which option names count as settings"
       ],
       "outputs": [
-        "One JSON file per exported form, named ws-form-<id>-<slug>.json",
+        "One JSON file per exported form, named ws-form-<id>-<slug>.json, with secret action settings redacted to [dbvc-redacted]",
         "third-party/ws-form/settings.json with sensitive keys removed and listed under excluded_keys",
         "A skip report readable via get_last_wsform_export_report(), surfaced in the admin notice and the sync log"
       ],
@@ -8917,8 +9032,9 @@
         "dbvc_third_party_portability_wsform_include_trash"
       ],
       "hooks": [
-        "dbvc_third_party_wsform_setting_options",
-        "dbvc_third_party_wsform_form_snapshot_payload"
+        "dbvc_is_secret_option_key",
+        "dbvc_third_party_wsform_form_snapshot_payload",
+        "dbvc_third_party_wsform_setting_options"
       ],
       "safety": {
         "classification": "filesystem_write",
@@ -8932,7 +9048,8 @@
           "export_selected_entities() returns a file count for backward compatibility. Read get_last_wsform_export_report() to learn what was skipped; forms_considered equals forms_written plus forms_skipped.",
           "Submissions, stats and per-site counters are not exported.",
           "License keys, API keys, tokens, passwords and secrets are stripped from settings.json and preserved locally on import.",
-          "A resumed chunked export does NOT refresh these files; only creating a chunked job or the full export path does, so a resumed run can leave the folder stale."
+          "A resumed chunked export does NOT refresh these files; only creating a chunked job or the full export path does, so a resumed run can leave the folder stale.",
+          "The sync folder is web-served on nginx, so form exports and Entity Editor WS Form snapshots redact secret settings in form-level meta and every action's settings (DBVC_WSForm_Secret_Redactor): keys ending password, secret, api_key, token, licence key, username, endpoint, webhook or header_value always, and email/cc/bcc keys when the value holds a literal address; WS Form variables such as #blog_admin_email are left alone. The checksum is recomputed so the file still passes WS Form's own import check. Import resolves each placeholder against the uid-matched local form, matching actions by row ID and action type, drops it on a clone with no match, and refuses with dbvc_wsform_redacted_unresolved when the matched form cannot be read. Field and section meta are not redacted."
         ]
       },
       "source_refs": [
@@ -8948,8 +9065,10 @@
         }
       ],
       "test_refs": [
+        "tests/phpunit/ThirdPartyPortabilityTest.php",
+        "tests/phpunit/WSFormAndBackupSecretExposureTest.php",
         "tests/phpunit/WSFormExportSkipReportTest.php",
-        "tests/phpunit/ThirdPartyPortabilityTest.php"
+        "tests/phpunit/WSFormSecretRedactionLiveTest.php"
       ],
       "doc_refs": [
         "docs/implementation/active/wsform-reference-portability.md",
@@ -8964,19 +9083,21 @@
         "A trashed form cannot be exported at all; the setting only widens which forms are attempted.",
         "A resumed chunked export still skips third-party refresh (export_selected_entities runs only on job creation).",
         "The skip report is per-run and in-memory; it is not persisted for later inspection.",
-        "No CLI or REST surface returns the skip report."
+        "No CLI or REST surface returns the skip report.",
+        "Form files exported before this change keep their secrets until the next export, an upload/restore (secure_sync_tree) or wp dbvc redact-backups for copies inside backups.",
+        "A redacted file imported through WS Form's own importer, not DBVC, stores the placeholder literally."
       ],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
         "verified_date": "2026-10-12",
         "evidence_types": [
-          "source_review",
           "focused_unit_test",
+          "pre_post_table_row_counts",
           "same_checkout_live_export",
-          "pre_post_table_row_counts"
+          "source_review"
         ],
         "live_runtime_verified": true,
-        "notes": "8 focused PHPUnit cases cover skip classification (including that only an unreadable trashed form is reclassified as trash_unreadable, so a write failure on a trashed form is not mislabelled), sanitisation, unknown-reason fallback, the report shape, and that a run resets the report. LIVE 2026-10-12 on dbvc-connectedsite-a with include_trash enabled and 25 forms: 22 written, 3 skipped, each trashed form named with reason trash_unreadable and an actionable message, and forms_considered == forms_written + forms_skipped. The same db_read refusal was confirmed read-only against WS Form 1.10.87 on frameworkflo-live, so the limitation is not specific to the clone's 1.10.53. Site A restored to baseline afterwards (uid rows 15, sync folder 148 files)."
+        "notes": "8 focused PHPUnit cases cover skip classification (including that only an unreadable trashed form is reclassified as trash_unreadable, so a write failure on a trashed form is not mislabelled), sanitisation, unknown-reason fallback, the report shape, and that a run resets the report. LIVE 2026-10-12 on dbvc-connectedsite-a with include_trash enabled and 25 forms: 22 written, 3 skipped, each trashed form named with reason trash_unreadable and an actionable message, and forms_considered == forms_written + forms_skipped. The same db_read refusal was confirmed read-only against WS Form 1.10.87 on frameworkflo-live, so the limitation is not specific to the clone's 1.10.53. Site A restored to baseline afterwards (uid rows 15, sync folder 148 files). S1 redaction (2026-10-29): 7 unit cases on fixture payloads plus 3 live WS Form cases (DBVC_TESTS_WS_FORM=1, ws-form-pro from frameworkflo-live, test database only): the sync-folder file carries no action secret, re-import keeps the form's own password and endpoint with ID preservation off and on, and a clone never stores the placeholder. The new tests fail on unfixed main (5 errors, 5 assertion failures)."
       }
     },
     {
