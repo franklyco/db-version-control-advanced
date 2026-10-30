@@ -365,9 +365,10 @@ if (! class_exists('DBVC_Options_Groups')) {
          * exported before redaction existed.
          *
          * @param string $file_path
-         * @return bool True when the file was rewritten.
+         * @param bool   $write False to only report whether the file holds unredacted secrets.
+         * @return bool True when the file held unredacted secrets (and, when writing, was rewritten).
          */
-        public static function redact_group_file(string $file_path): bool
+        public static function redact_group_file(string $file_path, bool $write = true): bool
         {
             $raw = is_readable($file_path) ? file_get_contents($file_path) : false;
             $decoded = is_string($raw) ? json_decode($raw, true) : null;
@@ -378,6 +379,9 @@ if (! class_exists('DBVC_Options_Groups')) {
             $redacted = self::redact_export_payload($decoded);
             if ($redacted === $decoded) {
                 return false;
+            }
+            if (! $write) {
+                return true;
             }
 
             $json = wp_json_encode($redacted, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);

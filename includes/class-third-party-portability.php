@@ -741,9 +741,42 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                     'exported_at'   => current_time('mysql', true),
                 ];
 
-                $form_object->checksum = md5(wp_json_encode($form_object));
                 $payload = json_decode(wp_json_encode($form_object), true);
-                return is_array($payload) ? dbvc_normalize_for_json($payload) : null;
+                if (! is_array($payload)) {
+                    return null;
+                }
+
+                // Forms and Entity Editor snapshots land in the web-served sync
+                // folder, so action credentials, webhook endpoints and literal
+                // recipient addresses are redacted like options.json.
+                $payload = DBVC_WSForm_Secret_Redactor::redact_form_payload($payload);
+                $payload['checksum'] = DBVC_WSForm_Secret_Redactor::form_checksum($payload);
+                return dbvc_normalize_for_json($payload);
+            });
+        }
+
+        /**
+         * Read a form as an export-shaped array without redaction.
+         *
+         * Used on import to resolve redaction placeholders against the
+         * uid-matched local form.
+         *
+         * @param int $form_id
+         * @return array|null Null when WS Form cannot read the form.
+         */
+        private static function read_wsform_form_tree(int $form_id): ?array
+        {
+            return self::with_wsform_caps(function () use ($form_id) {
+                $ws_form = new WS_Form_Form();
+                $ws_form->id = $form_id;
+                try {
+                    $form_object = $ws_form->db_read(true, true, false, false, true);
+                } catch (Throwable $e) {
+                    return null;
+                }
+
+                $tree = is_object($form_object) ? json_decode(wp_json_encode($form_object), true) : null;
+                return is_array($tree) ? $tree : null;
             });
         }
 
@@ -996,6 +1029,11 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                 ? sanitize_key((string) $payload['dbvc_portability']['source_status'])
                 : (isset($payload['status']) ? sanitize_key((string) $payload['status']) : 'draft');
 
+            $payload = self::resolve_wsform_redacted_values($payload, $uid);
+            if (is_wp_error($payload)) {
+                return $payload;
+            }
+
             $form_object = self::prepare_wsform_form_import_object($payload, $uid);
             if (! is_object($form_object)) {
                 return new WP_Error('dbvc_wsform_import_prepare_failed', __('Failed to prepare WS Form payload for import.', 'dbvc'));
@@ -1153,6 +1191,40 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                     'wp_entity'     => self::format_wsform_form_entity($form_id, 'dbvc_portability_uid'),
                 ];
             });
+        }
+
+        /**
+         * Replace redaction placeholders with the uid-matched local form's values.
+         *
+         * A form with no local match is a clone, so its placeholders are
+         * dropped and those settings start empty. A match that WS Form cannot
+         * read fails closed: importing would replace its credentials with
+         * empty values.
+         *
+         * @param array  $payload
+         * @param string $uid
+         * @return array|WP_Error
+         */
+        private static function resolve_wsform_redacted_values(array $payload, string $uid)
+        {
+            if (! DBVC_WSForm_Secret_Redactor::payload_has_placeholder($payload)) {
+                return $payload;
+            }
+
+            $existing_id = self::find_wsform_form_id_by_uid($uid);
+            $current = null;
+            if ($existing_id > 0) {
+                $current = self::read_wsform_form_tree($existing_id);
+                if (! is_array($current)) {
+                    return new WP_Error(
+                        'dbvc_wsform_redacted_unresolved',
+                        __('WS Form import refused: the payload has redacted settings and the matching local form could not be read to keep its values.', 'dbvc'),
+                        ['status' => 409, 'form_id' => $existing_id]
+                    );
+                }
+            }
+
+            return DBVC_WSForm_Secret_Redactor::restore_form_payload($payload, $current);
         }
 
         private static function import_wsform_settings(array $payload)

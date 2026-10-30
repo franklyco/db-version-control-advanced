@@ -73,6 +73,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/class-options-groups.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-master-settings.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-options-secret-redactor.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-wsform-secret-redactor.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityReferences/BricksReferenceMapper.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php';

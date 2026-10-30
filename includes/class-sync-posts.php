@@ -573,12 +573,18 @@ HT;
      * with the dbvc_redact_restored_option_exports filter, for sites that move
      * secrets between environments through options.json on purpose.
      *
+     * Also used for backup folders, which copy the sync folder's JSON files
+     * and sit under uploads. Covers options.json, options/*.json and WS Form
+     * form exports (third-party/ws-form/forms/*.json).
+     *
      * @param string|null $sync_dir Defaults to the configured sync path.
-     * @return array{secured_dirs:int,redacted_files:int}
+     * @param bool        $dry_run  Report what would change without writing anything.
+     * @return array{secured_dirs:int,redacted_files:int,redacted_paths:string[],redaction_enabled:bool}
+     *               In a dry run secured_dirs counts only folders missing a deny file.
      */
-    public static function secure_sync_tree($sync_dir = null)
+    public static function secure_sync_tree($sync_dir = null, $dry_run = false)
     {
-        $result = ['secured_dirs' => 0, 'redacted_files' => 0];
+        $result = ['secured_dirs' => 0, 'redacted_files' => 0, 'redacted_paths' => [], 'redaction_enabled' => true];
         $root = realpath($sync_dir === null ? dbvc_get_sync_path() : (string) $sync_dir);
         if (! $root || ! is_dir($root)) {
             return $result;
@@ -595,6 +601,12 @@ HT;
             }
         }
         foreach ($dirs as $dir) {
+            if ($dry_run) {
+                if (! file_exists($dir . '/.htaccess') || ! file_exists($dir . '/index.php')) {
+                    $result['secured_dirs']++;
+                }
+                continue;
+            }
             self::ensure_directory_security($dir);
             $result['secured_dirs']++;
         }
@@ -606,17 +618,32 @@ HT;
          * @param string $root   Sync folder being secured.
          */
         if (! apply_filters('dbvc_redact_restored_option_exports', true, $root)) {
+            $result['redaction_enabled'] = false;
             return $result;
         }
 
-        if (self::redact_options_json_file($root . '/options.json')) {
-            $result['redacted_files']++;
-        }
+        $write = ! $dry_run;
+        $redactors = [
+            'options.json' => static function ($file) use ($write) {
+                return self::redact_options_json_file($file, $write);
+            },
+        ];
         if (class_exists('DBVC_Options_Groups')) {
-            $group_files = glob($root . '/' . DBVC_Options_Groups::OPTIONS_DIR . '/*.json') ?: [];
-            foreach ($group_files as $group_file) {
-                if (DBVC_Options_Groups::redact_group_file($group_file)) {
+            $redactors[DBVC_Options_Groups::OPTIONS_DIR . '/*.json'] = static function ($file) use ($write) {
+                return DBVC_Options_Groups::redact_group_file($file, $write);
+            };
+        }
+        if (class_exists('DBVC_WSForm_Secret_Redactor') && class_exists('DBVC_Third_Party_Portability')) {
+            $redactors[DBVC_Third_Party_Portability::SYNC_DIR . '/forms/*.json'] = static function ($file) use ($write) {
+                return DBVC_WSForm_Secret_Redactor::redact_form_file($file, $write);
+            };
+        }
+
+        foreach ($redactors as $pattern => $redactor) {
+            foreach (glob($root . '/' . $pattern) ?: [] as $file) {
+                if ($redactor($file)) {
                     $result['redacted_files']++;
+                    $result['redacted_paths'][] = ltrim(substr($file, strlen($root)), '/');
                 }
             }
         }
@@ -628,9 +655,10 @@ HT;
      * Re-apply secret redaction to an options.json file in place.
      *
      * @param string $file_path
-     * @return bool True when the file held unredacted secrets and was rewritten.
+     * @param bool   $write False to only report whether the file holds unredacted secrets.
+     * @return bool True when the file held unredacted secrets (and, when writing, was rewritten).
      */
-    private static function redact_options_json_file($file_path)
+    private static function redact_options_json_file($file_path, $write = true)
     {
         if (! is_file($file_path) || ! is_readable($file_path)) {
             return false;
@@ -643,6 +671,9 @@ HT;
         $redacted = DBVC_Options_Secret_Redactor::redact_options($decoded);
         if ($redacted === $decoded) {
             return false;
+        }
+        if (! $write) {
+            return true;
         }
 
         $json = wp_json_encode($redacted, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
@@ -1027,6 +1058,11 @@ HT;
                 error_log("[DBVC] ERROR: Failed to copy {$relative_path} to {$dest_path}");
             }
         }
+
+        // Backups sit under uploads, usually web-served, and copy the sync
+        // folder verbatim: harden every subfolder, and re-redact in case the
+        // sync folder holds exports written before redaction existed.
+        self::secure_sync_tree($backup_path);
 
         // Generate manifest snapshot for this backup
         if (class_exists('DBVC_Backup_Manager')) {

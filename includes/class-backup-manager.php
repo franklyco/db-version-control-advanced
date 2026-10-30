@@ -956,6 +956,90 @@ if (! class_exists('DBVC_Backup_Manager')) {
         }
 
         /**
+         * Harden stored backup folders and re-redact the secret exports in them.
+         *
+         * Backups copy options.json, options/*.json and WS Form form exports
+         * verbatim, so a backup taken before redaction existed still holds
+         * licence keys, API keys and webhook credentials, under uploads where
+         * nginx serves them. This rewrites those files with the redaction
+         * placeholder, which a later restore resolves to the site's own value.
+         * Locked backups are included: locking only exempts them from rotation.
+         *
+         * The report names folders and files and gives counts; it never
+         * carries option or setting values.
+         *
+         * @param bool   $dry_run Report without writing.
+         * @param string $only    Limit to one backup folder name.
+         * @return array|WP_Error {dry_run, base_secured, backups: list of {backup, secured_dirs, redacted_files, files}, totals}
+         */
+        public static function redact_existing_backups($dry_run = true, $only = '')
+        {
+            if (! current_user_can('manage_options')) {
+                return new WP_Error('dbvc_forbidden', __('You do not have permission to modify backups.', 'dbvc'));
+            }
+            if (! class_exists('DBVC_Sync_Posts') || ! method_exists('DBVC_Sync_Posts', 'secure_sync_tree')) {
+                return new WP_Error('dbvc_missing_sync', __('Sync folder hardening is unavailable.', 'dbvc'));
+            }
+
+            $dry_run = (bool) $dry_run;
+            $only    = sanitize_file_name((string) $only);
+            $base    = self::get_base_path(false);
+            $report  = [
+                'dry_run'           => $dry_run,
+                'base_secured'      => false,
+                'redaction_enabled' => true,
+                'backups'           => [],
+                'totals'            => ['backups' => 0, 'secured_dirs' => 0, 'redacted_files' => 0],
+            ];
+            if (! is_dir($base)) {
+                return $only !== ''
+                    ? new WP_Error('dbvc_backup_missing', __('The selected backup could not be found.', 'dbvc'))
+                    : $report;
+            }
+
+            $folders = glob($base . '/*', GLOB_ONLYDIR) ?: [];
+            if ($only !== '') {
+                $folders = array_values(array_filter($folders, static function ($folder) use ($only) {
+                    return basename($folder) === $only;
+                }));
+                if (empty($folders)) {
+                    return new WP_Error('dbvc_backup_missing', __('The selected backup could not be found.', 'dbvc'));
+                }
+            }
+            sort($folders);
+
+            $base_missing_deny = ! file_exists($base . '/.htaccess') || ! file_exists($base . '/index.php');
+            if (! $dry_run) {
+                DBVC_Sync_Posts::ensure_directory_security($base);
+            }
+            $report['base_secured'] = $base_missing_deny;
+
+            foreach ($folders as $folder) {
+                $result = DBVC_Sync_Posts::secure_sync_tree($folder, $dry_run);
+                $report['redaction_enabled'] = $report['redaction_enabled'] && ! empty($result['redaction_enabled']);
+                $report['backups'][] = [
+                    'backup'         => basename($folder),
+                    'secured_dirs'   => (int) $result['secured_dirs'],
+                    'redacted_files' => (int) $result['redacted_files'],
+                    'files'          => array_values((array) ($result['redacted_paths'] ?? [])),
+                ];
+                $report['totals']['backups']++;
+                $report['totals']['secured_dirs'] += (int) $result['secured_dirs'];
+                $report['totals']['redacted_files'] += (int) $result['redacted_files'];
+            }
+
+            if (! $dry_run && class_exists('DBVC_Sync_Logger')) {
+                DBVC_Sync_Logger::log('Backup folders hardened and re-redacted', [
+                    'backups'        => $report['totals']['backups'],
+                    'secured_dirs'   => $report['totals']['secured_dirs'],
+                    'redacted_files' => $report['totals']['redacted_files'],
+                ]);
+            }
+
+            return $report;
+        }
+
+        /**
          * Simple directory size helper.
          *
          * @param string $dir
