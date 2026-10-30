@@ -366,6 +366,9 @@ function dbvc_handle_option_updates($option, $old_value, $new_value)
 	if (! function_exists('current_user_can') || ! function_exists('wp_get_current_user')) {
 		return;
 	}
+	if (! dbvc_is_option_update_export_enabled()) {
+		return;
+	}
 	// Allow other plugins to add their own options to skip
 	$skip_options = apply_filters('dbvc_skip_option_names', ['dbvc_']);
 

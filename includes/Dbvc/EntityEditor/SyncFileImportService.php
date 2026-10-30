@@ -2525,7 +2525,7 @@ final class SyncFileImportService
         }
 
         $safe_name = str_replace(['/', '\\'], '__', ltrim((string) $relative_path, '/'));
-        $backup_name = $safe_name . '.' . gmdate('Ymd-His') . '.bak.json';
+        $backup_name = $safe_name . '.' . \dbvc_backup_file_stamp() . '.bak.json';
         $backup_path = trailingslashit($backup_dir) . $backup_name;
 
         if (! @copy($absolute_path, $backup_path)) {

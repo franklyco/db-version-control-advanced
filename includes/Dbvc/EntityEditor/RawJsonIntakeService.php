@@ -958,8 +958,12 @@ final class RawJsonIntakeService
             return new \WP_Error('dbvc_entity_editor_raw_intake_backup_dir_failed', __('Unable to create the Entity Editor backup directory.', 'dbvc'), ['status' => 500]);
         }
 
+        if (\class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
+            \DBVC_Sync_Posts::ensure_directory_security($backup_dir);
+        }
+
         $safe_name = str_replace(['/', '\\'], '__', ltrim((string) $relative_path, '/'));
-        $backup_name = $safe_name . '.' . gmdate('Ymd-His') . '.bak.json';
+        $backup_name = $safe_name . '.' . \dbvc_backup_file_stamp() . '.bak.json';
         $backup_path = trailingslashit($backup_dir) . $backup_name;
 
         if (! @copy($absolute_path, $backup_path)) {

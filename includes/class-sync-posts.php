@@ -563,6 +563,92 @@ HT;
         }
     }
 
+    /**
+     * Harden every folder in the sync tree and re-redact option exports in it.
+     *
+     * Upload sync and backup restore copy files into the sync folder without
+     * going through the exporters, so neither the per-folder deny files nor
+     * the options.json redaction were applied. A restored or uploaded
+     * options.json may predate redaction. The re-redaction can be turned off
+     * with the dbvc_redact_restored_option_exports filter, for sites that move
+     * secrets between environments through options.json on purpose.
+     *
+     * @param string|null $sync_dir Defaults to the configured sync path.
+     * @return array{secured_dirs:int,redacted_files:int}
+     */
+    public static function secure_sync_tree($sync_dir = null)
+    {
+        $result = ['secured_dirs' => 0, 'redacted_files' => 0];
+        $root = realpath($sync_dir === null ? dbvc_get_sync_path() : (string) $sync_dir);
+        if (! $root || ! is_dir($root)) {
+            return $result;
+        }
+
+        $dirs = [$root];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir() && ! $item->isLink()) {
+                $dirs[] = $item->getPathname();
+            }
+        }
+        foreach ($dirs as $dir) {
+            self::ensure_directory_security($dir);
+            $result['secured_dirs']++;
+        }
+
+        /**
+         * Filter whether option exports placed by an upload or restore are re-redacted.
+         *
+         * @param bool   $redact Default true.
+         * @param string $root   Sync folder being secured.
+         */
+        if (! apply_filters('dbvc_redact_restored_option_exports', true, $root)) {
+            return $result;
+        }
+
+        if (self::redact_options_json_file($root . '/options.json')) {
+            $result['redacted_files']++;
+        }
+        if (class_exists('DBVC_Options_Groups')) {
+            $group_files = glob($root . '/' . DBVC_Options_Groups::OPTIONS_DIR . '/*.json') ?: [];
+            foreach ($group_files as $group_file) {
+                if (DBVC_Options_Groups::redact_group_file($group_file)) {
+                    $result['redacted_files']++;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Re-apply secret redaction to an options.json file in place.
+     *
+     * @param string $file_path
+     * @return bool True when the file held unredacted secrets and was rewritten.
+     */
+    private static function redact_options_json_file($file_path)
+    {
+        if (! is_file($file_path) || ! is_readable($file_path)) {
+            return false;
+        }
+        $decoded = json_decode((string) file_get_contents($file_path), true);
+        if (! is_array($decoded)) {
+            return false;
+        }
+
+        $redacted = DBVC_Options_Secret_Redactor::redact_options($decoded);
+        if ($redacted === $decoded) {
+            return false;
+        }
+
+        $json = wp_json_encode($redacted, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        return is_string($json) && file_put_contents($file_path, $json) !== false;
+    }
+
     // Helper Function for Folder Path Checking
     public static function is_safe_file_path($path)
     {
@@ -1009,6 +1095,9 @@ HT;
         if (file_exists($manifest_path)) {
             @unlink($manifest_path);
         }
+
+        // The wipe removed the deny files and the backup may predate redaction.
+        self::secure_sync_tree($sync_dir);
     }
 
     /**
@@ -5886,6 +5975,11 @@ $acf_relationship_fields = [
             }
         } else {
             $failure_reason = 'unsupported_extension';
+        }
+
+        if (! $dry_run) {
+            // Uploaded files bypass the exporters: harden their folders and re-redact option exports.
+            $log_context['secured'] = self::secure_sync_tree($sync_dir);
         }
 
         if (! $success && class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {

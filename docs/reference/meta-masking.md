@@ -61,3 +61,13 @@ If you need to roll back the automated selections stamped by **Apply masking rul
 - Import treats `[dbvc-redacted]` as "keep this site's value". A redacted top-level option is never written. A redacted nested field takes the target's value at the same path, or is dropped when the target has none.
 - To change the classification, use `dbvc_is_secret_option_key` (`$is_secret`, `$key`, `$path`). Here `$path` is `''` for a top-level option name and the dotted parent path for a nested key.
 - Redaction runs after `dbvc_export_options_data`, so that filter cannot add a secret back.
+
+### Other sync-folder files
+
+The same redaction and placeholder contract covers the other files DBVC writes beside `options.json`:
+
+- **ACF options-group files** (`options/{group}.json`). A field is redacted whole when it is an ACF `password` field or its name looks secret by the top-level rule. Repeater and group sub-fields are redacted by key name. On import, a fully redacted field is not written, and a redacted sub-field takes the site's current value at the same path.
+- **Entity Editor snapshots** (`.dbvc_entity_editor_backups/*.snapshot.json`). Before the snapshot is written, the configured meta masking (`dbvc_mask_meta_keys`, `dbvc_mask_subkeys`) runs, and then the secret-name redaction. Serialized meta values are unserialized when a nested key is redacted. Snapshot and `.bak.json` names now end in a random suffix, and the folder gets the `.htaccess` and `index.php` deny files.
+- **Upload sync and backup restore.** After files are placed, every folder in the sync tree gets the deny files, and `options.json` and `options/*.json` are redacted again. A restored export from before redaction therefore stops exposing secrets, and it can no longer carry another site's secrets in on import. Sites that move secrets between environments through `options.json` on purpose can return `false` from `dbvc_redact_restored_option_exports` (`$redact`, `$sync_root`).
+
+The `dbvc_export_options_on_update` setting (Export tab, default on) controls whether every saved site option rewrites `options.json`. Turn it off to write the file only through the admin export, `wp dbvc export` and the other export triggers.
