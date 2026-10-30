@@ -66,6 +66,7 @@ class OptionsExportSecretRedactionTest extends WP_UnitTestCase
             'sc_api_token' => 'tok-surecart-4444',
             'rg_gforms_key' => 'gf-key-5555',
             'brickscore_license_options' => ['license' => 'lic-core-6666', 'status' => 'valid'],
+            'brickssync_activation_id' => 'act-uuid-6767',
         ];
         foreach ($secrets as $name => $value) {
             $this->seed_option($name, $value);
@@ -79,7 +80,7 @@ class OptionsExportSecretRedactionTest extends WP_UnitTestCase
             $this->assertArrayHasKey($name, $exported, "{$name} stays listed so operators can see it was redacted.");
             $this->assertSame(self::PLACEHOLDER, $exported[$name], "{$name} must be redacted.");
         }
-        foreach (['1111', '2222', '3333', '4444', '5555', '6666'] as $marker) {
+        foreach (['1111', '2222', '3333', '4444', '5555', '6666', '6767'] as $marker) {
             $this->assertStringNotContainsString($marker, $raw, 'No secret value may reach options.json.');
         }
         $this->assertSame('visible-value', $exported['dbvc_s1_plain_setting']);
@@ -95,6 +96,7 @@ class OptionsExportSecretRedactionTest extends WP_UnitTestCase
             'kits' => [['name' => 'Kit', 'token' => 'nested-kit-1212']],
             'unsplash_api' => 'nested-unsplash-1313',
             'cf_apitoken' => 'nested-cf-1414',
+            'sc_license_id' => 'nested-lic-id-1515',
             // Non-secret look-alikes must survive untouched.
             'conditions' => [['key' => 'user_role', 'value' => 'editor']],
             'max_tokens' => 4000,
@@ -106,7 +108,7 @@ class OptionsExportSecretRedactionTest extends WP_UnitTestCase
         $raw = $this->export_and_read_raw();
         $exported = json_decode($raw, true)['dbvc_s1_plugin_settings'];
 
-        foreach (['7777', '8888', '9999', '0000', '1212', '1313', '1414'] as $marker) {
+        foreach (['7777', '8888', '9999', '0000', '1212', '1313', '1414', '1515'] as $marker) {
             $this->assertStringNotContainsString($marker, $raw);
         }
         $this->assertSame(self::PLACEHOLDER, $exported['api_key']);

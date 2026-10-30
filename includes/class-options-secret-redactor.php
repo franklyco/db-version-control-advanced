@@ -35,9 +35,11 @@ class DBVC_Options_Secret_Redactor
      * smtp.pass, facebook_secret, kits.N.token). Nested keys only match on
      * the ending so look-alikes such as max_tokens, lost_password_page and a
      * bare Bricks condition "key" are left alone. "_api" catches keys stored
-     * under names such as unsplash_api.
+     * under names such as unsplash_api. Licence activation and licence IDs
+     * (brickssync_activation_id, sc_license_id) can act on the licence
+     * through the vendor's API.
      */
-    const SECRET_ENDINGS = '(^|[_\-.])(secret|token|password|passwd|pwd|pass|license|licence|salt|credentials?|apikey|apitoken)$|.[_\-.](key|api)$|(api|secret|private|access|license|licence)key$|(api|auth|access|refresh|bearer)token$';
+    const SECRET_ENDINGS = '(^|[_\-.])(secret|token|password|passwd|pwd|pass|license|licence|salt|credentials?|apikey|apitoken)$|.[_\-.](key|api)$|(api|secret|private|access|license|licence)key$|(api|auth|access|refresh|bearer)token$|(^|[_\-.])(activation|license|licence)[_\-]?id$';
 
     /**
      * Redact every secret-shaped value in an options map destined for options.json.
