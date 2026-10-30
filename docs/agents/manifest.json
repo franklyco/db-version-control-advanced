@@ -3915,6 +3915,8 @@
             "hook.extension_point.dbvc_export_term_data.321247f3",
             "hook.extension_point.dbvc_export_term_file_path.ec32216e",
             "hook.extension_point.dbvc_import_backup_override.99d7608e",
+            "hook.extension_point.dbvc_is_secret_option_key.d7b0ed21",
+            "hook.extension_point.dbvc_is_secret_option_key.fc09a237",
             "hook.extension_point.dbvc_meta_sanitize_skip_keys.cb365826",
             "hook.extension_point.dbvc_selected_options_groups.73d58c9b",
             "hook.extension_point.dbvc_should_export_on_option_update.6c2bb3de",
@@ -3961,7 +3963,8 @@
         "dbvc_after_export_term",
         "dbvc_export_options_data",
         "dbvc_export_post_data",
-        "dbvc_export_term_data"
+        "dbvc_export_term_data",
+        "dbvc_is_secret_option_key"
       ],
       "safety": {
         "classification": "filesystem_write",
@@ -3971,7 +3974,8 @@
         "backup_required": false,
         "warnings": [
           "Export can replace existing sync artifacts.",
-          "Masking and domain transformation affect portability and data exposure."
+          "Masking and domain transformation affect portability and data exposure.",
+          "The sync folder sits under ABSPATH and its .htaccess deny is ignored by nginx; options.json redacts secret-shaped values to [dbvc-redacted] and import keeps the target's own value for them, but every other option value is web-readable unless the server blocks the path."
         ]
       },
       "source_refs": [
@@ -3984,9 +3988,14 @@
         },
         {
           "path": "includes/class-sync-taxonomies.php"
+        },
+        {
+          "path": "includes/class-options-secret-redactor.php"
         }
       ],
-      "test_refs": [],
+      "test_refs": [
+        "tests/phpunit/OptionsExportSecretRedactionTest.php"
+      ],
       "doc_refs": [
         "docs/architecture/README.md",
         "docs/reference/meta-masking.md"

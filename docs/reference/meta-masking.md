@@ -52,3 +52,12 @@ Override is designed for cases where masking provides a placeholder but deployme
 ## Revert Masked Decisions
 
 If you need to roll back the automated selections stamped by **Apply masking rules**, open the Tools panel and click **Revert masking decisions**. This clears any accept/keep decisions that were created via the masking tool (based on the current mask patterns) and removes the related suppress/override records so the affected fields return to **Masking candidates**. Use this whenever masking rules change or when a proposal requires full reviewer scrutiny again.
+
+## Options Export Redaction
+
+`options.json` is not covered by the masking rules above; it has its own fixed redaction, always on. The sync folder sits under ABSPATH, and nginx ignores its `.htaccess`, so treat every value in the file as public.
+
+- Export replaces secret-shaped values with `[dbvc-redacted]`. A top-level option is redacted whole when its name contains a word such as `secret`, `token`, `password`, `license` or `credentials`, or ends in `_key`, `_pass`, `_salt` or `_api`. Inside a settings array, only string or number values whose key ends that way are redacted. Look-alikes such as `max_tokens`, `lost_password_page` and a bare `key` are kept.
+- Import treats `[dbvc-redacted]` as "keep this site's value". A redacted top-level option is never written. A redacted nested field takes the target's value at the same path, or is dropped when the target has none.
+- To change the classification, use `dbvc_is_secret_option_key` (`$is_secret`, `$key`, `$path`). Here `$path` is `''` for a top-level option name and the dotted parent path for a nested key.
+- Redaction runs after `dbvc_export_options_data`, so that filter cannot add a secret back.
