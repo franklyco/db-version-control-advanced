@@ -512,9 +512,13 @@ if (! function_exists('dbvc_recursive_str_replace')) {
  */
 function dbvc_get_sync_path($subfolder = '')
 {
-	$custom_path = get_option('dbvc_sync_path', '');
+	$custom_path   = get_option('dbvc_sync_path', '');
+	$absolute_root = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::absolute_root() : '';
 
-	if (! empty($custom_path)) {
+	if ($absolute_root !== '') {
+		// DBVC_SYNC_PATH_ABSOLUTE wins over the ABSPATH-relative option.
+		$base_path = $absolute_root;
+	} elseif (! empty($custom_path)) {
 		// Validate and sanitize the custom path
 		$custom_path = dbvc_validate_sync_path($custom_path);
 		if (false === $custom_path) {
@@ -1161,6 +1165,26 @@ function dbvc_sanitize_json_data($data)
 } */
 
 /**
+ * Whether a path equals a root or sits below it, on a segment boundary.
+ *
+ * A bare prefix test would accept `/srv/site-evil` for the root `/srv/site`.
+ *
+ * @param string $path Absolute path.
+ * @param string $root Absolute root.
+ * @return bool
+ */
+function dbvc_path_is_within($path, $root)
+{
+	$path = untrailingslashit(wp_normalize_path((string) $path));
+	$root = untrailingslashit(wp_normalize_path((string) $root));
+	if ($path === '' || $root === '') {
+		return false;
+	}
+
+	return $path === $root || strpos($path . '/', $root . '/') === 0;
+}
+
+/**
  * Check if a file path is safe for writing.
  * 
  * @param string $file_path The file path to check.
@@ -1180,11 +1204,27 @@ function dbvc_is_safe_file_path($file_path)
 		return false;
 	}
 
-	// Ensure file is within WordPress directory structure
-	$wp_path = realpath(ABSPATH);
+	// Ensure file is within WordPress directory structure, or inside the
+	// absolute sync root configured outside the web root.
 	$resolved_path = realpath(dirname($file_path));
+	if (false === $resolved_path) {
+		return false;
+	}
 
-	if (false === $resolved_path || strpos($resolved_path, $wp_path) !== 0) {
+	$allowed_roots = [realpath(ABSPATH)];
+	$absolute_root = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::absolute_root() : '';
+	if ($absolute_root !== '') {
+		$allowed_roots[] = realpath($absolute_root);
+	}
+
+	$is_allowed = false;
+	foreach (array_filter($allowed_roots) as $root) {
+		if (dbvc_path_is_within($resolved_path, $root)) {
+			$is_allowed = true;
+			break;
+		}
+	}
+	if (! $is_allowed) {
 		return false;
 	}
 
@@ -1227,9 +1267,11 @@ function dbvc_delete_sync_contents($base_dir, $delete_root = false)
 	$base_dir = wp_normalize_path($base_dir);
 	if (! is_dir($base_dir)) return [$deleted, $failed, $deleted_root];
 
-	// Safety rails
-	$abs = wp_normalize_path(ABSPATH);
-	if (strpos($base_dir, $abs) !== 0) return [$deleted, $failed, $deleted_root];
+	// Safety rails: only folders under ABSPATH or the configured absolute sync root.
+	$abs           = wp_normalize_path(ABSPATH);
+	$absolute_root = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::absolute_root() : '';
+	$in_absolute   = $absolute_root !== '' && dbvc_path_is_within($base_dir, $absolute_root);
+	if (strpos($base_dir, $abs) !== 0 && ! $in_absolute) return [$deleted, $failed, $deleted_root];
 
 	$it = new RecursiveIteratorIterator(
 		new RecursiveDirectoryIterator($base_dir, FilesystemIterator::SKIP_DOTS),
@@ -1290,6 +1332,13 @@ function dbvc_is_safe_to_delete_root($dir, $abs = null)
 {
 	$dir = wp_normalize_path($dir);
 	$abs = $abs ? wp_normalize_path($abs) : wp_normalize_path(ABSPATH);
+
+	// The configured absolute root itself is the operator's folder: only its
+	// contents may be cleared. Subfolders below it may be removed.
+	$absolute_root = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::absolute_root() : '';
+	if ($absolute_root !== '' && dbvc_path_is_within($dir, $absolute_root)) {
+		return untrailingslashit($dir) !== untrailingslashit(wp_normalize_path($absolute_root));
+	}
 
 	if (strpos($dir, $abs) !== 0) return false;
 

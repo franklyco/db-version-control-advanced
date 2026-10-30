@@ -453,6 +453,12 @@ class DBVC_Sync_Posts
      */
     public static function get_sync_folder_path()
     {
+        // DBVC_SYNC_PATH_ABSOLUTE wins, matching dbvc_get_sync_path().
+        $absolute_root = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::absolute_root() : '';
+        if ($absolute_root !== '') {
+            return $absolute_root;
+        }
+
         $path = get_option('dbvc_sync_path');
 
         if (!empty($path)) {
@@ -685,7 +691,7 @@ HT;
     {
         $base = realpath(self::get_sync_folder_path());
         $real = realpath($path);
-        return $base && $real && strpos($real, $base) === 0;
+        return $base && $real && dbvc_path_is_within($real, $base);
     }
 
     /**
