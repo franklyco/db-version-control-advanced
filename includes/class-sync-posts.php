@@ -4827,6 +4827,9 @@ $acf_relationship_fields = [
         // Allow other plugins to modify the options data before export
         $filtered = apply_filters('dbvc_export_options_data', $filtered);
 
+        // Redact last so no filter can reintroduce a secret: options.json is web-reachable on nginx.
+        $filtered = DBVC_Options_Secret_Redactor::redact_options(is_array($filtered) ? $filtered : []);
+
         $path = dbvc_get_sync_path();
         if (! is_dir($path)) {
             if (! wp_mkdir_p($path)) {
@@ -4972,7 +4975,12 @@ $acf_relationship_fields = [
         }
 
         foreach ($options as $key => $value) {
-            update_option($key, maybe_unserialize($value));
+            // A redacted value means "keep this site's own secret", never "store the placeholder".
+            $value = DBVC_Options_Secret_Redactor::restore_placeholders(maybe_unserialize($value), get_option($key, null));
+            if ($value === null) {
+                continue;
+            }
+            update_option($key, $value);
         }
     }
 
