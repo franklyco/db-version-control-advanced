@@ -40,6 +40,7 @@ Start with `docs/README.md` for the documentation library and `docs/agent-entryp
 2. Visit **Plugins → Add New → Upload Plugin** and upload the zip.
 3. Activate the plugin. A **DBVC Export** item appears in the admin menu.
 4. Visit **DBVC Export** to configure sync paths, proposal defaults, and media policy.
+5. On nginx hosts (including Cloudways), move the sync folder out of the web root: nginx ignores the folder's `.htaccess`, so `options.json` and entity exports are otherwise downloadable. Add `define('DBVC_SYNC_PATH_ABSOLUTE', '/home/master/applications/<app>/private_html/dbvc-sync');` to `wp-config.php`. Use a dedicated folder, because clearing the sync folder deletes everything inside it. **Tools → Site Health** reports whether the folder is web-reachable.
 
 ### Manual Installation
 1. Copy the repository into `/wp-content/plugins/db-version-control-main` (or install via Composer/git submodule).
