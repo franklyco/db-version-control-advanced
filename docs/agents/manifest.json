@@ -6236,7 +6236,8 @@
         "operation:configure",
         "risk:wordpress_write",
         "scope:core",
-        "surface:admin"
+        "surface:admin",
+        "surface:hook"
       ],
       "aliases": [
         "Configure tab",
@@ -6254,6 +6255,18 @@
           "source_ref": {
             "path": "admin/admin-menu.php",
             "line": 24
+          }
+        },
+        {
+          "type": "hook",
+          "identifier": "Sync folder location filters",
+          "discovery_ids": [
+            "hook.extension_point.dbvc_sync_path_absolute.aaededb4",
+            "hook.extension_point.dbvc_sync_path_forbidden_roots.d81e4807"
+          ],
+          "source_ref": {
+            "path": "includes/class-sync-location.php",
+            "line": 67
           }
         }
       ],
@@ -6880,9 +6893,9 @@
           "type": "cron",
           "identifier": "dbvc_sync_ftp_window_expire scheduling",
           "discovery_ids": [
-            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.658cc8a5",
-            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.fe29a664",
-            "cron.dbvc_sync_ftp_window_expire.wp_schedule_single_event.f219dc25"
+            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.86156aa7",
+            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.f2de83ba",
+            "cron.dbvc_sync_ftp_window_expire.wp_schedule_single_event.6d49fbce"
           ],
           "source_ref": {
             "path": "includes/functions.php",
