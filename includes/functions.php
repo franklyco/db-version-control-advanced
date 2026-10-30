@@ -327,6 +327,38 @@ if (! function_exists('dbvc_get_maskable_post_fields')) {
 	}
 }
 
+if (! function_exists('dbvc_is_option_update_export_enabled')) {
+	/**
+	 * Whether a saved option rewrites options.json (the `updated_option` trigger).
+	 *
+	 * Default on, matching earlier releases. Turning it off stops almost every
+	 * admin save from rewriting a web-reachable file; the other export
+	 * triggers, the admin export and `wp dbvc export` still write it.
+	 *
+	 * @return bool
+	 */
+	function dbvc_is_option_update_export_enabled()
+	{
+		return get_option('dbvc_export_options_on_update', '1') === '1';
+	}
+}
+
+if (! function_exists('dbvc_backup_file_stamp')) {
+	/**
+	 * Timestamp plus random suffix for backup and snapshot filenames in the sync folder.
+	 *
+	 * The sync folder can be web-served (nginx ignores its .htaccess), so a
+	 * name built only from the entity path and the second it was written
+	 * could be guessed. The random suffix makes the URL unguessable.
+	 *
+	 * @return string e.g. 20261029-201500-a1b2c3d4e5f6
+	 */
+	function dbvc_backup_file_stamp()
+	{
+		return gmdate('Ymd-His') . '-' . strtolower(wp_generate_password(12, false, false));
+	}
+}
+
 if (! function_exists('dbvc_get_auto_mask_settings')) {
 	/**
 	 * Resolve masking settings that should be applied during automatic exports.

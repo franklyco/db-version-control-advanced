@@ -1069,6 +1069,7 @@ function dbvc_render_export_page()
       $strip_checked  = ! empty($_POST['dbvc_strip_domain_urls']);
       $mirror_checked = ! empty($_POST['dbvc_export_use_mirror_domain']);
       $options_groups_checked = ! empty($_POST['dbvc_export_options_groups']);
+      $options_on_update_checked = ! empty($_POST['dbvc_export_options_on_update']);
       $bundle_checked = ! empty($_POST['dbvc_media_bundle_enabled']);
 
       // Persist filename format, mirror checkbox, and meta sorting behavior (mirror domain itself is saved in Tab 3)
@@ -1076,6 +1077,7 @@ function dbvc_render_export_page()
       update_option('dbvc_use_slug_in_filenames', $filename_mode === 'id' ? '0' : '1'); // legacy flag
       update_option('dbvc_export_use_mirror_domain', $mirror_checked ? '1' : '0');
       update_option('dbvc_export_options_groups', $options_groups_checked ? '1' : '0');
+      update_option('dbvc_export_options_on_update', $options_on_update_checked ? '1' : '0');
       if (class_exists('DBVC_Media_Sync')) {
           update_option(DBVC_Media_Sync::OPTION_BUNDLE_ENABLED, $bundle_checked ? '1' : '0');
       }
@@ -3239,6 +3241,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 <?php esc_html_e('Include selected Options Groups (ACF) in export', 'dbvc'); ?>
               </label>
               <br><small><?php esc_html_e('Uses selections from Configure → Import Defaults → Options Groups (ACF).', 'dbvc'); ?></small>
+              <br><br>
+              <label>
+                <input type="checkbox" name="dbvc_export_options_on_update" value="1"
+                  <?php checked(get_option('dbvc_export_options_on_update', '1'), '1'); ?> />
+                <?php esc_html_e('Rewrite options.json whenever a site option is saved', 'dbvc'); ?>
+              </label>
+              <br><small><?php esc_html_e('options.json sits in the sync folder, which nginx serves even with the .htaccess deny. Turn this off to write it only on full exports and the other export triggers.', 'dbvc'); ?></small>
               <br><br>
 <?php if (class_exists('DBVC_Media_Sync')) : ?>
               <label>

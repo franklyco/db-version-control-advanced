@@ -67,7 +67,7 @@ final class CoreImportExportProvider extends AbstractOptionDomainProvider
             ],
             'options_groups' => [
                 'label' => __('Options Groups', 'dbvc'),
-                'fields' => ['dbvc_options_groups', 'dbvc_export_options_groups'],
+                'fields' => ['dbvc_options_groups', 'dbvc_export_options_groups', 'dbvc_export_options_on_update'],
             ],
         ];
     }
@@ -123,6 +123,7 @@ final class CoreImportExportProvider extends AbstractOptionDomainProvider
             'dbvc_strip_domain_urls' => Field::bool('dbvc_strip_domain_urls', __('Strip current domain URLs during export', 'dbvc'), 'environment_urls', '0'),
             'dbvc_options_groups' => Field::string_list('dbvc_options_groups', __('Selected ACF options groups', 'dbvc'), 'options_groups'),
             'dbvc_export_options_groups' => Field::bool('dbvc_export_options_groups', __('Export selected options groups', 'dbvc'), 'options_groups', '1'),
+            'dbvc_export_options_on_update' => Field::bool('dbvc_export_options_on_update', __('Rewrite options.json on every option save', 'dbvc'), 'options_groups', '1'),
         ];
     }
 

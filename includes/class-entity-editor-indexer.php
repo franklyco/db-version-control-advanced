@@ -2530,6 +2530,7 @@ final class DBVC_Entity_Editor_Indexer
         if (! is_dir($backup_dir) && ! wp_mkdir_p($backup_dir)) {
             return new \WP_Error('dbvc_entity_editor_backup_dir_failed', __('Unable to create backup directory.', 'dbvc'), ['status' => 500]);
         }
+        DBVC_Sync_Posts::ensure_directory_security($backup_dir);
 
         $snapshot = [];
         if ($kind === 'post') {
@@ -2546,7 +2547,7 @@ final class DBVC_Entity_Editor_Indexer
                 'post_content' => (string) $post->post_content,
                 'post_excerpt' => (string) $post->post_excerpt,
                 'post_status' => (string) $post->post_status,
-                'meta' => get_post_meta($post->ID),
+                'meta' => self::redact_snapshot_meta(get_post_meta($post->ID)),
                 'tax_input' => class_exists('DBVC_Sync_Posts') ? DBVC_Sync_Posts::export_tax_input_portable($post->ID, $post->post_type) : [],
             ];
         } elseif ($kind === 'term') {
@@ -2563,7 +2564,7 @@ final class DBVC_Entity_Editor_Indexer
                 'name' => (string) $term->name,
                 'description' => (string) $term->description,
                 'parent' => (int) $term->parent,
-                'meta' => get_term_meta($term->term_id),
+                'meta' => self::redact_snapshot_meta(get_term_meta($term->term_id)),
             ];
         } else {
             return new \WP_Error('dbvc_entity_editor_snapshot_failed', __('Unknown entity kind for snapshot.', 'dbvc'), ['status' => 500]);
@@ -2576,7 +2577,7 @@ final class DBVC_Entity_Editor_Indexer
             '%s_%d.%s.snapshot.json',
             sanitize_key($kind),
             (int) $entity_id,
-            gmdate('Ymd-His')
+            dbvc_backup_file_stamp()
         );
         $snapshot_path = trailingslashit($backup_dir) . $snapshot_name;
         $encoded = wp_json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
@@ -2585,6 +2586,27 @@ final class DBVC_Entity_Editor_Indexer
         }
 
         return '.dbvc_entity_editor_backups/' . $snapshot_name;
+    }
+
+    /**
+     * Mask and redact entity meta before it is written to a pre-replace snapshot.
+     *
+     * Snapshots land in the web-served sync folder, so they get the operator's
+     * configured meta masking and the secret-name redaction options.json uses.
+     *
+     * @param mixed $meta get_post_meta()/get_term_meta() map.
+     * @return array<string,mixed>
+     */
+    private static function redact_snapshot_meta($meta)
+    {
+        if (! is_array($meta)) {
+            return [];
+        }
+        if (function_exists('dbvc_mask_apply_to_meta')) {
+            $meta = dbvc_mask_apply_to_meta($meta);
+        }
+
+        return DBVC_Options_Secret_Redactor::redact_meta($meta);
     }
 
     /**
@@ -2603,9 +2625,10 @@ final class DBVC_Entity_Editor_Indexer
         if (! is_dir($backup_dir) && ! wp_mkdir_p($backup_dir)) {
             return new \WP_Error('dbvc_entity_editor_backup_dir_failed', __('Unable to create backup directory.', 'dbvc'), ['status' => 500]);
         }
+        DBVC_Sync_Posts::ensure_directory_security($backup_dir);
 
         $safe_name = str_replace(['/', '\\'], '__', ltrim((string) $relative_path, '/'));
-        $backup_name = $safe_name . '.' . gmdate('Ymd-His') . '.bak.json';
+        $backup_name = $safe_name . '.' . dbvc_backup_file_stamp() . '.bak.json';
         $backup_path = trailingslashit($backup_dir) . $backup_name;
 
         if (! @copy($file_path, $backup_path)) {

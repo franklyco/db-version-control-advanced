@@ -177,6 +177,7 @@ if (! class_exists('DBVC_Options_Groups')) {
                 if (empty($payload)) {
                     continue;
                 }
+                $payload = self::redact_export_payload($payload);
 
                 $file_name = self::build_export_filename($entry, $payload);
                 $file_path = trailingslashit($options_dir) . $file_name;
@@ -237,13 +238,22 @@ if (! class_exists('DBVC_Options_Groups')) {
         /**
          * Import a single options group file.
          *
-         * @param string $file_path
+         * A field holding the redaction placeholder keeps this site's value:
+         * a fully redacted field is not written, and a redacted sub-field
+         * takes the site's current value at the same path.
+         *
+         * @param string        $file_path
+         * @param callable|null $field_writer Writes one field as ($field_key, $value, $post_id).
+         *                                    Defaults to ACF's update_field().
          * @return bool
          */
-        public static function import_group_from_file(string $file_path): bool
+        public static function import_group_from_file(string $file_path, ?callable $field_writer = null): bool
         {
-            if (! function_exists('update_field')) {
-                return false;
+            if ($field_writer === null) {
+                if (! function_exists('update_field')) {
+                    return false;
+                }
+                $field_writer = 'update_field';
             }
 
             if (! file_exists($file_path) || ! is_readable($file_path)) {
@@ -276,10 +286,7 @@ if (! class_exists('DBVC_Options_Groups')) {
                 $slug   = isset($meta['slug']) ? (string) $meta['slug'] : '';
                 $post_id = self::resolve_options_export_post_id($slug, $meta);
                 $fields = isset($decoded['fields']) && is_array($decoded['fields']) ? $decoded['fields'] : [];
-                foreach ($fields as $field_key => $field) {
-                    $value = is_array($field) && array_key_exists('value', $field) ? $field['value'] : null;
-                    update_field($field_key, $value, $post_id);
-                }
+                self::import_fields($fields, (string) $post_id, $field_writer);
                 return true;
             }
 
@@ -289,15 +296,92 @@ if (! class_exists('DBVC_Options_Groups')) {
                 $fields_by_post = isset($decoded['fields']) && is_array($decoded['fields']) ? $decoded['fields'] : [];
                 $fields = $fields_by_post[$post_id] ?? reset($fields_by_post);
                 if (is_array($fields)) {
-                    foreach ($fields as $field_key => $field) {
-                        $value = is_array($field) && array_key_exists('value', $field) ? $field['value'] : null;
-                        update_field($field_key, $value, (string) $post_id);
-                    }
+                    self::import_fields($fields, (string) $post_id, $field_writer);
                 }
                 return true;
             }
 
             return false;
+        }
+
+        /**
+         * Write imported field values, resolving redaction placeholders first.
+         *
+         * @param array    $fields       Field key => {name, type, value}.
+         * @param string   $post_id      ACF options post id.
+         * @param callable $field_writer See import_group_from_file().
+         * @return void
+         */
+        private static function import_fields(array $fields, string $post_id, callable $field_writer): void
+        {
+            foreach ($fields as $field_key => $field) {
+                $value = is_array($field) && array_key_exists('value', $field) ? $field['value'] : null;
+                if (DBVC_Options_Secret_Redactor::contains_placeholder($value)) {
+                    $current = function_exists('get_field') ? get_field($field_key, $post_id) : null;
+                    $value   = DBVC_Options_Secret_Redactor::restore_placeholders($value, $current);
+                    if ($value === null) {
+                        continue;
+                    }
+                }
+                call_user_func($field_writer, $field_key, $value, $post_id);
+            }
+        }
+
+        /**
+         * Redact secret-shaped field values before an options group file is written.
+         *
+         * Options-group files sit in the web-served sync folder beside
+         * options.json and follow the same redaction contract.
+         *
+         * @param array $payload Built by build_export_payload().
+         * @return array
+         */
+        private static function redact_export_payload(array $payload): array
+        {
+            if (! isset($payload['fields']) || ! is_array($payload['fields'])) {
+                return $payload;
+            }
+
+            $type     = isset($payload['meta']['type']) ? (string) $payload['meta']['type'] : '';
+            $group_id = isset($payload['meta']['group_id']) ? (string) $payload['meta']['group_id'] : '';
+
+            if ($type === 'acf_field_group') {
+                foreach ($payload['fields'] as $post_id => $fields) {
+                    if (is_array($fields)) {
+                        $payload['fields'][$post_id] = DBVC_Options_Secret_Redactor::redact_acf_fields($fields, $group_id);
+                    }
+                }
+                return $payload;
+            }
+
+            $payload['fields'] = DBVC_Options_Secret_Redactor::redact_acf_fields($payload['fields'], $group_id);
+            return $payload;
+        }
+
+        /**
+         * Re-apply redaction to an options group file already in the sync folder.
+         *
+         * Used after uploads and backup restores, which can place a file
+         * exported before redaction existed.
+         *
+         * @param string $file_path
+         * @return bool True when the file was rewritten.
+         */
+        public static function redact_group_file(string $file_path): bool
+        {
+            $raw = is_readable($file_path) ? file_get_contents($file_path) : false;
+            $decoded = is_string($raw) ? json_decode($raw, true) : null;
+            if (! is_array($decoded)) {
+                return false;
+            }
+
+            $redacted = self::redact_export_payload($decoded);
+            if ($redacted === $decoded) {
+                return false;
+            }
+
+            $json = wp_json_encode($redacted, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            return is_string($json) && file_put_contents($file_path, $json) !== false;
         }
 
         private static function is_group_selected(string $group_id): bool

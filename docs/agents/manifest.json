@@ -3848,6 +3848,7 @@
             "setting.dbvc_auto_create_terms",
             "setting.dbvc_export_filename_format",
             "setting.dbvc_export_options_groups",
+            "setting.dbvc_export_options_on_update",
             "setting.dbvc_export_sort_meta",
             "setting.dbvc_export_use_mirror_domain",
             "setting.dbvc_import_filename_format",
@@ -3870,8 +3871,8 @@
           "type": "hook",
           "identifier": "Core import/export filters and actions",
           "discovery_ids": [
-            "hook.extension_point.dbvc_acf_options_post_id.cdf514b9",
             "hook.extension_point.dbvc_acf_options_post_id.a8472155",
+            "hook.extension_point.dbvc_acf_options_post_id.cdf514b9",
             "hook.extension_point.dbvc_after_export_fse_theme_data.7a5565fb",
             "hook.extension_point.dbvc_after_export_menus.f0652320",
             "hook.extension_point.dbvc_after_export_options.f6f5ab6d",
@@ -3880,22 +3881,22 @@
             "hook.extension_point.dbvc_after_export_term.22e6ec57",
             "hook.extension_point.dbvc_after_import_fse_theme_data.47301a0b",
             "hook.extension_point.dbvc_after_import_term.cae88c5c",
-            "hook.extension_point.dbvc_allowed_export_filename_formats.ddbec072",
-            "hook.extension_point.dbvc_allowed_export_filename_formats.b41965e8",
-            "hook.extension_point.dbvc_allowed_export_filename_formats.f04b7a41",
             "hook.extension_point.dbvc_allowed_export_filename_formats.ab854fe2",
+            "hook.extension_point.dbvc_allowed_export_filename_formats.b41965e8",
+            "hook.extension_point.dbvc_allowed_export_filename_formats.ddbec072",
+            "hook.extension_point.dbvc_allowed_export_filename_formats.f04b7a41",
             "hook.extension_point.dbvc_allowed_statuses_for_export.22c57334",
-            "hook.extension_point.dbvc_allowed_statuses_for_export.cccd4f38",
             "hook.extension_point.dbvc_allowed_statuses_for_export.60b4f55a",
-            "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.539d55aa",
-            "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.139456b2",
-            "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.f143202e",
+            "hook.extension_point.dbvc_allowed_statuses_for_export.cccd4f38",
             "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.052ec6f1",
+            "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.139456b2",
+            "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.539d55aa",
+            "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.f143202e",
             "hook.extension_point.dbvc_available_options_groups.f21ed3ed",
             "hook.extension_point.dbvc_available_taxonomies.480f2f07",
             "hook.extension_point.dbvc_excluded_option_keys.5b3d64f7",
-            "hook.extension_point.dbvc_export_all_post_statuses.e64bf9fe",
             "hook.extension_point.dbvc_export_all_post_statuses.93880ae3",
+            "hook.extension_point.dbvc_export_all_post_statuses.e64bf9fe",
             "hook.extension_point.dbvc_export_filename_mode.f1bdfa53",
             "hook.extension_point.dbvc_export_filename_part.0d5b4b88",
             "hook.extension_point.dbvc_export_fse_theme_data.ca565011",
@@ -3915,9 +3916,11 @@
             "hook.extension_point.dbvc_export_term_data.321247f3",
             "hook.extension_point.dbvc_export_term_file_path.ec32216e",
             "hook.extension_point.dbvc_import_backup_override.99d7608e",
+            "hook.extension_point.dbvc_is_secret_option_key.d245a17d",
             "hook.extension_point.dbvc_is_secret_option_key.d7b0ed21",
             "hook.extension_point.dbvc_is_secret_option_key.fc09a237",
             "hook.extension_point.dbvc_meta_sanitize_skip_keys.cb365826",
+            "hook.extension_point.dbvc_redact_restored_option_exports.3951c151",
             "hook.extension_point.dbvc_selected_options_groups.73d58c9b",
             "hook.extension_point.dbvc_should_export_on_option_update.6c2bb3de",
             "hook.extension_point.dbvc_should_export_post.1170a992",
@@ -3952,6 +3955,7 @@
       ],
       "settings": [
         "dbvc_export_filename_format",
+        "dbvc_export_options_on_update",
         "dbvc_mirror_domain",
         "dbvc_options_groups",
         "dbvc_post_types",
@@ -3975,7 +3979,8 @@
         "warnings": [
           "Export can replace existing sync artifacts.",
           "Masking and domain transformation affect portability and data exposure.",
-          "The sync folder sits under ABSPATH and its .htaccess deny is ignored by nginx; options.json redacts secret-shaped values to [dbvc-redacted] and import keeps the target's own value for them, but every other option value is web-readable unless the server blocks the path."
+          "The sync folder sits under ABSPATH and its .htaccess deny is ignored by nginx. options.json, the ACF options-group files (options/*.json) and Entity Editor snapshots redact secret-shaped values to [dbvc-redacted] (ACF password fields always), and import keeps the target's own value for them; every other value is web-readable unless the server blocks the path.",
+          "dbvc_export_options_on_update (default on) makes almost every admin option save rewrite options.json; turn it off to write only on the other export triggers, the admin export and wp dbvc export."
         ]
       },
       "source_refs": [
@@ -3994,7 +3999,8 @@
         }
       ],
       "test_refs": [
-        "tests/phpunit/OptionsExportSecretRedactionTest.php"
+        "tests/phpunit/OptionsExportSecretRedactionTest.php",
+        "tests/phpunit/SyncFolderSecretExposureTest.php"
       ],
       "doc_refs": [
         "docs/architecture/README.md",
@@ -4008,14 +4014,15 @@
       "known_gaps": [],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-        "verified_date": "2026-08-05",
+        "verified_date": "2026-10-29",
         "evidence_types": [
           "bootstrap_review",
+          "focused_unit_test",
           "source_review",
           "static_registration_discovery"
         ],
         "live_runtime_verified": false,
-        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-10-29: options.json, options-group and Entity Editor snapshot redaction covered by focused phpunit tests (OptionsExportSecretRedactionTest, SyncFolderSecretExposureTest); not verified against a live site."
       },
       "id": "engine.core.export",
       "title": "Core artifact export engine",
@@ -4089,7 +4096,8 @@
         "dbvc_import_require_review"
       ],
       "hooks": [
-        "dbvc_import_options_data"
+        "dbvc_import_options_data",
+        "dbvc_redact_restored_option_exports"
       ],
       "safety": {
         "classification": "wordpress_write",
@@ -4100,7 +4108,8 @@
         "rollback": "Restore database/uploads or a pre-import DBVC backup.",
         "warnings": [
           "Direct import is a write path; proposal intake offers stronger review gates.",
-          "New-entity and filename policies change match behavior."
+          "New-entity and filename policies change match behavior.",
+          "Upload sync and backup restore harden every sync folder (.htaccess + index.php, which nginx ignores) and re-redact options.json and options/*.json, so a restored pre-redaction export does not re-expose secrets or carry them to this site; opt out with dbvc_redact_restored_option_exports. A [dbvc-redacted] value in options.json or an options-group file keeps the target's own value on import."
         ]
       },
       "source_refs": [
@@ -4113,9 +4122,15 @@
         },
         {
           "path": "includes/import-scenarios/post.php"
+        },
+        {
+          "path": "includes/class-options-groups.php"
         }
       ],
-      "test_refs": [],
+      "test_refs": [
+        "tests/phpunit/OptionsExportSecretRedactionTest.php",
+        "tests/phpunit/SyncFolderSecretExposureTest.php"
+      ],
       "doc_refs": [
         "docs/architecture/README.md"
       ],
@@ -4129,14 +4144,15 @@
       ],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-        "verified_date": "2026-08-05",
+        "verified_date": "2026-10-29",
         "evidence_types": [
           "bootstrap_review",
+          "focused_unit_test",
           "source_review",
           "static_registration_discovery"
         ],
         "live_runtime_verified": false,
-        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-10-29: placeholder-preserving options and options-group import and the restore/upload hardening covered by focused phpunit tests; not verified against a live site."
       },
       "id": "engine.core.import",
       "title": "Core artifact import and routing engine",
