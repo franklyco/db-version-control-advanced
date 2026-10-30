@@ -3979,7 +3979,8 @@
         "warnings": [
           "Export can replace existing sync artifacts.",
           "Masking and domain transformation affect portability and data exposure.",
-          "The sync folder sits under ABSPATH and its .htaccess deny is ignored by nginx. options.json, the ACF options-group files (options/*.json) and Entity Editor snapshots redact secret-shaped values to [dbvc-redacted] (ACF password fields always), and import keeps the target's own value for them; every other value is web-readable unless the server blocks the path.",
+          "By default the sync folder sits under ABSPATH and its .htaccess deny is ignored by nginx. options.json, the ACF options-group files (options/*.json) and Entity Editor snapshots redact secret-shaped values to [dbvc-redacted] (ACF password fields always), and import keeps the target's own value for them; every other value is web-readable unless the server blocks the path.",
+          "Define DBVC_SYNC_PATH_ABSOLUTE in wp-config.php to write every sync artifact to a dedicated folder outside the web root (for example Cloudways private_html/dbvc-sync). A refused value falls back to the web-reachable folder and is reported in Site Health and an admin notice. Backups, proposals, transfer packets and media bundles still live under uploads/sync.",
           "dbvc_export_options_on_update (default on) makes almost every admin option save rewrite options.json; turn it off to write only on the other export triggers, the admin export and wp dbvc export."
         ]
       },
@@ -3996,11 +3997,15 @@
         },
         {
           "path": "includes/class-options-secret-redactor.php"
+        },
+        {
+          "path": "includes/class-sync-location.php"
         }
       ],
       "test_refs": [
         "tests/phpunit/OptionsExportSecretRedactionTest.php",
-        "tests/phpunit/SyncFolderSecretExposureTest.php"
+        "tests/phpunit/SyncFolderSecretExposureTest.php",
+        "tests/phpunit/SyncPathOutsideWebRootTest.php"
       ],
       "doc_refs": [
         "docs/architecture/README.md",
@@ -4022,7 +4027,7 @@
           "static_registration_discovery"
         ],
         "live_runtime_verified": false,
-        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-10-29: options.json, options-group and Entity Editor snapshot redaction covered by focused phpunit tests (OptionsExportSecretRedactionTest, SyncFolderSecretExposureTest); not verified against a live site."
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-10-29: options.json, options-group and Entity Editor snapshot redaction covered by focused phpunit tests (OptionsExportSecretRedactionTest, SyncFolderSecretExposureTest); not verified against a live site. 2026-10-29: the DBVC_SYNC_PATH_ABSOLUTE root outside the web root (path resolution, write and delete guards, options and post exports, refusals) covered by SyncPathOutsideWebRootTest; not verified on a live or Cloudways site."
       },
       "id": "engine.core.export",
       "title": "Core artifact export engine",
@@ -6267,9 +6272,14 @@
         "WordPress options table"
       ],
       "settings": [
-        "Core import/export settings mapped by engine.core.export"
+        "Core import/export settings mapped by engine.core.export",
+        "DBVC_SYNC_PATH_ABSOLUTE (wp-config constant; overrides dbvc_sync_path)"
       ],
-      "hooks": [],
+      "hooks": [
+        "dbvc_sync_path_absolute",
+        "dbvc_sync_path_forbidden_roots",
+        "site_status_tests"
+      ],
       "safety": {
         "classification": "wordpress_write",
         "human_reviewed": true,
@@ -6278,7 +6288,8 @@
         "backup_required": false,
         "warnings": [
           "Configuration changes alter later import/export behavior.",
-          "The admin page is broad and coupling-sensitive."
+          "The admin page is broad and coupling-sensitive.",
+          "dbvc_sync_path is always resolved under ABSPATH and is web-reachable on nginx. Only the DBVC_SYNC_PATH_ABSOLUTE constant or the dbvc_sync_path_absolute filter can move the folder outside the web root; the admin field turns read-only while it is active. Paths inside a web-served root, containing the install, in system folders, top-level, relative or with traversal segments are refused."
         ]
       },
       "source_refs": [
@@ -6288,9 +6299,14 @@
         },
         {
           "path": "admin/admin-page.php"
+        },
+        {
+          "path": "includes/class-sync-location.php"
         }
       ],
-      "test_refs": [],
+      "test_refs": [
+        "tests/phpunit/SyncPathOutsideWebRootTest.php"
+      ],
       "doc_refs": [],
       "related": [
         "engine.core.export",
@@ -6299,14 +6315,15 @@
       "known_gaps": [],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-        "verified_date": "2026-08-05",
+        "verified_date": "2026-10-29",
         "evidence_types": [
           "bootstrap_review",
+          "focused_unit_test",
           "source_review",
           "static_registration_discovery"
         ],
         "live_runtime_verified": false,
-        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-10-29: sync path location (DBVC_SYNC_PATH_ABSOLUTE validation, fallback, Site Health test dbvc_sync_folder_location) covered by SyncPathOutsideWebRootTest; the Configure UI status lines were not exercised in a browser."
       },
       "id": "settings.core.import_export",
       "title": "Import/export configuration family",
