@@ -3760,9 +3760,34 @@ document.addEventListener('DOMContentLoaded', function () {
             <section id="dbvc-config-import-settings" class="dbvc-subtab-panel<?php echo $active_import_defaults_subtab === 'dbvc-config-import-settings' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-import-settings" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-import-settings" <?php echo $active_import_defaults_subtab === 'dbvc-config-import-settings' ? '' : 'hidden'; ?>>
               <h2><?php esc_html_e('Custom Sync Folder Path', 'dbvc'); ?></h2>
               <p><?php esc_html_e('Enter the path where JSON files should be saved.', 'dbvc'); ?></p>
+              <?php
+              $sync_absolute_root    = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::absolute_root() : '';
+              $sync_absolute_refusal = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::refusal() : null;
+              ?>
+              <?php if ($sync_absolute_root !== '') : ?>
+                <p><em><?php echo esc_html(sprintf(
+                  /* translators: %s: constant name */
+                  __('%s is set in wp-config.php, so the sync folder lives outside the web root and this field has no effect.', 'dbvc'),
+                  DBVC_Sync_Location::CONSTANT_NAME
+                )); ?></em></p>
+              <?php elseif ($sync_absolute_refusal instanceof WP_Error) : ?>
+                <div class="notice notice-error inline"><p><?php echo esc_html(sprintf(
+                  /* translators: 1: constant name, 2: reason */
+                  __('%1$s was refused: %2$s', 'dbvc'),
+                  DBVC_Sync_Location::CONSTANT_NAME,
+                  $sync_absolute_refusal->get_error_message()
+                )); ?></p></div>
+              <?php endif; ?>
               <input type="text" name="dbvc_sync_path" value="<?php echo esc_attr($custom_path); ?>" style="width:100%;"
+                <?php echo $sync_absolute_root !== '' ? 'readonly' : ''; ?>
                 placeholder="<?php esc_attr_e('e.g., wp-content/plugins/db-version-control/sync/', 'dbvc'); ?>" /><br><br>
               <strong><?php esc_html_e('Resolved path:', 'dbvc'); ?></strong> <code><?php echo esc_html($resolved_path); ?></code><br><br>
+              <?php if (class_exists('DBVC_Sync_Location') && DBVC_Sync_Location::is_web_reachable($resolved_path)) : ?>
+                <p class="description"><?php echo esc_html(
+                  __('This folder is inside the web root. nginx ignores its .htaccess, so its files may be downloadable.', 'dbvc')
+                  . ' ' . DBVC_Sync_Location::setup_instructions()
+                ); ?></p>
+              <?php endif; ?>
 
               <hr />
 
