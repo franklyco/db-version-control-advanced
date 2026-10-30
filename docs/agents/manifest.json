@@ -6863,9 +6863,9 @@
           "type": "cron",
           "identifier": "dbvc_sync_ftp_window_expire scheduling",
           "discovery_ids": [
-            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.1934e28c",
-            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.c2225791",
-            "cron.dbvc_sync_ftp_window_expire.wp_schedule_single_event.65510e4c"
+            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.658cc8a5",
+            "cron.dbvc_sync_ftp_window_expire.wp_clear_scheduled_hook.fe29a664",
+            "cron.dbvc_sync_ftp_window_expire.wp_schedule_single_event.f219dc25"
           ],
           "source_ref": {
             "path": "includes/functions.php",
