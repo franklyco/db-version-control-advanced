@@ -90,7 +90,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 - `../../addons/visual-editor/docs/README.md` — Visual Editor implementation and QA router.
 - `../../addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` — Content Migration V2 router.
 - `../../addons/bricks/docs/` — Bricks add-on implementation and planning references.
-- `../../_source/content-collector/docs/` — Content Collector source-reference material; not runtime authority.
+- `../../_source/content-collector/docs/` — Content Collector source-reference material; not runtime authority. Present only in a db-version-control-main development checkout, never in this repository.
 
 ## Generated Capability Summary
 
@@ -131,6 +131,8 @@ composer agent-docs:refresh
 composer agent-docs:check
 composer agent-docs:query -- operation:import surface:cli
 ```
+
+`check` and `build` pass in a clean clone. A reference into a development-only path such as `_source/` prints a warning when the file is absent; see [Clean clones and development-only paths](MAINTENANCE.md#clean-clones-and-development-only-paths).
 
 Use [`MAINTENANCE.md`](MAINTENANCE.md) for change triggers, the capability-impact contract, CI behavior, release checks, and the non-stable-record review cadence.
 
