@@ -5347,6 +5347,9 @@ document.addEventListener('DOMContentLoaded', function () {
             </label>
             <?php if ($logging_effective_file) : ?>
               <p style="margin-top:0.75rem;"><small><?php printf(esc_html__('Current log file: %s', 'dbvc'), '<code>' . esc_html($logging_effective_file) . '</code>'); ?></small></p>
+              <?php if (class_exists('DBVC_Artifact_Location') && DBVC_Artifact_Location::is_private()) : ?>
+                <p><small><?php esc_html_e('DBVC_SYNC_PATH_ABSOLUTE is active, so the log stays outside the web root and the directory above is ignored.', 'dbvc'); ?></small></p>
+              <?php endif; ?>
             <?php endif; ?>
             <?php submit_button(esc_html__('Save Logging Settings', 'dbvc'), 'secondary', 'dbvc_save_logging', false); ?>
           </form>

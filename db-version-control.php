@@ -74,6 +74,8 @@ require_once DBVC_PLUGIN_PATH . 'includes/class-master-settings.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-location.php';
 DBVC_Sync_Location::register();
+require_once DBVC_PLUGIN_PATH . 'includes/class-artifact-location.php';
+DBVC_Artifact_Location::register();
 require_once DBVC_PLUGIN_PATH . 'includes/class-options-secret-redactor.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-wsform-secret-redactor.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityReferences/BricksReferenceMapper.php';

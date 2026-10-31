@@ -29,9 +29,15 @@ if (! class_exists('DBVC_Backup_Manager')) {
         public static function get_base_path($create = true)
         {
             $create = (bool) $create;
-            $upload_dir = $create ? wp_upload_dir() : wp_get_upload_dir();
-            $sync_dir   = trailingslashit($upload_dir['basedir']) . 'sync';
-            $base       = trailingslashit($sync_dir) . 'db-version-control-backups';
+            if (class_exists('DBVC_Artifact_Location') && DBVC_Artifact_Location::is_private()) {
+                // DBVC_SYNC_PATH_ABSOLUTE is active: backups copy options.json,
+                // so they move outside the web root with the sync folder.
+                $base = DBVC_Artifact_Location::path('backups');
+            } else {
+                $upload_dir = $create ? wp_upload_dir() : wp_get_upload_dir();
+                $sync_dir   = trailingslashit($upload_dir['basedir']) . 'sync';
+                $base       = trailingslashit($sync_dir) . 'db-version-control-backups';
+            }
 
             if ($create && ! is_dir($base)) {
                 wp_mkdir_p($base);
@@ -1132,13 +1138,46 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 return new WP_Error('dbvc_backup_locked', __('Cannot delete a locked backup.', 'dbvc'));
             }
 
-            $path = trailingslashit(self::get_base_path()) . $folder;
-            if (! is_dir($path)) {
+            $path = self::resolve_backup_folder($folder);
+            if (! is_string($path)) {
                 return new WP_Error('dbvc_backup_missing', __('Backup folder not found.', 'dbvc'));
             }
 
             self::delete_recursive($path);
             return true;
+        }
+
+        /**
+         * Resolve one backup folder name to a folder directly below the base.
+         *
+         * Refuses empty names, `.`, `..`, separators and anything that
+         * resolves to the base itself or outside it, so a delete can never
+         * reach `uploads/sync`, the private artifact root or a sibling.
+         *
+         * @param string $folder Backup folder name.
+         * @return string|null Absolute folder path.
+         */
+        public static function resolve_backup_folder($folder)
+        {
+            $folder = (string) $folder;
+            if ($folder === '' || $folder === '.' || $folder === '..' || strpbrk($folder, "/\\\0") !== false) {
+                return null;
+            }
+
+            $base      = self::get_base_path(false);
+            $base_real = is_dir($base) ? realpath($base) : false;
+            $path_real = $base_real ? realpath(trailingslashit($base_real) . $folder) : false;
+            if (! is_string($base_real) || ! is_string($path_real) || ! is_dir($path_real)) {
+                return null;
+            }
+
+            $base_real = untrailingslashit(wp_normalize_path($base_real));
+            $path_real = untrailingslashit(wp_normalize_path($path_real));
+            if ($path_real === $base_real || ! dbvc_path_is_within($path_real, $base_real) || dirname($path_real) !== $base_real) {
+                return null;
+            }
+
+            return $path_real;
         }
 
         /**
@@ -1169,9 +1208,9 @@ if (! class_exists('DBVC_Backup_Manager')) {
             }
 
             $folder = sanitize_text_field($folder);
-            $path   = trailingslashit(self::get_base_path()) . $folder;
+            $path   = self::resolve_backup_folder($folder);
 
-            if (! is_dir($path)) {
+            if (! is_string($path)) {
                 return new WP_Error('dbvc_backup_missing', __('Backup folder not found.', 'dbvc'));
             }
 

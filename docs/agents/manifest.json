@@ -3581,7 +3581,7 @@
       ],
       "artifacts": [],
       "storage_touched": [
-        "Backup folders under uploads/sync/db-version-control-backups/ (rewrites options.json, options/*.json, third-party/ws-form/forms/*.json; adds .htaccess and index.php)"
+        "Backup folders under uploads/sync/db-version-control-backups/, or <absolute root>-artifacts/db-version-control-backups/ while DBVC_SYNC_PATH_ABSOLUTE is active (rewrites options.json, options/*.json, third-party/ws-form/forms/*.json; adds .htaccess and index.php)"
       ],
       "settings": [],
       "hooks": [
@@ -3621,9 +3621,10 @@
         "docs/reference/meta-masking.md"
       ],
       "related": [
-        "storage.core.snapshots",
+        "cli.core.artifacts.migrate",
         "engine.core.import",
-        "portability.third_party.wsform_form_export"
+        "portability.third_party.wsform_form_export",
+        "storage.core.snapshots"
       ],
       "known_gaps": [
         "The WP-CLI wrapper itself has no automated test; the service method it calls is covered.",
@@ -3638,6 +3639,114 @@
         ],
         "live_runtime_verified": false,
         "notes": "WSFormAndBackupSecretExposureTest covers the service method: an editor gets dbvc_forbidden and nothing changes, the preview writes nothing and reports 3 file names with no values, apply redacts all three and hardens the folders, a second preview reports 0, and an unknown backup name is an error. Not run against a live site."
+      }
+    },
+    {
+      "id": "cli.core.artifacts.migrate",
+      "title": "Private artifact migration command",
+      "summary": "Copies backups, proposals, snapshots, media bundles, transfer packets and old logs from uploads/sync/ and the legacy log folder into <absolute root>-artifacts/, verifies every copy by hash, and in a separate confirmed run removes the originals that have an identical copy.",
+      "status": "active",
+      "primary_category": "cli_automation",
+      "tags": [
+        "object:snapshot",
+        "operation:preview",
+        "operation:apply",
+        "risk:destructive",
+        "risk:filesystem_write",
+        "scope:core",
+        "surface:cli"
+      ],
+      "aliases": [
+        "wp dbvc migrate-artifacts",
+        "move backups out of uploads",
+        "S1 artifact migration"
+      ],
+      "addon_or_owner": "DBVC Core",
+      "runtime_entrypoint": "wp dbvc migrate-artifacts",
+      "surfaces": [
+        {
+          "type": "cli",
+          "identifier": "wp dbvc migrate-artifacts",
+          "discovery_ids": [
+            "cli.command.dbvc.migrate-artifacts"
+          ],
+          "source_ref": {
+            "path": "commands/class-wp-cli-commands.php",
+            "line": 835
+          }
+        }
+      ],
+      "requirements": [
+        "WP-CLI with WordPress loaded",
+        "--user with manage_options",
+        "A valid DBVC_SYNC_PATH_ABSOLUTE (or dbvc_sync_path_absolute filter) and an accepted private artifact root"
+      ],
+      "inputs": [
+        "--dry-run",
+        "--remove-originals",
+        "--yes"
+      ],
+      "outputs": [
+        "Per-area table of file counts, bytes, files to copy or remove, verified copies, conflicts, skipped symlinks and top-level folder names; never file contents"
+      ],
+      "artifacts": [],
+      "storage_touched": [
+        "Reads uploads/sync/{db-version-control-backups,db-version-control-snapshots,media-bundles,dbvc-transfer-packets}/ and dbvc-backup.log* in the legacy log folder",
+        "Writes <absolute root>-artifacts/ (same subfolder names; old logs in logs/legacy/)",
+        "--remove-originals deletes verified originals and the emptied area folders, never uploads/sync itself"
+      ],
+      "settings": [],
+      "hooks": [
+        "dbvc_sync_path_absolute",
+        "dbvc_private_artifacts_root"
+      ],
+      "safety": {
+        "classification": "destructive",
+        "human_reviewed": true,
+        "dry_run": "yes",
+        "idempotency": "yes",
+        "backup_required": false,
+        "rollback": "The copy changes nothing at the source. --remove-originals deletes only files whose copy in the private root hashes identically, so the private copy is the rollback source.",
+        "warnings": [
+          "Always previews first and asks for confirmation (--yes skips the prompt); --dry-run exits after the preview.",
+          "Capability gated: DBVC_Artifact_Location::migrate() and remove_legacy() return dbvc_forbidden without manage_options, and dbvc_artifacts_not_private (or the refusal) without a valid absolute root.",
+          "Existing targets are never overwritten: a differing copy is a conflict, the run reports incomplete, and its original is kept by --remove-originals.",
+          "Symlinks are skipped and never followed by the copy or the removal. .htaccess and index.php count as verified once the private folder has its own.",
+          "Readers switch to the private root as soon as the constant is set, so backups and proposals written earlier are not listed until the copy runs."
+        ]
+      },
+      "source_refs": [
+        {
+          "path": "commands/class-wp-cli-commands.php",
+          "line": 835
+        },
+        {
+          "path": "includes/class-artifact-location.php"
+        }
+      ],
+      "test_refs": [
+        "tests/phpunit/PrivateArtifactLocationTest.php"
+      ],
+      "doc_refs": [],
+      "related": [
+        "cli.core.backups.redact",
+        "settings.core.import_export",
+        "storage.core.snapshots"
+      ],
+      "known_gaps": [
+        "The WP-CLI wrapper itself has no automated test; the service methods it calls are covered.",
+        "Absolute paths stored in earlier media bundle metadata (storage.absolute) still name uploads/sync; the bundle lookup tries the current proposal directory first.",
+        "Not run against a live or Cloudways site."
+      ],
+      "verification": {
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-10-31",
+        "evidence_types": [
+          "source_review",
+          "focused_unit_test"
+        ],
+        "live_runtime_verified": false,
+        "notes": "PrivateArtifactLocationTest covers the service methods: the preview writes nothing and reports names and counts only, the copy verifies every file and keeps originals, a second preview finds everything verified, the removal preview deletes nothing, removal deletes only verified originals and keeps unrelated files and uploads/sync, conflicts and symlinks are never copied or removed, and an editor or a site without the absolute root is refused."
       }
     },
     {
@@ -4089,7 +4198,7 @@
           "Export can replace existing sync artifacts.",
           "Masking and domain transformation affect portability and data exposure.",
           "By default the sync folder sits under ABSPATH and its .htaccess deny is ignored by nginx. options.json, the ACF options-group files (options/*.json) and Entity Editor snapshots redact secret-shaped values to [dbvc-redacted] (ACF password fields always), and import keeps the target's own value for them; every other value is web-readable unless the server blocks the path.",
-          "Define DBVC_SYNC_PATH_ABSOLUTE in wp-config.php to write every sync artifact to a dedicated folder outside the web root (for example Cloudways private_html/dbvc-sync). A refused value falls back to the web-reachable folder and is reported in Site Health and an admin notice. Backups, proposals, transfer packets and media bundles still live under uploads/sync.",
+          "Define DBVC_SYNC_PATH_ABSOLUTE in wp-config.php to write every sync artifact to a dedicated folder outside the web root (for example Cloudways private_html/dbvc-sync). A refused value falls back to the web-reachable folder and is reported in Site Health and an admin notice. With DBVC_SYNC_PATH_ABSOLUTE active, backups, proposals, snapshots, transfer packets, media bundles and the log move to the sibling <absolute root>-artifacts/ folder (DBVC_Artifact_Location; override with the dbvc_private_artifacts_root filter, validated the same way and refused if it overlaps the sync root). Without the constant they stay under uploads/sync/ and the log under wp-content/ or the logging directory option. Data written before the constant was set stays web-reachable until wp dbvc migrate-artifacts copies it and --remove-originals deletes it.",
           "dbvc_export_options_on_update (default on) makes almost every admin option save rewrite options.json; turn it off to write only on the other export triggers, the admin export and wp dbvc export."
         ]
       },
@@ -4113,6 +4222,7 @@
       ],
       "test_refs": [
         "tests/phpunit/OptionsExportSecretRedactionTest.php",
+        "tests/phpunit/PrivateArtifactLocationTest.php",
         "tests/phpunit/SyncFolderSecretExposureTest.php",
         "tests/phpunit/SyncPathOutsideWebRootTest.php"
       ],
@@ -4121,6 +4231,7 @@
         "docs/reference/meta-masking.md"
       ],
       "related": [
+        "cli.core.artifacts.migrate",
         "cli.core.export",
         "engine.core.import",
         "settings.core.import_export"
@@ -6368,8 +6479,9 @@
         },
         {
           "type": "hook",
-          "identifier": "Sync folder location filters",
+          "identifier": "Sync folder and private artifact location filters",
           "discovery_ids": [
+            "hook.extension_point.dbvc_private_artifacts_root.16262692",
             "hook.extension_point.dbvc_sync_path_absolute.aaededb4",
             "hook.extension_point.dbvc_sync_path_forbidden_roots.d81e4807"
           ],
@@ -6398,6 +6510,7 @@
         "DBVC_SYNC_PATH_ABSOLUTE (wp-config constant; overrides dbvc_sync_path)"
       ],
       "hooks": [
+        "dbvc_private_artifacts_root",
         "dbvc_sync_path_absolute",
         "dbvc_sync_path_forbidden_roots",
         "site_status_tests"
@@ -6411,7 +6524,8 @@
         "warnings": [
           "Configuration changes alter later import/export behavior.",
           "The admin page is broad and coupling-sensitive.",
-          "dbvc_sync_path is always resolved under ABSPATH and is web-reachable on nginx. Only the DBVC_SYNC_PATH_ABSOLUTE constant or the dbvc_sync_path_absolute filter can move the folder outside the web root; the admin field turns read-only while it is active. Paths inside a web-served root, containing the install, in system folders, top-level, relative or with traversal segments are refused."
+          "dbvc_sync_path is always resolved under ABSPATH and is web-reachable on nginx. Only the DBVC_SYNC_PATH_ABSOLUTE constant or the dbvc_sync_path_absolute filter can move the folder outside the web root; the admin field turns read-only while it is active. Paths inside a web-served root, containing the install, in system folders, top-level, relative or with traversal segments are refused.",
+          "The private artifact root (<absolute root>-artifacts/, or the dbvc_private_artifacts_root filter) has no admin setting. While it is active the logging directory option is ignored, because that option always resolves under ABSPATH. A refused artifact root falls back to uploads/sync/ and Site Health (dbvc_private_artifacts_location) reports it as critical."
         ]
       },
       "source_refs": [
@@ -6424,15 +6538,21 @@
         },
         {
           "path": "includes/class-sync-location.php"
+        },
+        {
+          "path": "includes/class-artifact-location.php"
         }
       ],
       "test_refs": [
+        "tests/phpunit/PrivateArtifactLocationTest.php",
         "tests/phpunit/SyncPathOutsideWebRootTest.php"
       ],
       "doc_refs": [],
       "related": [
+        "cli.core.artifacts.migrate",
         "engine.core.export",
-        "engine.core.import"
+        "engine.core.import",
+        "storage.core.snapshots"
       ],
       "known_gaps": [],
       "verification": {
@@ -6895,7 +7015,7 @@
       ],
       "storage_touched": [
         "Four DBVC history tables",
-        "Backup/snapshot filesystem"
+        "Backup/snapshot filesystem: uploads/sync/ by default, <absolute root>-artifacts/ while DBVC_SYNC_PATH_ABSOLUTE is active"
       ],
       "settings": [],
       "hooks": [
@@ -6911,7 +7031,9 @@
         "warnings": [
           "A snapshot is evidence, not automatically a complete database/uploads rollback.",
           "Retention and cleanup behavior should be verified before relying on history.",
-          "Backups (uploads/sync/db-version-control-backups/) are usually web-served. New backups run DBVC_Sync_Posts::secure_sync_tree() before the manifest is written: every subfolder gets .htaccess/index.php and options.json, options/*.json and third-party/ws-form/forms/*.json are re-redacted (opt out: dbvc_redact_restored_option_exports). Backups taken before redaction keep their secrets until wp dbvc redact-backups rewrites them."
+          "Backups (uploads/sync/db-version-control-backups/, or <absolute root>-artifacts/db-version-control-backups/ while DBVC_SYNC_PATH_ABSOLUTE is active) are web-served in the first location. New backups run DBVC_Sync_Posts::secure_sync_tree() before the manifest is written: every subfolder gets .htaccess/index.php and options.json, options/*.json and third-party/ws-form/forms/*.json are re-redacted (opt out: dbvc_redact_restored_option_exports). Backups taken before redaction keep their secrets until wp dbvc redact-backups rewrites them.",
+          "With DBVC_SYNC_PATH_ABSOLUTE active, backups, proposals, snapshots, transfer packets, media bundles and the log move to the sibling <absolute root>-artifacts/ folder (DBVC_Artifact_Location; override with the dbvc_private_artifacts_root filter, validated the same way and refused if it overlaps the sync root). Without the constant they stay under uploads/sync/ and the log under wp-content/ or the logging directory option. Data written before the constant was set stays web-reachable until wp dbvc migrate-artifacts copies it and --remove-originals deletes it.",
+          "DBVC_Backup_Manager::delete_backup() and download_backup() resolve the name through resolve_backup_folder(): \".\", \"..\", separators and anything that is not a folder directly below the backup base are refused. Before this, delete_backup(\"..\") removed the whole uploads/sync folder."
         ]
       },
       "source_refs": [
@@ -6928,9 +7050,13 @@
         },
         {
           "path": "includes/class-snapshot-manager.php"
+        },
+        {
+          "path": "includes/class-artifact-location.php"
         }
       ],
       "test_refs": [
+        "tests/phpunit/PrivateArtifactLocationTest.php",
         "tests/phpunit/ProposalDiffContractTest.php",
         "tests/phpunit/WSFormAndBackupSecretExposureTest.php"
       ],
@@ -6939,6 +7065,7 @@
         "docs/architecture/README.md"
       ],
       "related": [
+        "cli.core.artifacts.migrate",
         "cli.core.backups.redact",
         "cli.core.snapshots.list",
         "proposal.core.decisions",
