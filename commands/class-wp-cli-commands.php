@@ -790,6 +790,127 @@ class DBVC_WP_CLI_Commands {
 	}
 
 	/**
+	 * Move backups, proposals, snapshots, media bundles, transfer packets and
+	 * the log out of the web root, beside DBVC_SYNC_PATH_ABSOLUTE.
+	 *
+	 * Once DBVC_SYNC_PATH_ABSOLUTE is active, DBVC writes these artifacts to
+	 * `<absolute root>-artifacts/`. Data written earlier stays under
+	 * uploads/sync/ (and the log under wp-content/), where nginx serves it.
+	 * This copies it across and re-reads every copy to verify its hash.
+	 * Existing, identical copies count as verified; different ones are
+	 * reported as conflicts and never overwritten. Symlinks are skipped.
+	 *
+	 * Originals are never removed by the copy. Removing them is a separate
+	 * run with --remove-originals, which re-verifies every file against its
+	 * copy and deletes only those that match.
+	 *
+	 * Always previews first and asks before writing or deleting. Output lists
+	 * areas, top-level folder names and counts only. Requires --user with
+	 * the manage_options capability.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--dry-run]
+	 * : Report what would change and exit without writing.
+	 *
+	 * [--remove-originals]
+	 * : Delete originals that have a verified identical copy. Run after the copy.
+	 *
+	 * [--yes]
+	 * : Skip the confirmation prompt after the preview.
+	 *
+	 * ## EXAMPLES
+	 *
+	 * wp dbvc migrate-artifacts --dry-run --user=admin
+	 * wp dbvc migrate-artifacts --user=admin
+	 * wp dbvc migrate-artifacts --remove-originals --dry-run --user=admin
+	 * wp dbvc migrate-artifacts --remove-originals --user=admin
+	 *
+	 * @subcommand migrate-artifacts
+	 *
+	 * @param array $args
+	 * @param array $assoc_args
+	 * @return void
+	 */
+	public function migrate_artifacts( $args, $assoc_args ) {
+		if ( ! class_exists( 'DBVC_Artifact_Location' ) || ! current_user_can( 'manage_options' ) ) {
+			WP_CLI::error( 'Run as a user with manage_options, for example --user=admin.' );
+		}
+
+		$dry_run = (bool) \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false );
+		$remove  = (bool) \WP_CLI\Utils\get_flag_value( $assoc_args, 'remove-originals', false );
+
+		$preview = $remove ? DBVC_Artifact_Location::remove_legacy( true ) : DBVC_Artifact_Location::migrate( true );
+		if ( is_wp_error( $preview ) ) {
+			WP_CLI::error( $preview->get_error_message() );
+		}
+		$this->print_artifact_migration_report( $preview, $remove );
+
+		$totals = $preview['totals'];
+		if ( $remove ) {
+			if ( $dry_run ) {
+				WP_CLI::success( sprintf( 'Dry run: %d original(s) to remove, %d kept without a verified copy. Nothing was deleted.', $totals['to_remove'], $totals['kept'] ) );
+				return;
+			}
+			if ( $totals['to_remove'] === 0 ) {
+				WP_CLI::success( 'No originals have a verified copy to remove.' );
+				return;
+			}
+			WP_CLI::confirm( sprintf( 'Permanently delete %d original file(s) under uploads/sync and the old log folder?', $totals['to_remove'] ), $assoc_args );
+			$result = DBVC_Artifact_Location::remove_legacy( false );
+			if ( is_wp_error( $result ) ) {
+				WP_CLI::error( $result->get_error_message() );
+			}
+			WP_CLI::success( sprintf( 'Removed %d original(s); %d kept, %d failed.', $result['totals']['removed'], $result['totals']['kept'], $result['totals']['failed'] ) );
+			return;
+		}
+
+		if ( $dry_run ) {
+			WP_CLI::success( sprintf( 'Dry run: %d file(s) to copy to %s, %d already verified, %d conflict(s). Nothing was written.', $totals['to_copy'], $preview['private_root'], $totals['verified'], $totals['conflicts'] ) );
+			return;
+		}
+		if ( $totals['to_copy'] === 0 ) {
+			WP_CLI::success( sprintf( 'Nothing to copy: %d file(s) verified, %d conflict(s).', $totals['verified'], $totals['conflicts'] ) );
+			return;
+		}
+
+		WP_CLI::confirm( sprintf( 'Copy %d file(s) to %s? Originals stay in place.', $totals['to_copy'], $preview['private_root'] ), $assoc_args );
+		$result = DBVC_Artifact_Location::migrate( false );
+		if ( is_wp_error( $result ) ) {
+			WP_CLI::error( $result->get_error_message() );
+		}
+		$message = sprintf( 'Copied %d file(s); %d verified, %d conflict(s), %d failed.', $result['totals']['copied'], $result['totals']['verified'], $result['totals']['conflicts'], $result['totals']['failed'] );
+		if ( ! $result['complete'] ) {
+			WP_CLI::warning( $message . ' Resolve conflicts and failures before removing originals.' );
+			return;
+		}
+		WP_CLI::success( $message . ' Next: wp dbvc migrate-artifacts --remove-originals --dry-run.' );
+	}
+
+	/**
+	 * @param array $report From DBVC_Artifact_Location::migrate() or remove_legacy().
+	 * @param bool  $remove Whether the report is a removal report.
+	 * @return void
+	 */
+	private function print_artifact_migration_report( array $report, $remove ) {
+		if ( empty( $report['areas'] ) ) {
+			WP_CLI::log( 'No legacy artifact folders found.' );
+			return;
+		}
+
+		$fields = $remove
+			? [ 'area', 'files', 'to_remove', 'kept', 'entries' ]
+			: [ 'area', 'files', 'bytes', 'to_copy', 'verified', 'conflicts', 'skipped', 'entries' ];
+		$rows   = [];
+		foreach ( $report['areas'] as $area ) {
+			$row            = array_intersect_key( $area, array_flip( $fields ) );
+			$row['entries'] = implode( ', ', $area['entries'] );
+			$rows[]         = $row;
+		}
+		\WP_CLI\Utils\format_items( 'table', $rows, $fields );
+	}
+
+	/**
 	 * @param array $report From DBVC_Backup_Manager::redact_existing_backups().
 	 * @return void
 	 */

@@ -20,8 +20,12 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
          */
         public static function get_base_path(bool $create = true): string
         {
-            $upload_dir = $create ? wp_upload_dir() : wp_get_upload_dir();
-            $base       = trailingslashit($upload_dir['basedir']) . 'sync/' . self::SNAPSHOT_DIR;
+            if (class_exists('DBVC_Artifact_Location') && DBVC_Artifact_Location::is_private()) {
+                $base = DBVC_Artifact_Location::path('snapshots');
+            } else {
+                $upload_dir = $create ? wp_upload_dir() : wp_get_upload_dir();
+                $base       = trailingslashit($upload_dir['basedir']) . 'sync/' . self::SNAPSHOT_DIR;
+            }
 
             if ($create && ! is_dir($base)) {
                 wp_mkdir_p($base);

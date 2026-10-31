@@ -7,6 +7,7 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.bricks.apply_restore`](../manifest.json) | `active` | `wordpress_write` | [Bricks add-on](../facets/bricks-addon.md) | Applies approved Bricks changes, creates restore points, and rolls back a selected restore point. |
+| [`cli.core.artifacts.migrate`](../manifest.json) | `active` | `destructive` | [CLI and automation](../facets/cli-and-automation.md) | Copies backups, proposals, snapshots, media bundles, transfer packets and old logs from uploads/sync/ and the legacy log folder into <absolute root>-artifacts/, verifies every copy by hash, and in a separate confirmed run removes the originals that have an identical copy. |
 | [`cli.core.backups.redact`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) | Hardens every stored backup folder and rewrites secret values in backed-up options.json, options/*.json and WS Form form files to [dbvc-redacted], after a preview and a confirmation. |
 | [`cli.core.proposals.apply`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Applies a reviewed proposal in full or partial mode, including entity and media writes. |
 | [`proposal.core.apply`](../manifest.json) | `active` | `wordpress_write` | [Proposals and media](../facets/proposals-and-media.md) | Applies reviewed proposal decisions to WordPress through the authenticated REST workflow. |
@@ -173,6 +174,7 @@
 
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
+| [`cli.core.artifacts.migrate`](../manifest.json) | `active` | `destructive` | [CLI and automation](../facets/cli-and-automation.md) | Copies backups, proposals, snapshots, media bundles, transfer packets and old logs from uploads/sync/ and the legacy log folder into <absolute root>-artifacts/, verifies every copy by hash, and in a separate confirmed run removes the originals that have an identical copy. |
 | [`cli.core.backups.redact`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) | Hardens every stored backup folder and rewrites secret values in backed-up options.json, options/*.json and WS Form form files to [dbvc-redacted], after a preview and a confirmation. |
 | [`planned.core.granular_options`](../manifest.json) | `planned` | `unknown` | [Settings and extensions](../facets/settings-hooks-and-extensions.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) | Planned per-key and per-prefix option selection with preview summaries and CLI parity. |
 | [`planned.core.universal_upload_intake`](../manifest.json) | `planned` | `unknown` | [Core import/export](../facets/core-import-export.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) | Planned single intake for JSON batches or ZIPs with automatic routing and a true pre-write dry-run summary. |

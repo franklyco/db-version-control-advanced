@@ -991,9 +991,15 @@ HT;
     public static function dbvc_create_backup_folder_and_copy_exports()
     {
         $export_dir  = dbvc_get_sync_path();
-        $upload_dir  = wp_upload_dir();
-        $sync_dir    = $upload_dir['basedir'] . '/sync';
-        $backup_base = $sync_dir . '/db-version-control-backups';
+        if (class_exists('DBVC_Artifact_Location') && DBVC_Artifact_Location::is_private()) {
+            // Outside the web root beside DBVC_SYNC_PATH_ABSOLUTE.
+            $sync_dir    = DBVC_Artifact_Location::private_root();
+            $backup_base = DBVC_Artifact_Location::path('backups');
+        } else {
+            $upload_dir  = wp_upload_dir();
+            $sync_dir    = $upload_dir['basedir'] . '/sync';
+            $backup_base = $sync_dir . '/db-version-control-backups';
+        }
         $timestamp   = date('m-d-Y-His');
         $backup_path = $backup_base . '/' . $timestamp;
 

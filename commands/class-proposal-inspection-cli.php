@@ -213,9 +213,7 @@ if (! class_exists('DBVC_Proposal_CLI_Inspector')) {
 				return new WP_Error('dbvc_proposal_cli_id_invalid', 'Provide one exact proposal ID containing only letters, numbers, periods, underscores, or hyphens.');
 			}
 
-			$uploads = wp_get_upload_dir();
-			$upload_base = isset($uploads['basedir']) ? (string) $uploads['basedir'] : '';
-			$base = $upload_base !== '' ? trailingslashit($upload_base) . 'sync/db-version-control-backups' : '';
+			$base = class_exists('DBVC_Artifact_Location') ? DBVC_Artifact_Location::path('backups') : '';
 			$base_real = $base !== '' ? realpath($base) : false;
 			if (! is_string($base_real) || ! is_dir($base_real)) {
 				return new WP_Error('dbvc_proposal_cli_storage_missing', 'The existing proposal storage directory could not be found. No directory was created.');
@@ -483,8 +481,7 @@ if (! class_exists('DBVC_Proposal_CLI_Inspector')) {
 			$stored_state = is_array($stored) && isset($stored[$proposal_id][$uid]['state'])
 				? sanitize_key((string) $stored[$proposal_id][$uid]['state'])
 				: '';
-			$uploads = wp_get_upload_dir();
-			$base = ! empty($uploads['basedir']) ? trailingslashit((string) $uploads['basedir']) . 'sync/db-version-control-snapshots' : '';
+			$base = class_exists('DBVC_Artifact_Location') ? DBVC_Artifact_Location::path('snapshots') : '';
 			$base_real = $base !== '' ? realpath($base) : false;
 			$proposal_dir = is_string($base_real) ? realpath(trailingslashit($base_real) . sanitize_file_name($proposal_id)) : false;
 			$file = is_string($proposal_dir) ? realpath(trailingslashit($proposal_dir) . sanitize_file_name($uid) . '.json') : false;

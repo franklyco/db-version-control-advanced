@@ -1459,12 +1459,17 @@ final class EntityPacketBuilder
      */
     private static function get_workspace_root()
     {
-        $uploads = wp_get_upload_dir();
-        if (! empty($uploads['error'])) {
-            return new \WP_Error('dbvc_transfer_uploads_failed', __('Unable to resolve the uploads directory for transfer packets.', 'dbvc'), ['status' => 500]);
-        }
+        if (class_exists('\DBVC_Artifact_Location') && \DBVC_Artifact_Location::is_private()) {
+            // Outside the web root beside DBVC_SYNC_PATH_ABSOLUTE.
+            $sync_root = \DBVC_Artifact_Location::private_root();
+        } else {
+            $uploads = wp_get_upload_dir();
+            if (! empty($uploads['error'])) {
+                return new \WP_Error('dbvc_transfer_uploads_failed', __('Unable to resolve the uploads directory for transfer packets.', 'dbvc'), ['status' => 500]);
+            }
 
-        $sync_root = trailingslashit($uploads['basedir']) . 'sync';
+            $sync_root = trailingslashit($uploads['basedir']) . 'sync';
+        }
         if (! is_dir($sync_root) && ! wp_mkdir_p($sync_root)) {
             return new \WP_Error('dbvc_transfer_sync_root_failed', __('Unable to create the sync root for transfer packets.', 'dbvc'), ['status' => 500]);
         }

@@ -346,12 +346,17 @@ final class BundleManager
      */
     private static function get_bundle_root(bool $create = true): ?string
     {
-        $upload_dir = wp_get_upload_dir();
-        if (! empty($upload_dir['error'])) {
-            return null;
-        }
+        if (class_exists('\DBVC_Artifact_Location') && \DBVC_Artifact_Location::is_private()) {
+            // Outside the web root beside DBVC_SYNC_PATH_ABSOLUTE.
+            $sync_root = \DBVC_Artifact_Location::private_root();
+        } else {
+            $upload_dir = wp_get_upload_dir();
+            if (! empty($upload_dir['error'])) {
+                return null;
+            }
 
-        $sync_root = trailingslashit($upload_dir['basedir']) . 'sync';
+            $sync_root = trailingslashit($upload_dir['basedir']) . 'sync';
+        }
         if (! is_dir($sync_root)) {
             if (! $create) {
                 return null;

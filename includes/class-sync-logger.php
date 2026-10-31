@@ -140,9 +140,47 @@ if (! class_exists('DBVC_Sync_Logger')) {
         /**
          * Resolve the effective log directory (creates it if missing).
          *
+         * With DBVC_SYNC_PATH_ABSOLUTE active the log lives in the private
+         * artifact root and the directory option is ignored: that option
+         * always resolves under ABSPATH, where nginx would serve the log.
+         *
          * @return string Directory path without trailing slash or empty string.
          */
         public static function get_log_directory()
+        {
+            $private    = class_exists('DBVC_Artifact_Location') ? DBVC_Artifact_Location::private_log_dir() : '';
+            $normalized = $private !== '' ? $private : self::get_legacy_log_directory();
+
+            if (! is_dir($normalized) && ! wp_mkdir_p($normalized)) {
+                return '';
+            }
+
+            if ($private !== '' && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
+                DBVC_Sync_Posts::ensure_directory_security($normalized);
+            } elseif (
+                // Only attempt to harden if directory is within the sync path.
+                function_exists('dbvc_get_sync_path')
+                && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')
+            ) {
+                $sync_dir = wp_normalize_path(trailingslashit(dbvc_get_sync_path()));
+                $target   = wp_normalize_path(trailingslashit($normalized));
+                if ($sync_dir && strpos($target, $sync_dir) === 0) {
+                    DBVC_Sync_Posts::ensure_directory_security(rtrim($target, '/'));
+                }
+            }
+
+            return untrailingslashit($normalized);
+        }
+
+        /**
+         * The log directory from the directory option, else wp-content.
+         *
+         * This is where the log lives without DBVC_SYNC_PATH_ABSOLUTE, and
+         * where migration looks for an old log. Never creates the folder.
+         *
+         * @return string Directory path without trailing slash.
+         */
+        public static function get_legacy_log_directory()
         {
             $dir_option = '';
             if (function_exists('get_option')) {
@@ -152,22 +190,6 @@ if (! class_exists('DBVC_Sync_Logger')) {
             $normalized = self::normalize_directory_option($dir_option);
             if ($normalized === '') {
                 $normalized = wp_normalize_path(WP_CONTENT_DIR);
-            }
-
-            if (! is_dir($normalized) && ! wp_mkdir_p($normalized)) {
-                return '';
-            }
-
-            // Only attempt to harden if directory is within the sync path.
-            if (
-                function_exists('dbvc_get_sync_path')
-                && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')
-            ) {
-                $sync_dir = wp_normalize_path(trailingslashit(dbvc_get_sync_path()));
-                $target   = wp_normalize_path(trailingslashit($normalized));
-                if ($sync_dir && strpos($target, $sync_dir) === 0) {
-                    DBVC_Sync_Posts::ensure_directory_security(rtrim($target, '/'));
-                }
             }
 
             return untrailingslashit($normalized);

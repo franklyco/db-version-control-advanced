@@ -1205,7 +1205,8 @@ function dbvc_is_safe_file_path($file_path)
 	}
 
 	// Ensure file is within WordPress directory structure, or inside the
-	// absolute sync root configured outside the web root.
+	// absolute sync root or private artifact root configured outside the
+	// web root (backup restores read JSON from the latter).
 	$resolved_path = realpath(dirname($file_path));
 	if (false === $resolved_path) {
 		return false;
@@ -1215,6 +1216,10 @@ function dbvc_is_safe_file_path($file_path)
 	$absolute_root = class_exists('DBVC_Sync_Location') ? DBVC_Sync_Location::absolute_root() : '';
 	if ($absolute_root !== '') {
 		$allowed_roots[] = realpath($absolute_root);
+	}
+	$artifact_root = class_exists('DBVC_Artifact_Location') ? DBVC_Artifact_Location::private_root() : '';
+	if ($artifact_root !== '' && is_dir($artifact_root)) {
+		$allowed_roots[] = realpath($artifact_root);
 	}
 
 	$is_allowed = false;
