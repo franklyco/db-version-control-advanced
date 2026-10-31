@@ -76,6 +76,16 @@ Do not add a separate run-ledger schema while the manifest plus one compact runt
 
 Do not edit files under `docs/agents/generated/` manually. `manifest.json` is curated authority; the discovery snapshot and Markdown indexes are replaceable derivatives.
 
+### Clean clones and development-only paths
+
+This repository is the distribution copy of db-version-control-main. That repository tracks a few paths it deliberately never copies here: `_source/`, `uninstall.php`, `tests/playwright/` and `tests/*.test.cjs` (its `scripts/distribution-drift.json` lists them as `development_only`). `scripts/agent-docs.php` declares the same paths in `DBVC_AGENT_DEVELOPMENT_ONLY_PATHS`, and treats them as follows:
+
+- Discovery never scans them. The committed `discovery-snapshot.json` is therefore byte-identical whether or not a checkout holds a copy of `_source/`, and `composer agent-docs:refresh` in a clean clone is the canonical way to regenerate it. Do not copy `_source/` in to refresh the snapshot; it changes nothing.
+- A manifest `source_refs`, `test_refs` or `doc_refs` entry into one of them is validated normally when the file is present. When it is absent, `check`, `build` and `query` print a `[agent-docs] WARNING: ... is development-only and absent from this checkout` line naming the record and path, and carry on. Every other missing reference is still an error.
+- The `source.content_collector.*` records keep their surfaces and source references, but carry no discovery IDs, because those surfaces are no longer discovered.
+
+Add a path to `DBVC_AGENT_DEVELOPMENT_ONLY_PATHS` only when the drift config already declares it development-only. A file that belongs in this repository and is missing must be committed or its reference fixed, never declared optional.
+
 `RECIPES.md` is a compact reviewed layer, not a generated command reference. Every recipe must keep its adjacent `recipe`, `safety`, and `capability-records` metadata comments valid. Phase 11 permits only `read_only` recipes, requires the `cli.core.capabilities.inspect` preflight record, and rejects unknown or duplicate record references during `agent-docs:check`.
 
 ## CI Contract

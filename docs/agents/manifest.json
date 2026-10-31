@@ -6594,11 +6594,7 @@
         {
           "type": "rest",
           "identifier": "Content Collector AI routes (source only)",
-          "discovery_ids": [
-            "rest.7577dae4c6996adb",
-            "rest.ab3b2cb098581565",
-            "rest.e7c5ca2376df8adf"
-          ],
+          "discovery_ids": [],
           "source_ref": {
             "path": "_source/content-collector/includes/class-cc-rest-ai.php",
             "line": 42
@@ -6640,7 +6636,8 @@
       "doc_refs": [],
       "related": [],
       "known_gaps": [
-        "Not required or initialized by db-version-control.php."
+        "Not required or initialized by db-version-control.php.",
+        "_source/ is development-only and not distributed in this repository, so agent-docs discovery never scans it and these surfaces carry no discovery IDs (DBVC_AGENT_DEVELOPMENT_ONLY_PATHS in scripts/agent-docs.php)."
       ],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
@@ -6678,14 +6675,7 @@
         {
           "type": "rest",
           "identifier": "Content Collector explorer routes (source only)",
-          "discovery_ids": [
-            "rest.1401fba5214acc89",
-            "rest.32d0b28535630774",
-            "rest.72e81ce0859bf4f6",
-            "rest.b606ab2035bc17e0",
-            "rest.e67d78c2ece2a9a1",
-            "rest.fd75be47c26cd2ea"
-          ],
+          "discovery_ids": [],
           "source_ref": {
             "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
             "line": 97
@@ -6694,10 +6684,7 @@
         {
           "type": "admin",
           "identifier": "Content Collector admin pages (source only)",
-          "discovery_ids": [
-            "admin.menu.5ef05e558950",
-            "admin.menu.622e20552042"
-          ],
+          "discovery_ids": [],
           "source_ref": {
             "path": "_source/content-collector/includes/class-cc-admin.php",
             "line": 34
@@ -6706,10 +6693,7 @@
         {
           "type": "ajax",
           "identifier": "Content Collector AJAX handlers (source only)",
-          "discovery_ids": [
-            "hook.listener.wp_ajax_cc_get_urls_from_sitemap.29136de9",
-            "hook.listener.wp_ajax_cc_process_single_url.0173cc42"
-          ],
+          "discovery_ids": [],
           "source_ref": {
             "path": "_source/content-collector/includes/class-cc-ajax.php",
             "line": 24
@@ -6756,7 +6740,8 @@
       ],
       "related": [],
       "known_gaps": [
-        "Not required or initialized by db-version-control.php."
+        "Not required or initialized by db-version-control.php.",
+        "_source/ is development-only and not distributed in this repository, so agent-docs discovery never scans it and these surfaces carry no discovery IDs (DBVC_AGENT_DEVELOPMENT_ONLY_PATHS in scripts/agent-docs.php)."
       ],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
@@ -6793,11 +6778,7 @@
         {
           "type": "rest",
           "identifier": "Content Collector export routes (source only)",
-          "discovery_ids": [
-            "rest.babd234020b2d498",
-            "rest.c38230cf10725342",
-            "rest.e4544778c1a5ba99"
-          ],
+          "discovery_ids": [],
           "source_ref": {
             "path": "_source/content-collector/includes/class-cc-rest-export.php",
             "line": 42
@@ -6838,7 +6819,8 @@
       "doc_refs": [],
       "related": [],
       "known_gaps": [
-        "Not required or initialized by db-version-control.php."
+        "Not required or initialized by db-version-control.php.",
+        "_source/ is development-only and not distributed in this repository, so agent-docs discovery never scans it and these surfaces carry no discovery IDs (DBVC_AGENT_DEVELOPMENT_ONLY_PATHS in scripts/agent-docs.php)."
       ],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",

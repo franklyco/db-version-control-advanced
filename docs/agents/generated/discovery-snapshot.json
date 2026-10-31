@@ -3,13 +3,13 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 502,
-        "source_fingerprint": "sha256:cf5c237f743c17292c5b8fc84427dd3cf158cc89a47fd9c3afb9b1d5c22bce73",
+        "source_file_count": 486,
+        "source_fingerprint": "sha256:deae205d223f308bc3189afa2d3b1c9b67ec500bd1e04063369e8a7b500614d1",
         "live_runtime_verified": false
     },
     "counts": {
-        "admin_handlers": 38,
-        "admin_menus": 15,
+        "admin_handlers": 36,
+        "admin_menus": 13,
         "bootstrap_includes": 137,
         "bootstrap_initializers": 19,
         "cli_commands": 130,
@@ -17,11 +17,10 @@
         "database_tables": 45,
         "documentation": 537,
         "extension_points": 202,
-        "hook_listeners": 228,
-        "rest_routes": 142,
+        "hook_listeners": 219,
+        "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "source_reference_documentation": 13,
         "tests": 197
     },
     "collections": {
@@ -412,28 +411,6 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.wp_ajax_cc_get_urls_from_sitemap.29136de9",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "wp_ajax_cc_get_urls_from_sitemap",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-ajax.php",
-                    "line": 24
-                }
-            },
-            {
-                "discovery_id": "hook.listener.wp_ajax_cc_process_single_url.0173cc42",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "wp_ajax_cc_process_single_url",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-ajax.php",
-                    "line": 25
-                }
-            },
-            {
                 "discovery_id": "hook.listener.wp_ajax_dbvc_purge_status.54738ad3",
                 "kind": "listener",
                 "scope": "core",
@@ -463,25 +440,6 @@
                 "source_ref": {
                     "path": "admin/admin-menu.php",
                     "line": 24
-                }
-            },
-            {
-                "discovery_id": "admin.menu.622e20552042",
-                "scope": "source_reference",
-                "function": "add_menu_page",
-                "observed_string_literals": [
-                    "Content Collector",
-                    "content-collector",
-                    "Content Collector",
-                    "content-collector",
-                    "manage_options",
-                    "content_collector",
-                    "render_admin_page",
-                    "dashicons-download"
-                ],
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-admin.php",
-                    "line": 34
                 }
             },
             {
@@ -708,25 +666,6 @@
                 "source_ref": {
                     "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
                     "line": 39
-                }
-            },
-            {
-                "discovery_id": "admin.menu.5ef05e558950",
-                "scope": "source_reference",
-                "function": "add_submenu_page",
-                "observed_string_literals": [
-                    "content_collector",
-                    "Explorer",
-                    "content-collector",
-                    "Explorer",
-                    "content-collector",
-                    "manage_options",
-                    "content_collector_explorer",
-                    "render_explorer_page"
-                ],
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-admin.php",
-                    "line": 44
                 }
             }
         ],
@@ -7633,17 +7572,6 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_enqueue_scripts.07577b43",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "admin_enqueue_scripts",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-admin.php",
-                    "line": 27
-                }
-            },
-            {
                 "discovery_id": "hook.listener.admin_footer.c105508c",
                 "kind": "listener",
                 "scope": "core",
@@ -7740,17 +7668,6 @@
                 "source_ref": {
                     "path": "includes/hooks.php",
                     "line": 76
-                }
-            },
-            {
-                "discovery_id": "hook.listener.admin_init.4275fcaa",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "admin_init",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-settings.php",
-                    "line": 24
                 }
             },
             {
@@ -7861,17 +7778,6 @@
                 "source_ref": {
                     "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
                     "line": 25
-                }
-            },
-            {
-                "discovery_id": "hook.listener.admin_menu.fddec388",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "admin_menu",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-admin.php",
-                    "line": 26
                 }
             },
             {
@@ -8257,17 +8163,6 @@
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bricks/HookRegistrar.php",
                     "line": 94
-                }
-            },
-            {
-                "discovery_id": "hook.listener.cc_ai_process_job.2520f346",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "cc_ai_process_job",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-ai-service.php",
-                    "line": 38
                 }
             },
             {
@@ -9239,39 +9134,6 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.rest_api_init.fb0f62bd",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "rest_api_init",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-ai.php",
-                    "line": 33
-                }
-            },
-            {
-                "discovery_id": "hook.listener.rest_api_init.dae4e601",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "rest_api_init",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
-                    "line": 33
-                }
-            },
-            {
-                "discovery_id": "hook.listener.rest_api_init.a69022f8",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "rest_api_init",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-export.php",
-                    "line": 33
-                }
-            },
-            {
                 "discovery_id": "hook.listener.rest_post_dispatch.6e02753f",
                 "kind": "listener",
                 "scope": "addon:bricks",
@@ -9811,28 +9673,6 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.wp_ajax_cc_get_urls_from_sitemap.29136de9",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "wp_ajax_cc_get_urls_from_sitemap",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-ajax.php",
-                    "line": 24
-                }
-            },
-            {
-                "discovery_id": "hook.listener.wp_ajax_cc_process_single_url.0173cc42",
-                "kind": "listener",
-                "scope": "source_reference",
-                "function": "add_action",
-                "hook": "wp_ajax_cc_process_single_url",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-ajax.php",
-                    "line": 25
-                }
-            },
-            {
                 "discovery_id": "hook.listener.wp_ajax_dbvc_purge_status.54738ad3",
                 "kind": "listener",
                 "scope": "core",
@@ -9922,162 +9762,6 @@
             }
         ],
         "rest_routes": [
-            {
-                "discovery_id": "rest.7577dae4c6996adb",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/ai/rerun",
-                "method_expression": "WP_REST_Server::CREATABLE",
-                "callback_expression": "[$this, 'queue_rerun']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-ai.php",
-                    "line": 42
-                }
-            },
-            {
-                "discovery_id": "rest.e7c5ca2376df8adf",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/ai/rerun-branch",
-                "method_expression": "WP_REST_Server::CREATABLE",
-                "callback_expression": "[$this, 'queue_branch_rerun']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-ai.php",
-                    "line": 52
-                }
-            },
-            {
-                "discovery_id": "rest.ab3b2cb098581565",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/ai/status",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_status']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-ai.php",
-                    "line": 62
-                }
-            },
-            {
-                "discovery_id": "rest.72e81ce0859bf4f6",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/explorer/content",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_content']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
-                    "line": 97
-                }
-            },
-            {
-                "discovery_id": "rest.e67d78c2ece2a9a1",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/explorer/domains",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_domains']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
-                    "line": 42
-                }
-            },
-            {
-                "discovery_id": "rest.b606ab2035bc17e0",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/explorer/node",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_node']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
-                    "line": 83
-                }
-            },
-            {
-                "discovery_id": "rest.1401fba5214acc89",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/explorer/node/audit",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_node_audit']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
-                    "line": 112
-                }
-            },
-            {
-                "discovery_id": "rest.fd75be47c26cd2ea",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/explorer/node/children",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_children']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
-                    "line": 68
-                }
-            },
-            {
-                "discovery_id": "rest.32d0b28535630774",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/explorer/tree",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_tree']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-explorer.php",
-                    "line": 52
-                }
-            },
-            {
-                "discovery_id": "rest.babd234020b2d498",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/export",
-                "method_expression": "WP_REST_Server::CREATABLE",
-                "callback_expression": "[$this, 'create_export']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-export.php",
-                    "line": 42
-                }
-            },
-            {
-                "discovery_id": "rest.c38230cf10725342",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/export/(?P<job_id>[a-zA-Z0-9_-]+)",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_export_status']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-export.php",
-                    "line": 52
-                }
-            },
-            {
-                "discovery_id": "rest.e4544778c1a5ba99",
-                "scope": "source_reference",
-                "namespace": "content-collector/v1",
-                "route": "/export/(?P<job_id>[a-zA-Z0-9_-]+)/download",
-                "method_expression": "WP_REST_Server::READABLE",
-                "callback_expression": "[$this, 'get_export_download']",
-                "permission_expression": "[$this, 'permissions_check']",
-                "source_ref": {
-                    "path": "_source/content-collector/includes/class-cc-rest-export.php",
-                    "line": 65
-                }
-            },
             {
                 "discovery_id": "rest.78fe171d817dd03f",
                 "scope": "core",
@@ -13426,21 +13110,6 @@
                 ]
             }
         ],
-        "source_reference_documentation": [
-            "_source/content-collector/docs/ARCHIVE/EPIC_IMPORT_STAGING_DEFERRED.md",
-            "_source/content-collector/docs/ARCHIVE/PHASE_4_EXPLORER_NODE_ACTIONS.md",
-            "_source/content-collector/docs/ARCHIVE/README.md",
-            "_source/content-collector/docs/CONTENT_COLLECTOR_ADDON_PLAYBOOK/CONTENT_COLLECTOR_ADDON_MANIFEST.json",
-            "_source/content-collector/docs/CONTENT_COLLECTOR_ADDON_PLAYBOOK/GUARDRAILS.md",
-            "_source/content-collector/docs/CONTENT_COLLECTOR_ADDON_PLAYBOOK/HANDOFF.md",
-            "_source/content-collector/docs/CONTENT_COLLECTOR_ADDON_PLAYBOOK/KICKOFF_PROMPT.md",
-            "_source/content-collector/docs/CONTENT_COLLECTOR_ADDON_PLAYBOOK/PHASE_PLAN.md",
-            "_source/content-collector/docs/CONTENT_SECTION_SCHEMA.md",
-            "_source/content-collector/docs/EXPLORER_API_SCHEMA.md",
-            "_source/content-collector/docs/EXPORT_MANIFEST_SCHEMA.md",
-            "_source/content-collector/docs/README.md",
-            "_source/content-collector/docs/WORDPRESS_CLASS_FILE_MAP.md"
-        ],
         "tests": [
             "tests/phpunit/AgencyControlComparisonTest.php",
             "tests/phpunit/AgencyControlEnrollmentReceiptTest.php",
@@ -13645,7 +13314,7 @@
         "Static discovery records literal registrations and references; dynamically composed hooks, routes, settings keys, and table names may require manual research.",
         "Observed source presence does not establish runtime activation, safety, support level, or permission for autonomous use.",
         "Core and Bricks paths are classified from this checkout; live LocalWP activation and route availability have not been verified.",
-        "Source files under _source/content-collector are classified as source_reference and must not be treated as runtime-loaded.",
+        "Development-only paths (_source/, uninstall.php, tests/playwright/, tests/*.test.cjs) are never scanned, so source_reference records for _source/content-collector carry no discovery IDs.",
         "Settings discovery covers literal dbvc_* keys passed to common WordPress option functions; class constants and dynamically assembled keys require manual reconciliation."
     ]
 }
