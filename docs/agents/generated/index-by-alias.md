@@ -156,12 +156,14 @@
 | pull ack queue | [`addon.bricks.command_queue`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | pull latest | [`addon.bricks.packages`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | purge sync folder | [`transport.core.sync_packages`](../manifest.json) | `active` | `destructive` | [Identity and storage](../facets/identity-storage-and-observability.md) |
+| re-redact backups | [`cli.core.backups.redact`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | redaction | [`proposal.core.masking`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | release manifest | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | REPLACE confirmation | [`entity_editor.core.write`](../manifest.json) | `active` | `wordpress_write` | [Entity Editor](../facets/entity-editor.md) |
 | resolver rules | [`media.core.resolver_rules`](../manifest.json) | `active` | `wordpress_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | restore point | [`addon.bricks.apply_restore`](../manifest.json) | `active` | `wordpress_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | review items | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
+| S1 backup cleanup | [`cli.core.backups.redact`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | Save JSON | [`entity_editor.core.write`](../manifest.json) | `active` | `wordpress_write` | [Entity Editor](../facets/entity-editor.md) |
 | settings transfer | [`configuration.core.portability`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) |
 | shared rules profile | [`addon.bricks.configuration`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
@@ -224,6 +226,7 @@
 | wp dbvc proposals list | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc proposals show | [`cli.proposals.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc proposals upload | [`cli.core.proposals.upload`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc redact-backups | [`cli.core.backups.redact`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules add | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules delete | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules import | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |

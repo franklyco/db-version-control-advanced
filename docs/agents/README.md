@@ -90,16 +90,16 @@ When this manifest ships with the plugin, administrators can review the same cur
 - `../../addons/visual-editor/docs/README.md` — Visual Editor implementation and QA router.
 - `../../addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` — Content Migration V2 router.
 - `../../addons/bricks/docs/` — Bricks add-on implementation and planning references.
-- `../../_source/content-collector/docs/` — Content Collector source-reference material; not runtime authority.
+- `../../_source/content-collector/docs/` — Content Collector source-reference material; not runtime authority. Present only in a db-version-control-main development checkout, never in this repository.
 
 ## Generated Capability Summary
 
 <!-- BEGIN GENERATED AGENT INDEX -->
 ### Current inventory
 
-- **69** curated records cover **616** enforced discovery surfaces; **0** are unmapped.
-- Source discovery identifies **128** WP-CLI leaf commands and **142** REST registrations.
-- Opportunity dispositions: **0** candidate, **0** needs review, **12** covered elsewhere, **6** deferred, **8** not recommended for further parity, and **43** unreviewed.
+- **70** curated records cover **609** enforced discovery surfaces; **0** are unmapped.
+- Source discovery identifies **129** WP-CLI leaf commands and **130** REST registrations.
+- Opportunity dispositions: **0** candidate, **0** needs review, **12** covered elsewhere, **6** deferred, **8** not recommended for further parity, and **44** unreviewed.
 
 ### Records by category
 
@@ -108,7 +108,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `addon_bricks` | 8 |
 | `addon_content_migration` | 5 |
 | `api_extensions` | 2 |
-| `cli_automation` | 22 |
+| `cli_automation` | 23 |
 | `entity_editor` | 3 |
 | `identity_entities` | 2 |
 | `import_export` | 7 |
@@ -119,7 +119,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `settings_configuration` | 4 |
 | `snapshots_backups` | 2 |
 
-Total curated records: **69**.
+Total curated records: **70**.
 <!-- END GENERATED AGENT INDEX -->
 
 ## Maintenance Commands
@@ -131,6 +131,8 @@ composer agent-docs:refresh
 composer agent-docs:check
 composer agent-docs:query -- operation:import surface:cli
 ```
+
+`check` and `build` pass in a clean clone. A reference into a development-only path such as `_source/` prints a warning when the file is absent; see [Clean clones and development-only paths](MAINTENANCE.md#clean-clones-and-development-only-paths).
 
 Use [`MAINTENANCE.md`](MAINTENANCE.md) for change triggers, the capability-impact contract, CI behavior, release checks, and the non-stable-record review cadence.
 

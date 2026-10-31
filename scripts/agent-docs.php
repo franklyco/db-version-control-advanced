@@ -15,6 +15,21 @@ const DBVC_AGENT_FACETS = [
     'content_migration' => ['label' => 'Content Migration add-on', 'path' => 'facets/content-migration-addon.md'],
     'non_active' => ['label' => 'Staged/planned/absent', 'path' => 'facets/staged-planned-and-absent.md'],
 ];
+// Paths that db-version-control-main (development) tracks but deliberately never copies into this
+// distribution repository; its scripts/distribution-drift.json lists each one as development_only.
+// A clean clone of this repository never has them, while a development checkout may.
+//   - Discovery never scans them, so the committed snapshot is the same with or without a copy.
+//   - A manifest source_ref, test_ref or doc_ref into one is checked when the file is present and
+//     reported as a warning, not an error, when it is absent.
+// Same matching as the drift config: a trailing / is a directory prefix, * ? [ make an fnmatch
+// pattern, anything else is an exact path. Add a path only when the drift config already declares
+// it development-only; a path that belongs in this repository must stay a hard failure.
+const DBVC_AGENT_DEVELOPMENT_ONLY_PATHS = [
+    '_source/',
+    'uninstall.php',
+    'tests/playwright/',
+    'tests/*.test.cjs',
+];
 
 $repositoryRoot = dirname(__DIR__);
 $command = $argv[1] ?? '';
@@ -188,7 +203,6 @@ function discoverRepository(string $root): array
         'scheduled_hooks' => sortedItems($scheduledHooks, ['hook', 'function', 'source_ref.path', 'source_ref.line']),
         'tests' => discoverFilesByPattern($root, 'tests', '/Test\.php$/'),
         'documentation' => discoverFilesByPattern($root, 'docs', '/\.(?:md|json)$/'),
-        'source_reference_documentation' => discoverFilesByPattern($root, '_source/content-collector/docs', '/\.(?:md|json)$/'),
     ];
 
     ksort($collections);
@@ -219,7 +233,7 @@ function discoverRepository(string $root): array
             'Static discovery records literal registrations and references; dynamically composed hooks, routes, settings keys, and table names may require manual research.',
             'Observed source presence does not establish runtime activation, safety, support level, or permission for autonomous use.',
             'Core and Bricks paths are classified from this checkout; live LocalWP activation and route availability have not been verified.',
-            'Source files under _source/content-collector are classified as source_reference and must not be treated as runtime-loaded.',
+            'Development-only paths (' . implode(', ', DBVC_AGENT_DEVELOPMENT_ONLY_PATHS) . ') are never scanned, so source_reference records for _source/content-collector carry no discovery IDs.',
             'Settings discovery covers literal dbvc_* keys passed to common WordPress option functions; class constants and dynamically assembled keys require manual reconciliation.',
         ],
     ];
@@ -233,7 +247,6 @@ function discoverablePhpFiles(string $root): array
         'admin',
         'includes',
         'addons',
-        '_source/content-collector',
     ];
     $files = [];
 
@@ -254,7 +267,7 @@ function discoverablePhpFiles(string $root): array
                 continue;
             }
             $relative = relativePath($root, $fileInfo->getPathname());
-            if (preg_match('#/(?:vendor|node_modules|tests)/#', '/' . $relative . '/')) {
+            if (preg_match('#/(?:vendor|node_modules|tests)/#', '/' . $relative . '/') || isDevelopmentOnlyPath($relative)) {
                 continue;
             }
             $files[] = $relative;
@@ -708,17 +721,39 @@ function discoverFilesByPattern(string $root, string $relativeDirectory, string 
             if ($relativeDirectory === 'docs' && str_starts_with($relative, 'docs/agents/generated/')) {
                 continue;
             }
+            if (isDevelopmentOnlyPath($relative)) {
+                continue;
+            }
             $files[] = $relative;
         }
     }
     return sortedUnique($files);
 }
 
+/**
+ * Whether a repository-relative path is one DBVC_AGENT_DEVELOPMENT_ONLY_PATHS declares.
+ */
+function isDevelopmentOnlyPath(string $path): bool
+{
+    $path = ltrim($path, '/');
+    foreach (DBVC_AGENT_DEVELOPMENT_ONLY_PATHS as $pattern) {
+        if (str_ends_with($pattern, '/')) {
+            if (str_starts_with($path, $pattern)) {
+                return true;
+            }
+        } elseif (strpbrk($pattern, '*?[') !== false) {
+            if (fnmatch($pattern, $path, FNM_PATHNAME)) {
+                return true;
+            }
+        } elseif ($path === $pattern) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function scopeForPath(string $path): string
 {
-    if (str_starts_with($path, '_source/content-collector/')) {
-        return 'source_reference';
-    }
     if (str_starts_with($path, 'addons/bricks/')) {
         return 'addon:bricks';
     }
@@ -922,16 +957,44 @@ function validateRecord(string $root, mixed $record, int $index, array &$ids): v
             throw new RuntimeException('Invalid source_ref for ' . $record['id']);
         }
         if (! file_exists($root . '/' . ltrim((string) $sourceRef['path'], '/'))) {
+            if (isDevelopmentOnlyPath((string) $sourceRef['path'])) {
+                warnAbsentDevelopmentOnlyReference('source_ref', $record['id'], (string) $sourceRef['path']);
+                continue;
+            }
             throw new RuntimeException('Missing source_ref for ' . $record['id'] . ': ' . $sourceRef['path']);
         }
     }
     foreach (['test_refs', 'doc_refs'] as $referenceField) {
         foreach ($record[$referenceField] as $referencePath) {
-            if (! is_string($referencePath) || $referencePath === '' || ! file_exists($root . '/' . ltrim($referencePath, '/'))) {
+            if (! is_string($referencePath) || $referencePath === '') {
                 throw new RuntimeException(sprintf('Missing %s for %s: %s', $referenceField, $record['id'], (string) $referencePath));
+            }
+            if (! file_exists($root . '/' . ltrim($referencePath, '/'))) {
+                if (isDevelopmentOnlyPath($referencePath)) {
+                    warnAbsentDevelopmentOnlyReference(substr($referenceField, 0, -1), $record['id'], $referencePath);
+                    continue;
+                }
+                throw new RuntimeException(sprintf('Missing %s for %s: %s', $referenceField, $record['id'], $referencePath));
             }
         }
     }
+}
+
+/**
+ * Report a manifest reference into a development-only path that this checkout does not hold.
+ *
+ * A warning rather than an error: a clean clone of the distribution repository never has these
+ * paths, so failing on them would make check unusable there. The path is still named so a
+ * reviewer can tell an expected absence from a typo.
+ */
+function warnAbsentDevelopmentOnlyReference(string $kind, string $recordId, string $path): void
+{
+    fwrite(STDERR, sprintf(
+        "[agent-docs] WARNING: %s for %s is development-only and absent from this checkout: %s\n",
+        $kind,
+        $recordId,
+        $path
+    ));
 }
 
 function validateOpportunity(mixed $opportunity, string $recordId): void
