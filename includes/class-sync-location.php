@@ -312,6 +312,9 @@ if (! class_exists('DBVC_Sync_Location')) {
                     $sync_root
                 )) . '</p>';
                 $result['actions'] = '<p>' . esc_html(self::setup_instructions()) . '</p>';
+                if (class_exists('DBVC_Sync_Exposure')) {
+                    $result['actions'] .= DBVC_Sync_Exposure::guidance_html($sync_root, (string) get_option('dbvc_sync_path', ''));
+                }
             }
 
             return $result;
