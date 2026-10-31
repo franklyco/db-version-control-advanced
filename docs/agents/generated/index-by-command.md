@@ -127,6 +127,7 @@
 | `wp dbvc proposals list` | `[--cleanup-duplicates] [--fail-on-pending] [--fields=<fields>] [--id=<proposal-id>] [--recapture-snapshots[=<ids>]]` | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc proposals show` | `<proposal-id> [--fail-on-blockers] [--fields=<fields>] [--format=<format>]` | [`cli.proposals.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc proposals upload` | `<zip> [--id=<id>] [--overwrite]` | [`cli.core.proposals.upload`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| `wp dbvc redact-backups` | `[--backup=<name>] [--dry-run] [--yes]` | [`cli.core.backups.redact`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc resolver-rules add` | `<action> <original_id> [--note=<text>] [--target=<attachment_id>]` | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc resolver-rules delete` | `<original_id>...` | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc resolver-rules import` | `<file>` | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
