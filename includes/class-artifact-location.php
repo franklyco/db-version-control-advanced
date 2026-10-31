@@ -421,6 +421,27 @@ if (! class_exists('DBVC_Artifact_Location')) {
                     __('Backups and logs move outside the web root once %s is set.', 'dbvc'),
                     DBVC_Sync_Location::CONSTANT_NAME
                 )) . '</p>';
+
+                // Without the constant, existing backups sit in uploads/sync,
+                // which the sync folder's nginx guidance does not cover.
+                $legacy_root = self::legacy_root();
+                if ($legacy_root !== '' && self::legacy_file_count() > 0 && DBVC_Sync_Location::is_web_reachable($legacy_root)) {
+                    $result['status']         = 'recommended';
+                    $result['badge']['color'] = 'red';
+                    $result['label']          = __('DBVC backups and logs are web-reachable', 'dbvc');
+                    $result['description']    = '<p>' . esc_html(sprintf(
+                        /* translators: %s: absolute folder path */
+                        __('Backups (which copy options.json), proposals, snapshots, media bundles and transfer packets are stored in %s. nginx ignores its .htaccess, so these files can be downloaded unless the server blocks the path.', 'dbvc'),
+                        $legacy_root
+                    )) . '</p>';
+                    $result['actions'] = '<p>' . esc_html(DBVC_Sync_Location::setup_instructions()) . ' '
+                        . esc_html__('Backups and logs then move beside it; run "wp dbvc migrate-artifacts" for existing ones.', 'dbvc') . '</p>';
+                    $rule = class_exists('DBVC_Sync_Exposure') ? DBVC_Sync_Exposure::nginx_rule($legacy_root) : '';
+                    if ($rule !== '') {
+                        $result['actions'] .= '<p>' . esc_html__('Until then, nginx: add this block to the server block for this site, then reload nginx.', 'dbvc') . '</p>'
+                            . '<pre class="dbvc-sync-nginx-rule"><code>' . esc_html($rule) . '</code></pre>';
+                    }
+                }
                 return $result;
             }
 

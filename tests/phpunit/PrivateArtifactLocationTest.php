@@ -74,6 +74,7 @@ class PrivateArtifactLocationTest extends WP_UnitTestCase
     {
         $uploads['basedir'] = $this->uploads_dir;
         $uploads['path']    = $this->uploads_dir;
+        $uploads['baseurl'] = content_url('/uploads/dbvc-s1-uploads-' . $this->suffix);
         return $uploads;
     }
 
@@ -328,7 +329,10 @@ class PrivateArtifactLocationTest extends WP_UnitTestCase
         $tests = apply_filters('site_status_tests', []);
         $this->assertArrayHasKey(DBVC_Artifact_Location::SITE_HEALTH_TEST, $tests['direct']);
 
-        $this->assertSame('good', DBVC_Artifact_Location::site_health_test()['status'], 'Nothing to report before the absolute root is set.');
+        $without_root = DBVC_Artifact_Location::site_health_test();
+        $this->assertSame('recommended', $without_root['status'], 'Backups in uploads/sync are web-reachable without the absolute root.');
+        $this->assertStringContainsString('location ^~ /wp-content/uploads/dbvc-s1-uploads-' . $this->suffix . '/sync/ {', html_entity_decode($without_root['actions']));
+        $this->assertStringContainsString(DBVC_Sync_Location::CONSTANT_NAME, $without_root['actions']);
 
         $this->use_absolute_root($this->absolute_root);
         $this->assertSame('recommended', DBVC_Artifact_Location::site_health_test()['status']);

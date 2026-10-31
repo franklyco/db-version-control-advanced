@@ -6524,8 +6524,8 @@
         "warnings": [
           "Configuration changes alter later import/export behavior.",
           "The admin page is broad and coupling-sensitive.",
-          "dbvc_sync_path is always resolved under ABSPATH and is web-reachable on nginx. Only the DBVC_SYNC_PATH_ABSOLUTE constant or the dbvc_sync_path_absolute filter can move the folder outside the web root; the admin field turns read-only while it is active. Paths inside a web-served root, containing the install, in system folders, top-level, relative or with traversal segments are refused.",
-          "The private artifact root (<absolute root>-artifacts/, or the dbvc_private_artifacts_root filter) has no admin setting. While it is active the logging directory option is ignored, because that option always resolves under ABSPATH. A refused artifact root falls back to uploads/sync/ and Site Health (dbvc_private_artifacts_location) reports it as critical."
+          "dbvc_sync_path is always resolved under ABSPATH and is web-reachable on nginx. Only the DBVC_SYNC_PATH_ABSOLUTE constant or the dbvc_sync_path_absolute filter can move the folder outside the web root; the admin field turns read-only while it is active. Paths inside a web-served root, containing the install, in system folders, top-level, relative or with traversal segments are refused. A web-reachable dbvc_sync_path folder (theme, plugin or uploads) is still accepted: DBVC_Sync_Exposure only shows the nginx location deny block for its URL path, the Cloudways steps and a random folder-name suggestion on the settings screen, on save and in Site Health. Nothing is blocked until the server applies that rule.",
+          "The private artifact root (<absolute root>-artifacts/, or the dbvc_private_artifacts_root filter) has no admin setting. While it is active the logging directory option is ignored, because that option always resolves under ABSPATH. A refused artifact root falls back to uploads/sync/ and Site Health (dbvc_private_artifacts_location) reports it as critical. Without the constant the same test reports a web-reachable uploads/sync/ holding backups as recommended, with the DBVC_SYNC_PATH_ABSOLUTE fix and the DBVC_Sync_Exposure::nginx_rule() block for uploads/sync/."
         ]
       },
       "source_refs": [
@@ -6540,11 +6540,15 @@
           "path": "includes/class-sync-location.php"
         },
         {
+          "path": "includes/class-sync-exposure.php"
+        },
+        {
           "path": "includes/class-artifact-location.php"
         }
       ],
       "test_refs": [
         "tests/phpunit/PrivateArtifactLocationTest.php",
+        "tests/phpunit/SyncPathNginxExposureTest.php",
         "tests/phpunit/SyncPathOutsideWebRootTest.php"
       ],
       "doc_refs": [],
@@ -6565,7 +6569,7 @@
           "static_registration_discovery"
         ],
         "live_runtime_verified": false,
-        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-10-29: sync path location (DBVC_SYNC_PATH_ABSOLUTE validation, fallback, Site Health test dbvc_sync_folder_location) covered by SyncPathOutsideWebRootTest; the Configure UI status lines were not exercised in a browser."
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-10-29: sync path location (DBVC_SYNC_PATH_ABSOLUTE validation, fallback, Site Health test dbvc_sync_folder_location) covered by SyncPathOutsideWebRootTest; the Configure UI status lines were not exercised in a browser. 2026-10-31: web-reachable dbvc_sync_path guidance (nginx deny block, Cloudways steps, random-name suggestion, save warning, root index.php on save) covered by SyncPathNginxExposureTest; no nginx or Cloudways server was exercised. 2026-10-31: private artifact root (<absolute root>-artifacts/, dbvc_private_artifacts_root validation, overlap refusal, log directory override, Site Health test dbvc_private_artifacts_location) covered by PrivateArtifactLocationTest."
       },
       "id": "settings.core.import_export",
       "title": "Import/export configuration family",

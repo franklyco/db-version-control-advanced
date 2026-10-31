@@ -660,6 +660,7 @@ function dbvc_render_export_page()
     if (false === $validated_path) {
       $config_feedback['import']['error'][] = esc_html__('Invalid sync path provided. Path cannot contain ../ or other unsafe characters.', 'dbvc');
     } else {
+      $sync_path_changed = (string) get_option('dbvc_sync_path', '') !== (string) $validated_path;
       update_option('dbvc_sync_path', $validated_path);
       $custom_path   = $validated_path;
       $resolved_path = dbvc_get_sync_path();
@@ -667,6 +668,14 @@ function dbvc_render_export_page()
         $config_feedback['import']['error'][] = sprintf(esc_html__('Sync folder setting saved, but the directory could not be created at: %s. Please check permissions.', 'dbvc'), esc_html($resolved_path));
       } else {
         $config_feedback['import']['success'][] = sprintf(esc_html__('Sync folder ensured at: %s', 'dbvc'), esc_html($resolved_path));
+        if (class_exists('DBVC_Sync_Posts')) {
+          // index.php stops directory listings where nginx ignores .htaccess.
+          DBVC_Sync_Posts::ensure_directory_security(untrailingslashit($resolved_path));
+        }
+      }
+      // Warn when the path changes; the field itself keeps the guidance on screen.
+      if ($sync_path_changed && class_exists('DBVC_Sync_Exposure')) {
+        $config_feedback['import']['warning'][] = DBVC_Sync_Exposure::save_warning($resolved_path);
       }
     }
 
@@ -1794,14 +1803,18 @@ function dbvc_render_export_page()
     'dbvc-config-tools'      => esc_html__('Maintenance & Tools', 'dbvc'),
   ];
   $render_config_feedback = function (array $bucket) {
-    $errors  = array_unique(array_filter($bucket['error'] ?? []));
-    $success = array_unique(array_filter($bucket['success'] ?? []));
-    if (empty($errors) && empty($success)) {
+    $errors   = array_unique(array_filter($bucket['error'] ?? []));
+    $warnings = array_unique(array_filter($bucket['warning'] ?? []));
+    $success  = array_unique(array_filter($bucket['success'] ?? []));
+    if (empty($errors) && empty($warnings) && empty($success)) {
       return;
     }
     echo '<div class="dbvc-config-feedback">';
     foreach ($errors as $message) {
       echo '<div class="notice notice-error"><p>' . esc_html($message) . '</p></div>';
+    }
+    foreach ($warnings as $message) {
+      echo '<div class="notice notice-warning"><p>' . esc_html($message) . '</p></div>';
     }
     foreach ($success as $message) {
       echo '<div class="notice notice-success"><p>' . esc_html($message) . '</p></div>';
@@ -3787,6 +3800,9 @@ document.addEventListener('DOMContentLoaded', function () {
                   __('This folder is inside the web root. nginx ignores its .htaccess, so its files may be downloadable.', 'dbvc')
                   . ' ' . DBVC_Sync_Location::setup_instructions()
                 ); ?></p>
+                <?php if (class_exists('DBVC_Sync_Exposure')) : ?>
+                  <div class="dbvc-sync-exposure-guidance"><?php echo DBVC_Sync_Exposure::guidance_html($resolved_path, (string) $custom_path); // Escaped in guidance_html(). ?></div>
+                <?php endif; ?>
               <?php endif; ?>
 
               <hr />
