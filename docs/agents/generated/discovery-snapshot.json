@@ -4,7 +4,7 @@
     "repository": {
         "scope": "repository_only",
         "source_file_count": 486,
-        "source_fingerprint": "sha256:deae205d223f308bc3189afa2d3b1c9b67ec500bd1e04063369e8a7b500614d1",
+        "source_fingerprint": "sha256:96d0aaac16518b3c5647ec47e2bd49eedd280dc3a9a4dcc7232fcff9292d0622",
         "live_runtime_verified": false
     },
     "counts": {
@@ -21,7 +21,7 @@
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "tests": 197
+        "tests": 198
     },
     "collections": {
         "admin_handlers": [
@@ -6719,7 +6719,7 @@
                 "hook": "dbvc_private_artifacts_root",
                 "source_ref": {
                     "path": "includes/class-artifact-location.php",
-                    "line": 503
+                    "line": 593
                 }
             },
             {
@@ -9339,7 +9339,7 @@
                 "hook": "site_status_tests",
                 "source_ref": {
                     "path": "includes/class-artifact-location.php",
-                    "line": 66
+                    "line": 90
                 }
             },
             {
@@ -13245,6 +13245,7 @@
             "tests/phpunit/OptionsExportSecretRedactionTest.php",
             "tests/phpunit/PluginBootstrapSmokeTest.php",
             "tests/phpunit/PrivateArtifactLocationTest.php",
+            "tests/phpunit/PrivateUploadsStorageLocationTest.php",
             "tests/phpunit/ProposalDiffContractTest.php",
             "tests/phpunit/ProposalInspectionCliTest.php",
             "tests/phpunit/ProposalZipIntakeTest.php",
