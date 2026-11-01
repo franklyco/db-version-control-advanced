@@ -133,4 +133,5 @@
 | `wp dbvc resolver-rules delete` | `<original_id>...` | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc resolver-rules import` | `<file>` | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc resolver-rules list_` | `[--fields=<fields>]` | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| `wp dbvc secure-portability-backups` | `[--dry-run] [--prune-orphans] [--yes]` | [`cli.core.portability_backups.secure`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | `wp dbvc snapshots` | `[--limit=<number>] [--offset=<number>] [--type=<type>]` | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |

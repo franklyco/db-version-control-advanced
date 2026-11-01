@@ -509,34 +509,19 @@ final class ExportPackageBuilder
     }
 
     /**
+     * Delete an export workspace. Refuses anything that is not strictly
+     * inside the configuration portability exports root.
+     *
      * @param string $directory
      * @return void
      */
     private static function cleanup_directory($directory): void
     {
-        $directory = wp_normalize_path((string) $directory);
-        if ($directory === '' || ! is_dir($directory)) {
+        $roots = Storage::ensure_roots();
+        if (\is_wp_error($roots)) {
             return;
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-
-        foreach ($iterator as $item) {
-            if (! $item instanceof \SplFileInfo) {
-                continue;
-            }
-
-            $path = $item->getPathname();
-            if ($item->isDir()) {
-                @rmdir($path);
-            } else {
-                @unlink($path);
-            }
-        }
-
-        @rmdir($directory);
+        dbvc_remove_directory_within($directory, $roots['exports']);
     }
 }

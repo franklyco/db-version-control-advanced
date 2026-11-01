@@ -36,6 +36,7 @@
 | [`cli.core.capabilities.inspect`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`cli.core.export`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`cli.core.import`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
+| [`cli.core.portability_backups.secure`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`cli.core.proposals.apply`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`cli.core.proposals.list`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |
 | [`cli.core.proposals.upload`](../manifest.json) | `unreviewed` | `none` | `unknown` | `none` | Not applicable. | Not yet reviewed for a concrete automation or parity opportunity. |

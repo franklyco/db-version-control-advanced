@@ -1185,6 +1185,65 @@ function dbvc_path_is_within($path, $root)
 }
 
 /**
+ * Recursively delete a directory that sits strictly inside a storage root.
+ *
+ * Refuses the root itself, anything outside it on a segment boundary, a path
+ * with a `..` segment, and a directory whose real path leaves the root
+ * through a symlink. Symlinks inside the tree are removed as links; their
+ * targets are never followed.
+ *
+ * @param string $directory Directory to delete.
+ * @param string $root      Storage root the directory must be inside.
+ * @return bool True when the directory is gone, false when refused or left in place.
+ */
+function dbvc_remove_directory_within($directory, $root)
+{
+	$directory = untrailingslashit(wp_normalize_path((string) $directory));
+	$root      = untrailingslashit(wp_normalize_path((string) $root));
+	if ($directory === '' || $root === '' || $directory === $root || ! dbvc_path_is_within($directory, $root)) {
+		return false;
+	}
+	if (in_array('..', explode('/', $directory), true) || is_link($directory)) {
+		return false;
+	}
+	if (! is_dir($directory)) {
+		return true;
+	}
+
+	$real_directory = realpath($directory);
+	$real_root      = realpath($root);
+	if ($real_directory === false || $real_root === false) {
+		return false;
+	}
+	$real_directory = wp_normalize_path($real_directory);
+	$real_root      = wp_normalize_path($real_root);
+	if ($real_directory === $real_root || ! dbvc_path_is_within($real_directory, $real_root)) {
+		return false;
+	}
+
+	try {
+		$iterator = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator($real_directory, FilesystemIterator::SKIP_DOTS),
+			RecursiveIteratorIterator::CHILD_FIRST
+		);
+		foreach ($iterator as $item) {
+			if (! $item instanceof SplFileInfo) {
+				continue;
+			}
+			if ($item->isDir() && ! $item->isLink()) {
+				@rmdir($item->getPathname());
+			} else {
+				@unlink($item->getPathname());
+			}
+		}
+	} catch (Exception $exception) {
+		return false;
+	}
+
+	return @rmdir($real_directory) || ! is_dir($real_directory);
+}
+
+/**
  * Check if a file path is safe for writing.
  * 
  * @param string $file_path The file path to check.
