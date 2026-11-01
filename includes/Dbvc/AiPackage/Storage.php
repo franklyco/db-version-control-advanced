@@ -62,10 +62,23 @@ final class Storage
     }
 
     /**
+     * Base folder for DBVC's uploads storage: the uploads folder, or
+     * `<private root>/uploads` while DBVC_SYNC_PATH_ABSOLUTE keeps artifacts
+     * outside the web root (security finding S1). Everything under dbvc/
+     * (AI sample packages and intake, configuration and Bricks portability)
+     * resolves from here.
+     *
      * @return string|\WP_Error
      */
     public static function get_uploads_base_dir()
     {
+        if (class_exists('\DBVC_Artifact_Location')) {
+            $private = \DBVC_Artifact_Location::private_root();
+            if ($private !== '') {
+                return wp_normalize_path($private . '/' . \DBVC_Artifact_Location::UPLOADS_SUBDIR);
+            }
+        }
+
         $uploads = wp_upload_dir(null, false);
         if (! empty($uploads['error'])) {
             return new \WP_Error(
@@ -234,7 +247,10 @@ final class Storage
         }
 
         $uploads_base = wp_normalize_path(rtrim($uploads_base, '/\\'));
-        if (strpos($path, $uploads_base) !== 0) {
+        $is_within = function_exists('dbvc_path_is_within')
+            ? dbvc_path_is_within($path, $uploads_base)
+            : strpos($path, $uploads_base) === 0;
+        if (! $is_within) {
             return new \WP_Error(
                 'dbvc_ai_storage_path_invalid',
                 __('AI package storage paths must remain inside the current uploads directory.', 'dbvc')

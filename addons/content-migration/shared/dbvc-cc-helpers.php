@@ -104,6 +104,12 @@ if (! function_exists('dbvc_cc_storage_http_exposure_probe')) {
      */
     function dbvc_cc_storage_http_exposure_probe($relative_path = 'index.php')
     {
+        // With DBVC_SYNC_PATH_ABSOLUTE the storage lives beside the private
+        // sync root and has no URL at all.
+        if (class_exists('DBVC_Artifact_Location') && DBVC_Artifact_Location::is_private()) {
+            return ['exposed' => false, 'status' => null, 'url' => '', 'reason' => 'outside_web_root'];
+        }
+
         $upload = wp_upload_dir();
         $baseurl = isset($upload['baseurl']) ? (string) $upload['baseurl'] : '';
         if ($baseurl === '' || ! class_exists('DBVC_CC_Settings_Service')) {

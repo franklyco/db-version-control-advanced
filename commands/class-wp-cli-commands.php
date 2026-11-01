@@ -856,7 +856,7 @@ class DBVC_WP_CLI_Commands {
 				WP_CLI::success( 'No originals have a verified copy to remove.' );
 				return;
 			}
-			WP_CLI::confirm( sprintf( 'Permanently delete %d original file(s) under uploads/sync and the old log folder?', $totals['to_remove'] ), $assoc_args );
+			WP_CLI::confirm( sprintf( 'Permanently delete %d original file(s) under uploads/sync, DBVC uploads storage and the old log folder?', $totals['to_remove'] ), $assoc_args );
 			$result = DBVC_Artifact_Location::remove_legacy( false );
 			if ( is_wp_error( $result ) ) {
 				WP_CLI::error( $result->get_error_message() );

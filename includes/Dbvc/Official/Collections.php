@@ -9,7 +9,10 @@ use WP_Error;
  * Persistence helpers for "Official" collections.
  *
  * Stores metadata in dedicated tables and mirrors resolved snapshots
- * into uploads/dbvc/official/{collection}/ for export parity.
+ * into uploads/dbvc/official/{collection}/ for export parity. While
+ * DBVC_SYNC_PATH_ABSOLUTE keeps artifacts private, that is
+ * `<private root>/uploads/dbvc/official/`; recorded paths stay relative to
+ * the uploads base either way.
  */
 final class Collections
 {
@@ -358,12 +361,7 @@ final class Collections
 
     private static function get_storage_base(): string
     {
-        $uploads = \wp_upload_dir(null, false);
-        $base    = isset($uploads['basedir']) && $uploads['basedir'] !== ''
-            ? $uploads['basedir']
-            : WP_CONTENT_DIR . '/uploads';
-
-        $target = \trailingslashit($base) . 'dbvc/official';
+        $target = \trailingslashit(self::get_uploads_base()) . 'dbvc/official';
 
         if (! is_dir($target)) {
             \wp_mkdir_p($target);
@@ -372,6 +370,24 @@ final class Collections
         self::secure_directory($target);
 
         return $target;
+    }
+
+    /**
+     * The uploads folder, or `<private root>/uploads` while artifacts are private.
+     */
+    private static function get_uploads_base(): string
+    {
+        if (class_exists('\DBVC_Artifact_Location')) {
+            $private = \DBVC_Artifact_Location::private_root();
+            if ($private !== '') {
+                return $private . '/' . \DBVC_Artifact_Location::UPLOADS_SUBDIR;
+            }
+        }
+
+        $uploads = \wp_upload_dir(null, false);
+        return isset($uploads['basedir']) && $uploads['basedir'] !== ''
+            ? $uploads['basedir']
+            : WP_CONTENT_DIR . '/uploads';
     }
 
     private static function secure_directory(string $path): void
@@ -445,12 +461,7 @@ final class Collections
 
     private static function to_relative_path(string $absolute): string
     {
-        $uploads = \wp_upload_dir(null, false);
-        if (empty($uploads['basedir'])) {
-            return $absolute;
-        }
-
-        $base = rtrim($uploads['basedir'], '/\\');
+        $base = rtrim(self::get_uploads_base(), '/\\');
         if (strpos($absolute, $base) === 0) {
             $relative = substr($absolute, strlen($base));
             return ltrim(str_replace('\\', '/', $relative), '/');
