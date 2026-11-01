@@ -55,7 +55,10 @@ final class DBVC_Bricks_Portability_Backup_Service
             'option_names' => array_keys($option_snapshot),
         ];
 
-        DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'backup.json', $payload);
+        $write = self::write_backup_file($backup_dir, $payload);
+        if (is_wp_error($write)) {
+            return $write;
+        }
         DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'record.json', $record);
 
         return $payload;
@@ -84,7 +87,7 @@ final class DBVC_Bricks_Portability_Backup_Service
             return $backup_dir;
         }
 
-        $write = DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'backup.json', $backup);
+        $write = self::write_backup_file($backup_dir, $backup);
         if (is_wp_error($write)) {
             return $write;
         }
@@ -136,7 +139,7 @@ final class DBVC_Bricks_Portability_Backup_Service
             return $backup_dir;
         }
 
-        $write = DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'backup.json', $backup);
+        $write = self::write_backup_file($backup_dir, $backup);
         if (is_wp_error($write)) {
             return $write;
         }
@@ -174,7 +177,7 @@ final class DBVC_Bricks_Portability_Backup_Service
             return $backup_dir;
         }
 
-        $write = DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'backup.json', $backup);
+        $write = self::write_backup_file($backup_dir, $backup);
         if (is_wp_error($write)) {
             return $write;
         }
@@ -199,7 +202,34 @@ final class DBVC_Bricks_Portability_Backup_Service
             return $backup_dir;
         }
 
-        return DBVC_Bricks_Portability_Storage::read_json_file(wp_normalize_path(trailingslashit($backup_dir) . 'backup.json'));
+        $backup = DBVC_Bricks_Portability_Storage::read_json_file(wp_normalize_path(trailingslashit($backup_dir) . 'backup.json'));
+        if (is_wp_error($backup)) {
+            return $backup;
+        }
+
+        // Resolve every vaulted secret before a caller restores; a missing one is an error, never a marker written to an option.
+        return DBVC_Backup_Secret_Vault::open($backup, DBVC_Backup_Secret_Vault::SCOPE_BRICKS, sanitize_key((string) $backup_id));
+    }
+
+    /**
+     * Write backup.json with its secret option values moved to the database
+     * vault. The caller keeps the in-memory backup with real values.
+     *
+     * backup.json sits under uploads/dbvc/, which nginx serves unless
+     * DBVC_SYNC_PATH_ABSOLUTE moves it (S1).
+     *
+     * @param string $backup_dir
+     * @param array<string, mixed> $backup
+     * @return string|\WP_Error
+     */
+    private static function write_backup_file($backup_dir, array $backup)
+    {
+        $sealed = DBVC_Backup_Secret_Vault::seal($backup, DBVC_Backup_Secret_Vault::SCOPE_BRICKS, (string) ($backup['backup_id'] ?? ''));
+        if (is_wp_error($sealed)) {
+            return $sealed;
+        }
+
+        return DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'backup.json', $sealed);
     }
 
     /**
@@ -209,6 +239,13 @@ final class DBVC_Bricks_Portability_Backup_Service
     public static function restore_backup(array $backup)
     {
         $options = isset($backup['options']) && is_array($backup['options']) ? $backup['options'] : [];
+        if (DBVC_Backup_Secret_Vault::contains_marker($options)) {
+            return new \WP_Error(
+                'dbvc_bricks_portability_backup_sealed',
+                __('This Bricks backup still holds vaulted secret markers; load it with load_backup() before restoring.', 'dbvc'),
+                ['status' => 500]
+            );
+        }
         foreach ($options as $option_name => $value) {
             $option_name = sanitize_key((string) $option_name);
             if ($option_name === '') {

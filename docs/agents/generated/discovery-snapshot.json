@@ -3,25 +3,25 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 486,
-        "source_fingerprint": "sha256:96d0aaac16518b3c5647ec47e2bd49eedd280dc3a9a4dcc7232fcff9292d0622",
+        "source_file_count": 487,
+        "source_fingerprint": "sha256:c7574d858b1c256ee4377b9b34c5e9e961ec1e43b03e119009c0723317b64b32",
         "live_runtime_verified": false
     },
     "counts": {
         "admin_handlers": 36,
         "admin_menus": 13,
-        "bootstrap_includes": 137,
+        "bootstrap_includes": 138,
         "bootstrap_initializers": 19,
-        "cli_commands": 130,
+        "cli_commands": 131,
         "cli_namespaces": 13,
         "database_tables": 45,
         "documentation": 537,
-        "extension_points": 202,
+        "extension_points": 203,
         "hook_listeners": 219,
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "tests": 198
+        "tests": 199
     },
     "collections": {
         "admin_handlers": [
@@ -677,7 +677,7 @@
                     "expression": "$dbvc_cc_addon_bootstrap",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 206
+                        "line": 207
                     }
                 },
                 {
@@ -701,7 +701,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/agency-control/bootstrap.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 183
+                        "line": 184
                     }
                 },
                 {
@@ -709,7 +709,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-addon.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 155
+                        "line": 156
                     }
                 },
                 {
@@ -717,7 +717,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-apply.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 158
+                        "line": 159
                     }
                 },
                 {
@@ -725,7 +725,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-artifacts.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 156
+                        "line": 157
                     }
                 },
                 {
@@ -733,7 +733,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-auth.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 165
+                        "line": 166
                     }
                 },
                 {
@@ -741,7 +741,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-queue.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 166
+                        "line": 167
                     }
                 },
                 {
@@ -749,7 +749,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-connected-sites.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 162
+                        "line": 163
                     }
                 },
                 {
@@ -757,7 +757,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-drift.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 157
+                        "line": 158
                     }
                 },
                 {
@@ -765,7 +765,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-idempotency.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 161
+                        "line": 162
                     }
                 },
                 {
@@ -773,7 +773,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-onboarding.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 164
+                        "line": 165
                     }
                 },
                 {
@@ -781,7 +781,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-packages.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 160
+                        "line": 161
                     }
                 },
                 {
@@ -789,7 +789,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-proposals.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 159
+                        "line": 160
                     }
                 },
                 {
@@ -797,7 +797,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/bricks-protected-variants.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 163
+                        "line": 164
                     }
                 },
                 {
@@ -805,7 +805,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-apply-service.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 177
+                        "line": 178
                     }
                 },
                 {
@@ -813,7 +813,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-backup-service.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 175
+                        "line": 176
                     }
                 },
                 {
@@ -821,7 +821,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-diff-engine.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 172
+                        "line": 173
                     }
                 },
                 {
@@ -829,7 +829,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-domain-verifier.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 170
+                        "line": 171
                     }
                 },
                 {
@@ -837,7 +837,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-media-apply-service.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 176
+                        "line": 177
                     }
                 },
                 {
@@ -845,7 +845,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-normalizer.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 171
+                        "line": 172
                     }
                 },
                 {
@@ -853,7 +853,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-package-service.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 173
+                        "line": 174
                     }
                 },
                 {
@@ -861,7 +861,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-registry.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 168
+                        "line": 169
                     }
                 },
                 {
@@ -869,7 +869,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-rest-controller.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 178
+                        "line": 179
                     }
                 },
                 {
@@ -877,7 +877,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-storage.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 169
+                        "line": 170
                     }
                 },
                 {
@@ -885,7 +885,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-template-apply-service.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 174
+                        "line": 175
                     }
                 },
                 {
@@ -893,7 +893,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-utils.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 167
+                        "line": 168
                     }
                 },
                 {
@@ -901,7 +901,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 179
+                        "line": 180
                     }
                 },
                 {
@@ -909,7 +909,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/connected-environments/bootstrap.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 182
+                        "line": 183
                     }
                 },
                 {
@@ -917,7 +917,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'addons/visual-editor/bootstrap.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 180
+                        "line": 181
                     }
                 },
                 {
@@ -925,7 +925,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/admin-menu.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 229
+                        "line": 230
                     }
                 },
                 {
@@ -933,7 +933,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/admin-page.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 230
+                        "line": 231
                     }
                 },
                 {
@@ -941,7 +941,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/capability-landscape.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 308
+                        "line": 309
                     }
                 },
                 {
@@ -949,7 +949,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/class-admin-app.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 150
+                        "line": 151
                     }
                 },
                 {
@@ -957,7 +957,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/class-ai-intake-controller.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 227
+                        "line": 228
                     }
                 },
                 {
@@ -965,7 +965,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/class-ai-tools-page.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 228
+                        "line": 229
                     }
                 },
                 {
@@ -973,7 +973,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/class-connected-admin-page.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 152
+                        "line": 153
                     }
                 },
                 {
@@ -981,7 +981,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'admin/class-entity-editor-app.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 154
+                        "line": 155
                     }
                 },
                 {
@@ -989,7 +989,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'commands/class-media-hydration-cli.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 149
+                        "line": 150
                     }
                 },
                 {
@@ -997,7 +997,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'commands/class-wp-cli-commands.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 148
+                        "line": 149
                     }
                 },
                 {
@@ -1013,7 +1013,15 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 84
+                        "line": 85
+                    }
+                },
+                {
+                    "discovery_id": "bootstrap.include.bb63cda57d50",
+                    "expression": "DBVC_PLUGIN_PATH . 'includes/class-backup-secret-vault.php'",
+                    "source_ref": {
+                        "path": "db-version-control.php",
+                        "line": 82
                     }
                 },
                 {
@@ -1029,7 +1037,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-entity-editor-indexer.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 141
+                        "line": 142
                     }
                 },
                 {
@@ -1037,7 +1045,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-export-manager.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 139
+                        "line": 140
                     }
                 },
                 {
@@ -1045,7 +1053,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-import-router.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 140
+                        "line": 141
                     }
                 },
                 {
@@ -1061,7 +1069,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-media-sync.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 86
+                        "line": 87
                     }
                 },
                 {
@@ -1069,7 +1077,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-menu-importer.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 142
+                        "line": 143
                     }
                 },
                 {
@@ -1093,7 +1101,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-snapshot-manager.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 85
+                        "line": 86
                     }
                 },
                 {
@@ -1117,7 +1125,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-sync-logger.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 83
+                        "line": 84
                     }
                 },
                 {
@@ -1125,7 +1133,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-sync-posts.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 143
+                        "line": 144
                     }
                 },
                 {
@@ -1133,7 +1141,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-sync-taxonomies.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 146
+                        "line": 147
                     }
                 },
                 {
@@ -1141,7 +1149,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-third-party-portability.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 87
+                        "line": 88
                     }
                 },
                 {
@@ -1149,7 +1157,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/class-wsform-reference-remap.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 88
+                        "line": 89
                     }
                 },
                 {
@@ -1165,7 +1173,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/AcfDiscoveryService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 114
+                        "line": 115
                     }
                 },
                 {
@@ -1173,7 +1181,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/CompactSchemaBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 119
+                        "line": 120
                     }
                 },
                 {
@@ -1181,7 +1189,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/ImportReportFormatter.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 129
+                        "line": 130
                     }
                 },
                 {
@@ -1189,7 +1197,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/IssueService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 126
+                        "line": 127
                     }
                 },
                 {
@@ -1197,7 +1205,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/ObservedShapeService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 115
+                        "line": 116
                     }
                 },
                 {
@@ -1205,7 +1213,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/OpenAiModelCatalogService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 120
+                        "line": 121
                     }
                 },
                 {
@@ -1213,7 +1221,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/PackageDocBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 123
+                        "line": 124
                     }
                 },
                 {
@@ -1221,7 +1229,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/PostLookupService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 127
+                        "line": 128
                     }
                 },
                 {
@@ -1229,7 +1237,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/RulesService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 118
+                        "line": 119
                     }
                 },
                 {
@@ -1237,7 +1245,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SampleDocBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 122
+                        "line": 123
                     }
                 },
                 {
@@ -1245,7 +1253,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SamplePackageBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 124
+                        "line": 125
                     }
                 },
                 {
@@ -1253,7 +1261,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SchemaDiscoveryService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 116
+                        "line": 117
                     }
                 },
                 {
@@ -1261,7 +1269,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Settings.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 112
+                        "line": 113
                     }
                 },
                 {
@@ -1269,7 +1277,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SiteFingerprintService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 117
+                        "line": 118
                     }
                 },
                 {
@@ -1277,7 +1285,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Storage.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 113
+                        "line": 114
                     }
                 },
                 {
@@ -1285,7 +1293,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageDetector.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 125
+                        "line": 126
                     }
                 },
                 {
@@ -1293,7 +1301,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageImporter.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 132
+                        "line": 133
                     }
                 },
                 {
@@ -1301,7 +1309,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackagePostImportResolver.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 133
+                        "line": 134
                     }
                 },
                 {
@@ -1309,7 +1317,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageTranslator.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 130
+                        "line": 131
                     }
                 },
                 {
@@ -1317,7 +1325,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageValidator.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 131
+                        "line": 132
                     }
                 },
                 {
@@ -1325,7 +1333,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/TemplateBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 121
+                        "line": 122
                     }
                 },
                 {
@@ -1333,7 +1341,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/ValidationReportFormatter.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 128
+                        "line": 129
                     }
                 },
                 {
@@ -1341,7 +1349,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Bricks/RegistryOptionsProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 144
+                        "line": 145
                     }
                 },
                 {
@@ -1349,7 +1357,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/AbstractOptionArrayDomainProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 187
+                        "line": 188
                     }
                 },
                 {
@@ -1357,7 +1365,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/AbstractOptionDomainProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 186
+                        "line": 187
                     }
                 },
                 {
@@ -1365,7 +1373,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/AdminPage.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 203
+                        "line": 204
                     }
                 },
                 {
@@ -1373,7 +1381,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/DomainProviderInterface.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 184
+                        "line": 185
                     }
                 },
                 {
@@ -1381,7 +1389,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/ExportPackageBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 201
+                        "line": 202
                     }
                 },
                 {
@@ -1389,7 +1397,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Field.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 185
+                        "line": 186
                     }
                 },
                 {
@@ -1397,7 +1405,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/ImportSessionService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 202
+                        "line": 203
                     }
                 },
                 {
@@ -1405,7 +1413,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/AiPackageProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 197
+                        "line": 198
                     }
                 },
                 {
@@ -1413,7 +1421,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/BricksAddonProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 195
+                        "line": 196
                     }
                 },
                 {
@@ -1421,7 +1429,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/ContentCollectorProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 198
+                        "line": 199
                     }
                 },
                 {
@@ -1429,7 +1437,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/ContentCollectorRuntimeProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 199
+                        "line": 200
                     }
                 },
                 {
@@ -1437,7 +1445,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/CoreImportExportProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 192
+                        "line": 193
                     }
                 },
                 {
@@ -1445,7 +1453,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/LoggingProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 190
+                        "line": 191
                     }
                 },
                 {
@@ -1453,7 +1461,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/MaskingProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 193
+                        "line": 194
                     }
                 },
                 {
@@ -1461,7 +1469,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/MasterToolsProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 196
+                        "line": 197
                     }
                 },
                 {
@@ -1469,7 +1477,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/MediaHandlingProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 191
+                        "line": 192
                     }
                 },
                 {
@@ -1477,7 +1485,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/ThirdPartyPortabilitySettingsProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 194
+                        "line": 195
                     }
                 },
                 {
@@ -1485,7 +1493,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/VisualEditorProvider.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 189
+                        "line": 190
                     }
                 },
                 {
@@ -1493,7 +1501,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Registry.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 200
+                        "line": 201
                     }
                 },
                 {
@@ -1501,7 +1509,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Storage.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 188
+                        "line": 189
                     }
                 },
                 {
@@ -1509,7 +1517,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/ConnectedProtocol/autoload.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 181
+                        "line": 182
                     }
                 },
                 {
@@ -1517,7 +1525,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/EntityJsonMergeService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 137
+                        "line": 138
                     }
                 },
                 {
@@ -1525,7 +1533,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/RawJsonIntakeService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 134
+                        "line": 135
                     }
                 },
                 {
@@ -1533,7 +1541,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/SyncFileImportService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 135
+                        "line": 136
                     }
                 },
                 {
@@ -1541,7 +1549,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/ThirdPartySyncFileImportService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 136
+                        "line": 137
                     }
                 },
                 {
@@ -1549,7 +1557,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityReferences/BricksReferenceMapper.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 82
+                        "line": 83
                     }
                 },
                 {
@@ -1557,7 +1565,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/BundleManager.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 90
+                        "line": 91
                     }
                 },
                 {
@@ -1565,7 +1573,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/AdminUploadController.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 108
+                        "line": 109
                     }
                 },
                 {
@@ -1573,7 +1581,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/FileStateService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 93
+                        "line": 94
                     }
                 },
                 {
@@ -1581,7 +1589,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationLock.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 99
+                        "line": 100
                     }
                 },
                 {
@@ -1589,7 +1597,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationPlanner.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 96
+                        "line": 97
                     }
                 },
                 {
@@ -1597,7 +1605,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationPlanStore.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 100
+                        "line": 101
                     }
                 },
                 {
@@ -1605,7 +1613,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationReceiptStore.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 98
+                        "line": 99
                     }
                 },
                 {
@@ -1613,7 +1621,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/Hydrator.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 97
+                        "line": 98
                     }
                 },
                 {
@@ -1621,7 +1629,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/LibraryInventoryService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 94
+                        "line": 95
                     }
                 },
                 {
@@ -1629,7 +1637,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MediaHydrationJobRunner.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 106
+                        "line": 107
                     }
                 },
                 {
@@ -1637,7 +1645,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MediaHydrationJobStore.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 105
+                        "line": 106
                     }
                 },
                 {
@@ -1645,7 +1653,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MediaUrlHttpsNormalizer.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 103
+                        "line": 104
                     }
                 },
                 {
@@ -1653,7 +1661,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MirrorManifestBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 95
+                        "line": 96
                     }
                 },
                 {
@@ -1661,7 +1669,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageDownloadController.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 109
+                        "line": 110
                     }
                 },
                 {
@@ -1669,7 +1677,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageImportService.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 104
+                        "line": 105
                     }
                 },
                 {
@@ -1677,7 +1685,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageRegistry.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 102
+                        "line": 103
                     }
                 },
                 {
@@ -1685,7 +1693,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/ReceiptDownloadController.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 110
+                        "line": 111
                     }
                 },
                 {
@@ -1693,7 +1701,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/RestController.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 107
+                        "line": 108
                     }
                 },
                 {
@@ -1701,7 +1709,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/Settings.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 101
+                        "line": 102
                     }
                 },
                 {
@@ -1709,7 +1717,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Logger.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 89
+                        "line": 90
                     }
                 },
                 {
@@ -1717,7 +1725,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Reconciler.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 92
+                        "line": 93
                     }
                 },
                 {
@@ -1725,7 +1733,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Resolver.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 91
+                        "line": 92
                     }
                 },
                 {
@@ -1733,7 +1741,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Official/Collections.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 111
+                        "line": 112
                     }
                 },
                 {
@@ -1741,7 +1749,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/Dbvc/Transfer/EntityPacketBuilder.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 138
+                        "line": 139
                     }
                 },
                 {
@@ -1757,7 +1765,7 @@
                     "expression": "DBVC_PLUGIN_PATH . 'includes/hooks.php'",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 147
+                        "line": 148
                     }
                 },
                 {
@@ -1775,7 +1783,7 @@
                     "symbol": "Dbvc\\AiPackage\\OpenAiModelCatalogService::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 215
+                        "line": 216
                     }
                 },
                 {
@@ -1783,7 +1791,7 @@
                     "symbol": "Dbvc\\ConfigurationPortability\\AdminPage::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 237
+                        "line": 238
                     }
                 },
                 {
@@ -1791,7 +1799,7 @@
                     "symbol": "Dbvc\\Media\\Hydration\\AdminUploadController::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 238
+                        "line": 239
                     }
                 },
                 {
@@ -1799,7 +1807,7 @@
                     "symbol": "Dbvc\\Media\\Hydration\\MediaHydrationJobRunner::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 216
+                        "line": 217
                     }
                 },
                 {
@@ -1807,7 +1815,7 @@
                     "symbol": "Dbvc\\Media\\Hydration\\PackageDownloadController::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 239
+                        "line": 240
                     }
                 },
                 {
@@ -1815,7 +1823,7 @@
                     "symbol": "Dbvc\\Media\\Hydration\\ReceiptDownloadController::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 240
+                        "line": 241
                     }
                 },
                 {
@@ -1823,7 +1831,7 @@
                     "symbol": "Dbvc\\Media\\Hydration\\RestController::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 217
+                        "line": 218
                     }
                 },
                 {
@@ -1831,7 +1839,7 @@
                     "symbol": "DBVC_Admin_App::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 208
+                        "line": 209
                     }
                 },
                 {
@@ -1839,7 +1847,7 @@
                     "symbol": "DBVC_Agency_Control_Addon::bootstrap",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 214
+                        "line": 215
                     }
                 },
                 {
@@ -1847,7 +1855,7 @@
                     "symbol": "DBVC_AI_Intake_Controller::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 232
+                        "line": 233
                     }
                 },
                 {
@@ -1855,7 +1863,7 @@
                     "symbol": "DBVC_AI_Tools_Page::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 235
+                        "line": 236
                     }
                 },
                 {
@@ -1863,7 +1871,7 @@
                     "symbol": "DBVC_Bricks_Addon::bootstrap",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 210
+                        "line": 211
                     }
                 },
                 {
@@ -1871,7 +1879,7 @@
                     "symbol": "DBVC_Bricks_Portability::bootstrap",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 211
+                        "line": 212
                     }
                 },
                 {
@@ -1879,7 +1887,7 @@
                     "symbol": "DBVC_CC_Addon_Bootstrap::bootstrap",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 219
+                        "line": 220
                     }
                 },
                 {
@@ -1887,7 +1895,7 @@
                     "symbol": "DBVC_Connected_Admin_Page::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 153
+                        "line": 154
                     }
                 },
                 {
@@ -1895,7 +1903,7 @@
                     "symbol": "DBVC_Connected_Environments_Addon::bootstrap",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 213
+                        "line": 214
                     }
                 },
                 {
@@ -1903,7 +1911,7 @@
                     "symbol": "DBVC_Database::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 243
+                        "line": 244
                     }
                 },
                 {
@@ -1911,7 +1919,7 @@
                     "symbol": "DBVC_Entity_Editor_App::init",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 209
+                        "line": 210
                     }
                 },
                 {
@@ -1919,7 +1927,7 @@
                     "symbol": "DBVC_Visual_Editor_Addon::bootstrap",
                     "source_ref": {
                         "path": "db-version-control.php",
-                        "line": 212
+                        "line": 213
                     }
                 }
             ]
@@ -3866,7 +3874,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 835
+                    "line": 915
                 }
             },
             {
@@ -3884,7 +3892,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1229
+                    "line": 1334
                 }
             },
             {
@@ -3906,7 +3914,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1402
+                    "line": 1507
                 }
             },
             {
@@ -3925,7 +3933,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 973
+                    "line": 1078
                 }
             },
             {
@@ -3943,7 +3951,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1362
+                    "line": 1467
                 }
             },
             {
@@ -3960,7 +3968,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1165
+                    "line": 1270
                 }
             },
             {
@@ -3995,7 +4003,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1616
+                    "line": 1721
                 }
             },
             {
@@ -4010,7 +4018,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1666
+                    "line": 1771
                 }
             },
             {
@@ -4025,7 +4033,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1702
+                    "line": 1807
                 }
             },
             {
@@ -4040,7 +4048,24 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1570
+                    "line": 1675
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.secure-portability-backups",
+                "command": "dbvc secure-portability-backups",
+                "namespace": "dbvc",
+                "class": "DBVC_WP_CLI_Commands",
+                "method": "secure_portability_backups",
+                "summary": "Move the secret values in configuration and Bricks portability",
+                "synopsis_tokens": [
+                    "[--dry-run]",
+                    "[--prune-orphans]",
+                    "[--yes]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-wp-cli-commands.php",
+                    "line": 836
                 }
             },
             {
@@ -4068,7 +4093,7 @@
                 "class": "DBVC_WP_CLI_Commands",
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1777
+                    "line": 1882
                 }
             },
             {
@@ -4167,7 +4192,7 @@
                 "class": "DBVC_WP_CLI_Proposals",
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1778
+                    "line": 1883
                 }
             },
             {
@@ -4176,7 +4201,7 @@
                 "class": "DBVC_WP_CLI_Resolver_Rules",
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1779
+                    "line": 1884
                 }
             }
         ],
@@ -6602,6 +6627,17 @@
                 }
             },
             {
+                "discovery_id": "hook.extension_point.dbvc_is_secret_option_key.7a2ea563",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "apply_filters",
+                "hook": "dbvc_is_secret_option_key",
+                "source_ref": {
+                    "path": "includes/class-backup-secret-vault.php",
+                    "line": 211
+                }
+            },
+            {
                 "discovery_id": "hook.extension_point.dbvc_is_secret_option_key.fc09a237",
                 "kind": "extension_point",
                 "scope": "core",
@@ -7568,7 +7604,7 @@
                 "hook": "admin_enqueue_scripts",
                 "source_ref": {
                     "path": "db-version-control.php",
-                    "line": 304
+                    "line": 305
                 }
             },
             {
@@ -8756,7 +8792,7 @@
                 "hook": "plugins_loaded",
                 "source_ref": {
                     "path": "db-version-control.php",
-                    "line": 222
+                    "line": 223
                 }
             },
             {
@@ -8767,7 +8803,7 @@
                 "hook": "plugins_loaded",
                 "source_ref": {
                     "path": "db-version-control.php",
-                    "line": 260
+                    "line": 261
                 }
             },
             {
@@ -8789,7 +8825,7 @@
                 "hook": "plugin_action_links_",
                 "source_ref": {
                     "path": "db-version-control.php",
-                    "line": 276
+                    "line": 277
                 }
             },
             {
@@ -9207,7 +9243,7 @@
                 "hook": "save_post",
                 "source_ref": {
                     "path": "db-version-control.php",
-                    "line": 247
+                    "line": 248
                 }
             },
             {
@@ -9218,7 +9254,7 @@
                 "hook": "save_post",
                 "source_ref": {
                     "path": "db-version-control.php",
-                    "line": 248
+                    "line": 249
                 }
             },
             {
@@ -13244,6 +13280,7 @@
             "tests/phpunit/MediaResolverDryRunTest.php",
             "tests/phpunit/OptionsExportSecretRedactionTest.php",
             "tests/phpunit/PluginBootstrapSmokeTest.php",
+            "tests/phpunit/PortabilityBackupSecretVaultTest.php",
             "tests/phpunit/PrivateArtifactLocationTest.php",
             "tests/phpunit/PrivateUploadsStorageLocationTest.php",
             "tests/phpunit/ProposalDiffContractTest.php",

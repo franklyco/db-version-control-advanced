@@ -166,7 +166,9 @@
 | review items | [`addon.agency_control.scaffold`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | S1 artifact migration | [`cli.core.artifacts.migrate`](../manifest.json) | `active` | `destructive` | [CLI and automation](../facets/cli-and-automation.md) |
 | S1 backup cleanup | [`cli.core.backups.redact`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| S1 portability backup secrets | [`cli.core.portability_backups.secure`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | Save JSON | [`entity_editor.core.write`](../manifest.json) | `active` | `wordpress_write` | [Entity Editor](../facets/entity-editor.md) |
+| seal portability backups | [`cli.core.portability_backups.secure`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | settings transfer | [`configuration.core.portability`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) |
 | shared rules profile | [`addon.bricks.configuration`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | signed command transport | [`addon.bricks.command_queue`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
@@ -234,6 +236,7 @@
 | wp dbvc resolver-rules delete | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules import | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules list_ | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc secure-portability-backups | [`cli.core.portability_backups.secure`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc snapshots | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | WS Form export | [`portability.third_party.wsform_form_export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) |
 | WS Form ID parity | [`portability.third_party.wsform_id_preservation`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |

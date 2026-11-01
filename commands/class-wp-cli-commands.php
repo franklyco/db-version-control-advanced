@@ -790,6 +790,86 @@ class DBVC_WP_CLI_Commands {
 	}
 
 	/**
+	 * Move the secret values in configuration and Bricks portability
+	 * rollback backups out of their backup.json files.
+	 *
+	 * Portability imports write a rollback backup.json below
+	 * uploads/dbvc/dbvc-config-portability/backups/ and
+	 * uploads/dbvc/bricks-portability/backups/. It copies whole option
+	 * values, API keys included. nginx serves that
+	 * folder unless DBVC_SYNC_PATH_ABSOLUTE moves it. New backups keep their
+	 * secret values in a non-autoloaded database option and only a marker in
+	 * the file; this does the same for backups written earlier, so rollback
+	 * still restores the real values.
+	 *
+	 * Both the active DBVC uploads folder and, when artifacts are private,
+	 * the old uploads/dbvc folder are scanned. Run it before
+	 * "wp dbvc migrate-artifacts --remove-originals", or again after it.
+	 *
+	 * Always previews first and asks before writing. Output lists backup
+	 * folders and counts only, never values. Requires --user with the
+	 * manage_options capability.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--dry-run]
+	 * : Report what would change and exit without writing.
+	 *
+	 * [--prune-orphans]
+	 * : Also delete vault options whose backup folder no longer exists.
+	 *
+	 * [--yes]
+	 * : Skip the confirmation prompt after the preview.
+	 *
+	 * ## EXAMPLES
+	 *
+	 * wp dbvc secure-portability-backups --dry-run --user=admin
+	 * wp dbvc secure-portability-backups --user=admin
+	 * wp dbvc secure-portability-backups --prune-orphans --dry-run --user=admin
+	 *
+	 * @subcommand secure-portability-backups
+	 *
+	 * @param array $args
+	 * @param array $assoc_args
+	 * @return void
+	 */
+	public function secure_portability_backups( $args, $assoc_args ) {
+		if ( ! class_exists( 'DBVC_Backup_Secret_Vault' ) || ! current_user_can( 'manage_options' ) ) {
+			WP_CLI::error( 'Run as a user with manage_options, for example --user=admin.' );
+		}
+
+		$prune   = (bool) \WP_CLI\Utils\get_flag_value( $assoc_args, 'prune-orphans', false );
+		$preview = DBVC_Backup_Secret_Vault::secure_existing_backups( true, $prune );
+		if ( is_wp_error( $preview ) ) {
+			WP_CLI::error( $preview->get_error_message() );
+		}
+		$this->print_portability_backup_report( $preview );
+
+		$totals = $preview['totals'];
+		if ( \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false ) ) {
+			WP_CLI::success( sprintf( 'Dry run: %d backup(s) to seal (%d secret value(s)), %d orphan vault(s). Nothing was written.', $totals['to_seal'], $totals['secret_values'], $totals['orphans'] ) );
+			return;
+		}
+		if ( $totals['to_seal'] === 0 && $totals['orphans'] === 0 ) {
+			WP_CLI::success( 'No portability backup holds a secret value in its file.' );
+			return;
+		}
+
+		WP_CLI::confirm( sprintf( 'Move secret values out of %d backup file(s) and delete %d orphan vault(s)?', $totals['to_seal'], $totals['orphans'] ), $assoc_args );
+
+		$result = DBVC_Backup_Secret_Vault::secure_existing_backups( false, $prune );
+		if ( is_wp_error( $result ) ) {
+			WP_CLI::error( $result->get_error_message() );
+		}
+		$message = sprintf( 'Sealed %d backup(s); %d failed, %d orphan vault(s) removed.', $result['totals']['sealed'], $result['totals']['failed'], $result['totals']['orphans'] );
+		if ( $result['totals']['failed'] > 0 ) {
+			WP_CLI::warning( $message . ' Failed files were left unchanged.' );
+			return;
+		}
+		WP_CLI::success( $message );
+	}
+
+	/**
 	 * Move backups, proposals, snapshots, media bundles, transfer packets and
 	 * the log out of the web root, beside DBVC_SYNC_PATH_ABSOLUTE.
 	 *
@@ -908,6 +988,31 @@ class DBVC_WP_CLI_Commands {
 			$rows[]         = $row;
 		}
 		\WP_CLI\Utils\format_items( 'table', $rows, $fields );
+	}
+
+	/**
+	 * @param array $report From DBVC_Backup_Secret_Vault::secure_existing_backups().
+	 * @return void
+	 */
+	private function print_portability_backup_report( array $report ) {
+		if ( empty( $report['backups'] ) ) {
+			WP_CLI::log( 'No portability backups found.' );
+		} else {
+			$rows = [];
+			foreach ( $report['backups'] as $backup ) {
+				$rows[] = [
+					'scope'         => $backup['scope'],
+					'location'      => $backup['location'],
+					'backup'        => $backup['backup'],
+					'status'        => $backup['status'],
+					'secret_values' => $backup['secret_values'],
+				];
+			}
+			\WP_CLI\Utils\format_items( 'table', $rows, [ 'scope', 'location', 'backup', 'status', 'secret_values' ] );
+		}
+		if ( ! empty( $report['orphans'] ) ) {
+			\WP_CLI\Utils\format_items( 'table', $report['orphans'], [ 'scope', 'backup', 'secret_values' ] );
+		}
 	}
 
 	/**

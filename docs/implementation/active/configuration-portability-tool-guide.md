@@ -467,6 +467,8 @@ Rollback should:
 - call each provider's post-apply/runtime refresh hook
 - record a rollback activity entry
 
+Secret values (S1): `backup.json` is web-reachable on nginx unless `DBVC_SYNC_PATH_ABSOLUTE` moves it, so `DBVC_Backup_Secret_Vault` replaces secret-shaped and provider-sensitive values in the file with `[dbvc-vaulted:<ref>]` markers. The values are kept in the non-autoloaded option `dbvc_backup_vault_secrets_<hash>`. Rollback resolves every marker before it writes any option. When a value is missing, rollback fails with `dbvc_backup_secrets_unavailable` and writes nothing. Backups written before the vault existed are sealed by `wp dbvc secure-portability-backups`.
+
 Recommended storage:
 
 ```text

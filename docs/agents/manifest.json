@@ -95,7 +95,8 @@
       "artifacts": [],
       "storage_touched": [
         "WordPress posts/meta/options",
-        "Bricks restore artifacts"
+        "Bricks restore artifacts",
+        "Bricks portability rollback backups (uploads/dbvc/bricks-portability/backups/<id>/backup.json) with secret-shaped option values, including camelCase Bricks keys such as apiKeyGoogleMaps, replaced by [dbvc-vaulted:<ref>] markers; values in the non-autoloaded option dbvc_backup_vault_secrets_<hash>"
       ],
       "settings": [],
       "hooks": [
@@ -112,7 +113,9 @@
         "rollback": "Use a verified restore point or database backup.",
         "warnings": [
           "Apply and rollback are both mutation boundaries.",
-          "Schema verification and drift review should precede apply."
+          "Schema verification and drift review should precede apply.",
+          "load_backup() resolves vaulted secrets and returns dbvc_backup_secrets_unavailable when they are missing; restore_backup() refuses a document that still holds markers, so a marker is never written to a Bricks option.",
+          "Export workspace cleanup only deletes folders strictly inside the Bricks portability exports root."
         ]
       },
       "source_refs": [
@@ -181,24 +184,27 @@
       ],
       "test_refs": [
         "tests/phpunit/BricksAddonPhase4Test.php",
-        "tests/phpunit/BricksAddonIdempotencyTest.php"
+        "tests/phpunit/BricksAddonIdempotencyTest.php",
+        "tests/phpunit/PortabilityBackupSecretVaultTest.php"
       ],
       "doc_refs": [],
       "related": [
         "addon.bricks.drift",
-        "addon.bricks.proposals"
+        "addon.bricks.proposals",
+        "cli.core.portability_backups.secure"
       ],
       "known_gaps": [],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-        "verified_date": "2026-08-05",
+        "verified_date": "2026-11-01",
         "evidence_types": [
           "bootstrap_review",
           "source_review",
-          "static_registration_discovery"
+          "static_registration_discovery",
+          "focused_unit_test"
         ],
         "live_runtime_verified": false,
-        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed. 2026-11-01 (S1): PortabilityBackupSecretVaultTest covers the portability backup service only: backup.json written by create_backup() and record_media_state() holds no secret, load_backup() plus restore_backup() restore the exact option values, a missing vault and a sealed document are both refused."
       },
       "id": "addon.bricks.apply_restore",
       "title": "Bricks apply, restore points, and rollback",
@@ -3623,6 +3629,7 @@
       ],
       "related": [
         "cli.core.artifacts.migrate",
+        "cli.core.portability_backups.secure",
         "engine.core.import",
         "portability.third_party.wsform_form_export",
         "storage.core.snapshots"
@@ -3640,6 +3647,113 @@
         ],
         "live_runtime_verified": false,
         "notes": "WSFormAndBackupSecretExposureTest covers the service method: an editor gets dbvc_forbidden and nothing changes, the preview writes nothing and reports 3 file names with no values, apply redacts all three and hardens the folders, a second preview reports 0, and an unknown backup name is an error. Not run against a live site."
+      }
+    },
+    {
+      "id": "cli.core.portability_backups.secure",
+      "title": "Portability backup secret sealing command",
+      "summary": "Moves secret option values out of existing configuration and Bricks portability rollback backups (backup.json) into a non-autoloaded database vault option per backup, leaving a marker in the file, after a preview and a confirmation; optionally prunes vault options whose backup is gone.",
+      "status": "active",
+      "primary_category": "cli_automation",
+      "tags": [
+        "object:option",
+        "object:snapshot",
+        "operation:preview",
+        "operation:apply",
+        "risk:filesystem_write",
+        "scope:core",
+        "surface:cli"
+      ],
+      "aliases": [
+        "wp dbvc secure-portability-backups",
+        "seal portability backups",
+        "S1 portability backup secrets"
+      ],
+      "addon_or_owner": "DBVC Core",
+      "runtime_entrypoint": "wp dbvc secure-portability-backups",
+      "surfaces": [
+        {
+          "type": "cli",
+          "identifier": "wp dbvc secure-portability-backups",
+          "discovery_ids": [
+            "cli.command.dbvc.secure-portability-backups"
+          ],
+          "source_ref": {
+            "path": "commands/class-wp-cli-commands.php",
+            "line": 836
+          }
+        }
+      ],
+      "requirements": [
+        "WP-CLI with WordPress loaded",
+        "--user with manage_options"
+      ],
+      "inputs": [
+        "--dry-run",
+        "--prune-orphans",
+        "--yes"
+      ],
+      "outputs": [
+        "Per-backup table of scope, location (current or legacy uploads/dbvc), backup folder, status and secret value count; an orphan vault table with --prune-orphans; never values or option names"
+      ],
+      "artifacts": [],
+      "storage_touched": [
+        "backup.json in uploads/dbvc/{dbvc-config-portability,bricks-portability}/backups/<id>/, or <absolute root>-artifacts/uploads/dbvc/... while DBVC_SYNC_PATH_ABSOLUTE is active, plus the legacy uploads/dbvc copy when it differs (rewritten with [dbvc-vaulted:<ref>] markers)",
+        "WordPress option dbvc_backup_vault_secrets_<md5(scope|backup id)>, autoload off (holds the vaulted values; deleted by --prune-orphans when its backup folder is gone)"
+      ],
+      "settings": [],
+      "hooks": [
+        "dbvc_is_secret_option_key"
+      ],
+      "safety": {
+        "classification": "filesystem_write",
+        "human_reviewed": true,
+        "dry_run": "yes",
+        "idempotency": "yes",
+        "backup_required": false,
+        "rollback": "Lossless: the vault option holds every moved value and rollback puts it back. To undo by hand, DBVC_Backup_Secret_Vault::open() returns the original document.",
+        "warnings": [
+          "Always previews first and asks for confirmation (--yes skips the prompt); --dry-run exits after the preview without writing.",
+          "Capability gated: DBVC_Backup_Secret_Vault::secure_existing_backups() returns dbvc_forbidden without manage_options, so run it with --user.",
+          "Run before wp dbvc migrate-artifacts --remove-originals, or again after it: both copies of a backup seal to identical bytes, so the migration still pairs them.",
+          "A sealed backup can only be rolled back on a site whose database still holds its vault option; otherwise rollback fails with dbvc_backup_secrets_unavailable and writes nothing.",
+          "--prune-orphans deletes vault options for backup folders that exist in neither scanned root; a backup kept elsewhere (an old private root no longer configured) loses its secrets."
+        ]
+      },
+      "source_refs": [
+        {
+          "path": "commands/class-wp-cli-commands.php",
+          "line": 836
+        },
+        {
+          "path": "includes/class-backup-secret-vault.php"
+        }
+      ],
+      "test_refs": [
+        "tests/phpunit/PortabilityBackupSecretVaultTest.php"
+      ],
+      "doc_refs": [
+        "docs/implementation/active/configuration-portability-tool-guide.md"
+      ],
+      "related": [
+        "cli.core.artifacts.migrate",
+        "cli.core.backups.redact",
+        "configuration.core.portability",
+        "addon.bricks.apply_restore"
+      ],
+      "known_gaps": [
+        "The WP-CLI wrapper itself has no automated test; the service method it calls is covered.",
+        "Not run against a live or Cloudways site."
+      ],
+      "verification": {
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-11-01",
+        "evidence_types": [
+          "source_review",
+          "focused_unit_test"
+        ],
+        "live_runtime_verified": false,
+        "notes": "PortabilityBackupSecretVaultTest covers the service method: an editor gets dbvc_forbidden; a dry run over seeded legacy configuration and Bricks backups in both the private and the legacy uploads/dbvc roots reports 4 to seal with no values and writes nothing; apply removes every secret from all 4 files, the two Bricks copies come out byte-identical, open() and load_backup() return the original values, and a second preview reports 0; --prune-orphans previews then deletes a vault option without a backup. Not run against a live site."
       }
     },
     {
@@ -3673,7 +3787,7 @@
           ],
           "source_ref": {
             "path": "commands/class-wp-cli-commands.php",
-            "line": 835
+            "line": 915
           }
         }
       ],
@@ -3714,13 +3828,14 @@
           "Capability gated: DBVC_Artifact_Location::migrate() and remove_legacy() return dbvc_forbidden without manage_options, and dbvc_artifacts_not_private (or the refusal) without a valid absolute root.",
           "Existing targets are never overwritten: a differing copy is a conflict, the run reports incomplete, and its original is kept by --remove-originals.",
           "Symlinks are skipped and never followed by the copy or the removal. .htaccess and index.php count as verified once the private folder has its own.",
-          "Readers switch to the private root as soon as the constant is set, so backups and proposals written earlier are not listed until the copy runs."
+          "Readers switch to the private root as soon as the constant is set, so backups and proposals written earlier are not listed until the copy runs.",
+          "Configuration and Bricks portability backups copied before wp dbvc secure-portability-backups still hold secrets in clear in both copies; run that command (it scans both roots) before --remove-originals."
         ]
       },
       "source_refs": [
         {
           "path": "commands/class-wp-cli-commands.php",
-          "line": 835
+          "line": 915
         },
         {
           "path": "includes/class-artifact-location.php"
@@ -3733,6 +3848,7 @@
       "doc_refs": [],
       "related": [
         "cli.core.backups.redact",
+        "cli.core.portability_backups.secure",
         "settings.core.import_export",
         "storage.core.snapshots"
       ],
@@ -3827,7 +3943,7 @@
         "WordPress options",
         "Portability package files",
         "Import-session review draft files",
-        "Pre-import backups that copy whole option values, API keys included (uploads/dbvc/dbvc-config-portability/; <absolute root>-artifacts/uploads/dbvc/ while DBVC_SYNC_PATH_ABSOLUTE is active)"
+        "Pre-import rollback backups (uploads/dbvc/dbvc-config-portability/backups/<id>/backup.json; <absolute root>-artifacts/uploads/dbvc/ while DBVC_SYNC_PATH_ABSOLUTE is active). Secret-shaped and sensitive option values are replaced with [dbvc-vaulted:<ref>] markers; the values live in the non-autoloaded option dbvc_backup_vault_secrets_<hash>"
       ],
       "settings": [],
       "hooks": [
@@ -3837,7 +3953,7 @@
       "safety": {
         "classification": "mixed",
         "human_reviewed": true,
-        "notes": "Preview and export can be read-only apart from package creation; import/apply handlers can change WordPress configuration."
+        "notes": "Preview and export can be read-only apart from package creation; import/apply handlers can change WordPress configuration. Apply writes the rollback backup with secret values moved to a database vault option; if the vault cannot be written the apply stops before any setting changes. Rollback resolves every marker before writing any option and fails with dbvc_backup_secrets_unavailable, writing nothing, when a value is missing. Session and export workspace cleanup only deletes folders strictly inside its own storage root."
       },
       "source_refs": [
         {
@@ -3896,16 +4012,19 @@
       "test_refs": [
         "tests/phpunit/ConfigurationPortabilityRegistryTest.php",
         "tests/phpunit/ConfigurationPortabilityExportPackageTest.php",
-        "tests/phpunit/PrivateUploadsStorageLocationTest.php"
+        "tests/phpunit/PrivateUploadsStorageLocationTest.php",
+        "tests/phpunit/PortabilityBackupSecretVaultTest.php"
       ],
       "doc_refs": [
         "docs/implementation/active/configuration-portability-tool-guide.md"
       ],
       "related": [
-        "cli.configuration.portability.inspect"
+        "cli.configuration.portability.inspect",
+        "cli.core.portability_backups.secure"
       ],
       "known_gaps": [
-        "No same-checkout browser apply/rollback verification is claimed here."
+        "No same-checkout browser apply/rollback verification is claimed here.",
+        "Backups written before 2026-11-01 keep secrets in clear until wp dbvc secure-portability-backups runs."
       ],
       "opportunity": {
         "disposition": "covered_elsewhere",
@@ -3918,7 +4037,7 @@
       },
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-        "verified_date": "2026-08-14",
+        "verified_date": "2026-11-01",
         "evidence_types": [
           "static_discovery",
           "source_review",
@@ -3927,7 +4046,7 @@
           "focused_unit_test"
         ],
         "live_runtime_verified": false,
-        "notes": "Phase 38 added seven-day, fingerprint-bound review drafts inside the owning import-session file plus server-rendered domain/group/field/status/unresolved filters. Active drafts restore ordinary choices and replacement values, while credential-like replacement text is never persisted or rehydrated; expired or stale drafts are not restored. Focused coverage passed 13 tests and 192 assertions, including administrator/nonce gates, invalid and stale sessions, expiry, filtered rendering, and unchanged destination settings. This mixed record retains no browser apply/rollback claim; Phase 35 metadata inspection is owned separately."
+        "notes": "Phase 38 added seven-day, fingerprint-bound review drafts inside the owning import-session file plus server-rendered domain/group/field/status/unresolved filters. Active drafts restore ordinary choices and replacement values, while credential-like replacement text is never persisted or rehydrated; expired or stale drafts are not restored. Focused coverage passed 13 tests and 192 assertions, including administrator/nonce gates, invalid and stale sessions, expiry, filtered rendering, and unchanged destination settings. This mixed record retains no browser apply/rollback claim; Phase 35 metadata inspection is owned separately. 2026-11-01 (S1): PortabilityBackupSecretVaultTest applies a bricks_addon package and confirms backup.json holds neither the API secret nor the key id, the vault option is not autoloaded and is redacted by the options.json rules, rollback restores both real values, and rollback with the vault deleted fails closed with no option changed; the guarded cleanup_directory() refuses its root, a trailing-slash root, outside folders, .. traversal, a sibling-prefix folder and a symlink, and unlinks symlinks inside a removed workspace."
       }
     },
     {
@@ -4139,6 +4258,7 @@
             "hook.extension_point.dbvc_export_term_data.321247f3",
             "hook.extension_point.dbvc_export_term_file_path.ec32216e",
             "hook.extension_point.dbvc_import_backup_override.99d7608e",
+            "hook.extension_point.dbvc_is_secret_option_key.7a2ea563",
             "hook.extension_point.dbvc_is_secret_option_key.d245a17d",
             "hook.extension_point.dbvc_is_secret_option_key.d7b0ed21",
             "hook.extension_point.dbvc_is_secret_option_key.dbc8d5c8",
@@ -4224,6 +4344,9 @@
         },
         {
           "path": "includes/class-sync-location.php"
+        },
+        {
+          "path": "includes/class-backup-secret-vault.php"
         }
       ],
       "test_refs": [

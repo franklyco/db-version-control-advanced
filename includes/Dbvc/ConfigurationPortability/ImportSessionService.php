@@ -307,7 +307,13 @@ final class ImportSessionService
             ]);
         }
 
-        $backup_path = Storage::write_json_file($backup_dir, 'backup.json', $backup);
+        // Secret values go to a database vault: backup.json can be web-reachable (S1).
+        $sealed_backup = \DBVC_Backup_Secret_Vault::seal($backup, \DBVC_Backup_Secret_Vault::SCOPE_CONFIG, $backup_id, \DBVC_Backup_Secret_Vault::config_secret_names());
+        if (\is_wp_error($sealed_backup)) {
+            return $sealed_backup;
+        }
+
+        $backup_path = Storage::write_json_file($backup_dir, 'backup.json', $sealed_backup);
         if (\is_wp_error($backup_path)) {
             return $backup_path;
         }
@@ -383,6 +389,12 @@ final class ImportSessionService
         }
 
         $backup = Storage::read_json_file(wp_normalize_path(trailingslashit($backup_dir) . 'backup.json'));
+        if (\is_wp_error($backup)) {
+            return $backup;
+        }
+
+        // Resolve every vaulted secret before any option is written; a missing one stops the rollback.
+        $backup = \DBVC_Backup_Secret_Vault::open($backup, \DBVC_Backup_Secret_Vault::SCOPE_CONFIG, $backup_id);
         if (\is_wp_error($backup)) {
             return $backup;
         }
@@ -1167,33 +1179,19 @@ final class ImportSessionService
     }
 
     /**
+     * Delete an import session folder. Refuses anything that is not strictly
+     * inside the configuration portability sessions root.
+     *
      * @param string $directory
      * @return void
      */
     private static function cleanup_directory($directory): void
     {
-        $directory = wp_normalize_path((string) $directory);
-        if ($directory === '' || strpos($directory, '/dbvc-config-portability/sessions/') === false || ! is_dir($directory)) {
+        $roots = Storage::ensure_roots();
+        if (\is_wp_error($roots)) {
             return;
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-
-        foreach ($iterator as $item) {
-            if (! $item instanceof \SplFileInfo) {
-                continue;
-            }
-
-            if ($item->isDir()) {
-                @rmdir($item->getPathname());
-            } else {
-                @unlink($item->getPathname());
-            }
-        }
-
-        @rmdir($directory);
+        dbvc_remove_directory_within($directory, $roots['sessions']);
     }
 }

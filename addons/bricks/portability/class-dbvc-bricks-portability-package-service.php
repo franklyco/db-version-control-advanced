@@ -2122,28 +2122,19 @@ final class DBVC_Bricks_Portability_Package_Service
     }
 
     /**
+     * Delete an export workspace. Refuses anything that is not strictly
+     * inside the Bricks portability exports root.
+     *
      * @param string $directory
      * @return void
      */
     private static function cleanup_directory($directory)
     {
-        $directory = wp_normalize_path((string) $directory);
-        if ($directory === '' || ! is_dir($directory)) {
+        $roots = DBVC_Bricks_Portability_Storage::ensure_roots();
+        if (is_wp_error($roots)) {
             return;
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($iterator as $file_info) {
-            $path = wp_normalize_path((string) $file_info->getPathname());
-            if ($file_info->isDir()) {
-                @rmdir($path);
-            } else {
-                @unlink($path);
-            }
-        }
-        @rmdir($directory);
+        dbvc_remove_directory_within($directory, $roots['exports']);
     }
 }
