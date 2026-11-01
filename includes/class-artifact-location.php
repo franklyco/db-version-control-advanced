@@ -18,6 +18,14 @@
  * root and the sync root is often a git working tree: backups inside it would
  * be deleted or committed. With no absolute root configured, nothing changes.
  *
+ * The storage trees DBVC keeps directly under the uploads folder follow the
+ * same rule: `uploads/dbvc/` (AI sample packages and intake, configuration
+ * and Bricks portability exports, sessions and backups, official
+ * collections) and the content collector's `uploads/<storage path>/`. They
+ * move to `<private root>/uploads/`, keeping their uploads-relative paths.
+ * Configuration portability backups copy whole option values, API keys
+ * included, so they need this as much as the sync backups do.
+ *
  * Existing data is moved by migrate(): preview, then copy-and-verify. The
  * originals are only removed by remove_legacy(), a separate, confirmed step
  * that re-verifies every copy first.
@@ -47,6 +55,22 @@ if (! class_exists('DBVC_Artifact_Location')) {
             'snapshots'        => 'db-version-control-snapshots',
             'media_bundles'    => 'media-bundles',
             'transfer_packets' => 'dbvc-transfer-packets',
+        ];
+
+        /**
+         * Folder below the private root that mirrors the uploads folder.
+         */
+        const UPLOADS_SUBDIR = 'uploads';
+
+        /**
+         * Storage trees kept directly under the uploads folder, keyed by
+         * area. uploads_areas() adds the content collector, whose folder name
+         * is a setting.
+         *
+         * @var array<string,string>
+         */
+        const UPLOADS_AREAS = [
+            'dbvc_storage' => 'dbvc',
         ];
 
         /**
@@ -106,11 +130,8 @@ if (! class_exists('DBVC_Artifact_Location')) {
          */
         public static function legacy_root()
         {
-            $uploads = wp_get_upload_dir();
-            if (! empty($uploads['error']) || empty($uploads['basedir'])) {
-                return '';
-            }
-            return untrailingslashit(wp_normalize_path($uploads['basedir'])) . '/sync';
+            $uploads = self::legacy_uploads_dir();
+            return $uploads !== '' ? $uploads . '/sync' : '';
         }
 
         /**
@@ -161,6 +182,56 @@ if (! class_exists('DBVC_Artifact_Location')) {
                 }
             }
             return $dir;
+        }
+
+        /**
+         * The real uploads folder, without a trailing slash.
+         *
+         * @return string Empty when the uploads folder cannot be resolved.
+         */
+        public static function legacy_uploads_dir()
+        {
+            $uploads = wp_get_upload_dir();
+            if (! empty($uploads['error']) || empty($uploads['basedir'])) {
+                return '';
+            }
+            return untrailingslashit(wp_normalize_path($uploads['basedir']));
+        }
+
+        /**
+         * The base for DBVC's uploads storage trees: `<private root>/uploads`
+         * while artifacts are private, else the uploads folder. Never creates it.
+         *
+         * Callers append the same relative path either way (`dbvc/ai-intake`,
+         * `contentcollector`), so recorded relative paths survive a migration.
+         *
+         * @return string Empty when the uploads folder cannot be resolved.
+         */
+        public static function uploads_base_dir()
+        {
+            $private = self::private_root();
+            return $private !== '' ? $private . '/' . self::UPLOADS_SUBDIR : self::legacy_uploads_dir();
+        }
+
+        /**
+         * Uploads storage areas and their folder names.
+         *
+         * The content collector is included when its add-on is loaded. A
+         * collector folder that is `sync` or another area's folder is left
+         * out: it would be copied twice.
+         *
+         * @return array<string,string>
+         */
+        public static function uploads_areas()
+        {
+            $areas = self::UPLOADS_AREAS;
+            if (class_exists('DBVC_CC_Artifact_Manager') && method_exists('DBVC_CC_Artifact_Manager', 'get_storage_folder_name')) {
+                $folder = (string) DBVC_CC_Artifact_Manager::get_storage_folder_name();
+                if ($folder !== '' && $folder !== 'sync' && ! in_array($folder, $areas, true)) {
+                    $areas['content_collector'] = $folder;
+                }
+            }
+            return $areas;
         }
 
         /**
@@ -233,6 +304,10 @@ if (! class_exists('DBVC_Artifact_Location')) {
                     if (is_wp_error($ensured)) {
                         return $ensured;
                     }
+                }
+                $ensured = self::ensure_uploads_areas($context);
+                if (is_wp_error($ensured)) {
+                    return $ensured;
                 }
             }
 
@@ -317,7 +392,7 @@ if (! class_exists('DBVC_Artifact_Location')) {
 
                 // The log area removes matched files only, never folders, and
                 // its folder is usually wp-content itself.
-                if ($source['match'] === null && ! self::is_removable_area($source['dir'], $context)) {
+                if ($source['match'] === null && ! self::is_removable_area($source['dir'], $source['parent'], $context)) {
                     $row['failed'] = 1;
                     $report['areas'][] = $row;
                     $report['totals']['failed']++;
@@ -344,7 +419,7 @@ if (! class_exists('DBVC_Artifact_Location')) {
                 }
 
                 if (! $dry_run && $source['match'] === null) {
-                    self::remove_empty_dirs($source['dir']);
+                    self::remove_empty_dirs($source['dir'], $source['parent']);
                 }
 
                 $row['entries'] = array_keys($row['entries']);
@@ -369,12 +444,7 @@ if (! class_exists('DBVC_Artifact_Location')) {
          */
         public static function legacy_file_count()
         {
-            $count   = 0;
-            $sources = self::legacy_sources();
-            foreach ($sources as $source) {
-                $count += count(self::collect_files($source['dir'], $source['match']));
-            }
-            return $count;
+            return array_sum(self::legacy_file_counts());
         }
 
         /**
@@ -422,24 +492,44 @@ if (! class_exists('DBVC_Artifact_Location')) {
                     DBVC_Sync_Location::CONSTANT_NAME
                 )) . '</p>';
 
-                // Without the constant, existing backups sit in uploads/sync,
-                // which the sync folder's nginx guidance does not cover.
-                $legacy_root = self::legacy_root();
-                if ($legacy_root !== '' && self::legacy_file_count() > 0 && DBVC_Sync_Location::is_web_reachable($legacy_root)) {
+                // Without the constant, existing backups sit in uploads/sync
+                // and DBVC's uploads storage in uploads/dbvc and the content
+                // collector folder, which the sync folder's nginx guidance
+                // does not cover.
+                $folders = self::exposed_legacy_folders();
+                if ($folders !== []) {
+                    $legacy_root              = self::legacy_root();
+                    $others                   = array_values(array_diff($folders, [$legacy_root]));
                     $result['status']         = 'recommended';
                     $result['badge']['color'] = 'red';
                     $result['label']          = __('DBVC backups and logs are web-reachable', 'dbvc');
-                    $result['description']    = '<p>' . esc_html(sprintf(
-                        /* translators: %s: absolute folder path */
-                        __('Backups (which copy options.json), proposals, snapshots, media bundles and transfer packets are stored in %s. nginx ignores its .htaccess, so these files can be downloaded unless the server blocks the path.', 'dbvc'),
-                        $legacy_root
-                    )) . '</p>';
+                    $result['description']    = '';
+                    if (in_array($legacy_root, $folders, true)) {
+                        $result['description'] .= '<p>' . esc_html(sprintf(
+                            /* translators: %s: absolute folder path */
+                            __('Backups (which copy options.json), proposals, snapshots, media bundles and transfer packets are stored in %s. nginx ignores its .htaccess, so these files can be downloaded unless the server blocks the path.', 'dbvc'),
+                            $legacy_root
+                        )) . '</p>';
+                    }
+                    if ($others !== []) {
+                        $result['description'] .= '<p>' . esc_html(sprintf(
+                            /* translators: %s: comma-separated absolute folder paths */
+                            __('Configuration and Bricks portability backups (which copy option values, API keys included), AI packages and content collector data are stored in %s. nginx ignores their .htaccess, so these files can be downloaded unless the server blocks the path.', 'dbvc'),
+                            implode(', ', $others)
+                        )) . '</p>';
+                    }
                     $result['actions'] = '<p>' . esc_html(DBVC_Sync_Location::setup_instructions()) . ' '
-                        . esc_html__('Backups and logs then move beside it; run "wp dbvc migrate-artifacts" for existing ones.', 'dbvc') . '</p>';
-                    $rule = class_exists('DBVC_Sync_Exposure') ? DBVC_Sync_Exposure::nginx_rule($legacy_root) : '';
-                    if ($rule !== '') {
-                        $result['actions'] .= '<p>' . esc_html__('Until then, nginx: add this block to the server block for this site, then reload nginx.', 'dbvc') . '</p>'
-                            . '<pre class="dbvc-sync-nginx-rule"><code>' . esc_html($rule) . '</code></pre>';
+                        . esc_html__('Backups, logs and DBVC uploads storage then move beside it; run "wp dbvc migrate-artifacts" for existing ones.', 'dbvc') . '</p>';
+                    $rules = [];
+                    foreach ($folders as $folder) {
+                        $rule = class_exists('DBVC_Sync_Exposure') ? DBVC_Sync_Exposure::nginx_rule($folder) : '';
+                        if ($rule !== '') {
+                            $rules[] = '<pre class="dbvc-sync-nginx-rule"><code>' . esc_html($rule) . '</code></pre>';
+                        }
+                    }
+                    if ($rules !== []) {
+                        $result['actions'] .= '<p>' . esc_html__('Until then, nginx: add these blocks to the server block for this site, then reload nginx.', 'dbvc') . '</p>'
+                            . implode('', $rules);
                     }
                 }
                 return $result;
@@ -461,7 +551,7 @@ if (! class_exists('DBVC_Artifact_Location')) {
                 $result['label']          = __('Old DBVC backups are still in the web root', 'dbvc');
                 $result['description']    = '<p>' . esc_html(sprintf(
                     /* translators: %d: file count */
-                    _n('%d backup, proposal, bundle, packet or log file is still under uploads/sync or wp-content.', '%d backup, proposal, bundle, packet or log files are still under uploads/sync or wp-content.', $legacy, 'dbvc'),
+                    _n('%d backup, proposal, bundle, packet, log or DBVC uploads storage file is still under the uploads folder or wp-content.', '%d backup, proposal, bundle, packet, log or DBVC uploads storage files are still under the uploads folder or wp-content.', $legacy, 'dbvc'),
                     $legacy
                 )) . '</p>';
                 $result['actions'] = '<p>' . esc_html__('Run "wp dbvc migrate-artifacts --dry-run --user=<admin>", then "wp dbvc migrate-artifacts", then "wp dbvc migrate-artifacts --remove-originals".', 'dbvc') . '</p>';
@@ -530,10 +620,8 @@ if (! class_exists('DBVC_Artifact_Location')) {
 
             $sources = self::legacy_sources();
             $targets = [];
-            foreach (array_keys($sources) as $area) {
-                // Old logs go to logs/legacy: the live log in logs/ would
-                // otherwise collide with them once logging writes there.
-                $targets[$area] = $area === 'logs' ? $private . '/' . self::LOG_SUBDIR . '/legacy' : $private . '/' . self::AREAS[$area];
+            foreach ($sources as $area => $source) {
+                $targets[$area] = $private . '/' . $source['target'];
             }
 
             return ['private_root' => $private, 'sources' => $sources, 'targets' => $targets];
@@ -542,8 +630,10 @@ if (! class_exists('DBVC_Artifact_Location')) {
         /**
          * Legacy source folders. `match` limits the log area to log files,
          * since the legacy log folder defaults to wp-content itself.
+         * `parent` is the folder the area sits in, which removal never
+         * touches; `target` is the area's path below the private root.
          *
-         * @return array<string,array{dir:string,match:?string}>
+         * @return array<string,array{dir:string,match:?string,parent:string,target:string}>
          */
         private static function legacy_sources()
         {
@@ -551,14 +641,90 @@ if (! class_exists('DBVC_Artifact_Location')) {
             $legacy  = self::legacy_root();
             if ($legacy !== '') {
                 foreach (self::AREAS as $area => $folder) {
-                    $sources[$area] = ['dir' => $legacy . '/' . $folder, 'match' => null];
+                    $sources[$area] = ['dir' => $legacy . '/' . $folder, 'match' => null, 'parent' => $legacy, 'target' => $folder];
                 }
             }
             $log_dir = class_exists('DBVC_Sync_Logger') ? DBVC_Sync_Logger::get_legacy_log_directory() : '';
             if ($log_dir !== '') {
-                $sources['logs'] = ['dir' => $log_dir, 'match' => DBVC_Sync_Logger::LOG_FILENAME];
+                // Old logs go to logs/legacy: the live log in logs/ would
+                // otherwise collide with them once logging writes there.
+                $sources['logs'] = ['dir' => $log_dir, 'match' => DBVC_Sync_Logger::LOG_FILENAME, 'parent' => $log_dir, 'target' => self::LOG_SUBDIR . '/legacy'];
+            }
+            $uploads = self::legacy_uploads_dir();
+            if ($uploads !== '') {
+                foreach (self::uploads_areas() as $area => $folder) {
+                    $sources[$area] = ['dir' => $uploads . '/' . $folder, 'match' => null, 'parent' => $uploads, 'target' => self::UPLOADS_SUBDIR . '/' . $folder];
+                }
             }
             return $sources;
+        }
+
+        /**
+         * Data files per legacy area. Deny files are not data and are not
+         * counted: the admin pages recreate them in empty storage folders.
+         *
+         * @return array<string,int>
+         */
+        private static function legacy_file_counts()
+        {
+            $counts = [];
+            foreach (self::legacy_sources() as $area => $source) {
+                $counts[$area] = 0;
+                foreach (self::collect_files($source['dir'], $source['match']) as $file) {
+                    if (! in_array(basename($file['path']), self::DENY_FILES, true)) {
+                        $counts[$area]++;
+                    }
+                }
+            }
+            return $counts;
+        }
+
+        /**
+         * Web-reachable legacy folders that still hold data files:
+         * `uploads/sync` for backups and the log (as before), and each
+         * uploads storage area by its own folder.
+         *
+         * @return array<int,string>
+         */
+        private static function exposed_legacy_folders()
+        {
+            $sources = self::legacy_sources();
+            $folders = [];
+            foreach (self::legacy_file_counts() as $area => $count) {
+                if ($count === 0) {
+                    continue;
+                }
+                $folder = (isset(self::AREAS[$area]) || $area === 'logs') ? self::legacy_root() : $sources[$area]['dir'];
+                if ($folder !== '' && ! in_array($folder, $folders, true) && DBVC_Sync_Location::is_web_reachable($folder)) {
+                    $folders[] = $folder;
+                }
+            }
+            return $folders;
+        }
+
+        /**
+         * Create `<private root>/uploads` and each uploads area target, with deny files.
+         *
+         * @param array $context From migration_context().
+         * @return true|WP_Error
+         */
+        private static function ensure_uploads_areas(array $context)
+        {
+            $folders = [$context['private_root'] . '/' . self::UPLOADS_SUBDIR];
+            foreach (array_keys(self::uploads_areas()) as $area) {
+                if (isset($context['targets'][$area])) {
+                    $folders[] = $context['targets'][$area];
+                }
+            }
+            foreach ($folders as $folder) {
+                if (! is_dir($folder) && ! wp_mkdir_p($folder)) {
+                    return new WP_Error('dbvc_artifacts_create_failed', __('Unable to create the DBVC artifact folder.', 'dbvc'));
+                }
+                if (method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
+                    DBVC_Sync_Posts::ensure_directory_security($folder);
+                }
+            }
+            return true;
         }
 
         /**
@@ -689,19 +855,27 @@ if (! class_exists('DBVC_Artifact_Location')) {
         /**
          * Whether a legacy folder may have files removed from it.
          *
+         * The area must sit strictly inside its parent, and no configured
+         * root (private, sync, `uploads/sync`, uploads) may sit inside it.
+         *
          * @param string $dir
+         * @param string $parent  The folder the area belongs to.
          * @param array  $context
          * @return bool
          */
-        private static function is_removable_area($dir, array $context)
+        private static function is_removable_area($dir, $parent, array $context)
         {
             if (DBVC_Sync_Location::is_within($dir, $context['private_root'])) {
+                return false;
+            }
+            if ($parent === '' || untrailingslashit($dir) === untrailingslashit($parent) || ! dbvc_path_is_within($dir, $parent)) {
                 return false;
             }
             $protected = array_filter([
                 $context['private_root'],
                 DBVC_Sync_Location::absolute_root(),
                 self::legacy_root(),
+                self::legacy_uploads_dir(),
             ]);
             foreach ($protected as $root) {
                 if (DBVC_Sync_Location::is_within($root, $dir) && untrailingslashit($root) !== untrailingslashit($dir)) {
@@ -715,12 +889,13 @@ if (! class_exists('DBVC_Artifact_Location')) {
          * Remove empty folders below and including $dir, leaving deny files
          * only when the folder holds nothing else.
          *
-         * @param string $dir An area folder below uploads/sync.
+         * @param string $dir    An area folder below uploads/sync or uploads.
+         * @param string $parent The folder the area sits in; never removed.
          * @return void
          */
-        private static function remove_empty_dirs($dir)
+        private static function remove_empty_dirs($dir, $parent)
         {
-            $legacy = self::legacy_root();
+            $legacy = untrailingslashit((string) $parent);
             if ($legacy === '' || ! dbvc_path_is_within($dir, $legacy) || untrailingslashit($dir) === $legacy || ! is_dir($dir)) {
                 return;
             }

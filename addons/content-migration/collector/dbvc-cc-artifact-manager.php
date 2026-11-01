@@ -29,19 +29,40 @@ final class DBVC_CC_Artifact_Manager
      */
     public static function get_storage_base_dir()
     {
+        $storage_path = self::get_storage_folder_name();
+
+        // Security finding S1: while DBVC_SYNC_PATH_ABSOLUTE keeps artifacts
+        // outside the web root, crawl storage lives in `<private root>/uploads/`.
+        if (class_exists('DBVC_Artifact_Location')) {
+            $private = DBVC_Artifact_Location::private_root();
+            if ($private !== '') {
+                return trailingslashit($private . '/' . DBVC_Artifact_Location::UPLOADS_SUBDIR) . $storage_path;
+            }
+        }
+
         $upload_dir = wp_upload_dir();
         $basedir = isset($upload_dir['basedir']) ? (string) $upload_dir['basedir'] : '';
         if ($basedir === '') {
             return '';
         }
 
+        return trailingslashit($basedir) . $storage_path;
+    }
+
+    /**
+     * The storage folder name below the uploads base, from the settings.
+     *
+     * @return string
+     */
+    public static function get_storage_folder_name()
+    {
         $options = DBVC_CC_Settings_Service::get_options();
-        $storage_path = sanitize_file_name((string) $options['storage_path']);
+        $storage_path = sanitize_file_name((string) ($options['storage_path'] ?? ''));
         if ($storage_path === '') {
             $storage_path = DBVC_CC_Contracts::STORAGE_DEFAULT_PATH;
         }
 
-        return trailingslashit($basedir) . $storage_path;
+        return $storage_path;
     }
 
     /**

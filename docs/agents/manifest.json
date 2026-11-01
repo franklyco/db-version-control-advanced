@@ -1938,7 +1938,7 @@
         "Retained submission packages"
       ],
       "storage_touched": [
-        "Uploads DBVC AI package storage",
+        "Uploads DBVC AI package storage (uploads/dbvc/ai-intake and ai-sample-packages; <absolute root>-artifacts/uploads/dbvc/ while DBVC_SYNC_PATH_ABSOLUTE is active)",
         "WordPress content stores on import",
         "dbvc_ai_upload_report option"
       ],
@@ -2002,7 +2002,8 @@
         }
       ],
       "test_refs": [
-        "tests/phpunit/AiPackageWorkflowTest.php"
+        "tests/phpunit/AiPackageWorkflowTest.php",
+        "tests/phpunit/PrivateUploadsStorageLocationTest.php"
       ],
       "doc_refs": [
         "docs/reference/import-authoring/README.md"
@@ -3644,7 +3645,7 @@
     {
       "id": "cli.core.artifacts.migrate",
       "title": "Private artifact migration command",
-      "summary": "Copies backups, proposals, snapshots, media bundles, transfer packets and old logs from uploads/sync/ and the legacy log folder into <absolute root>-artifacts/, verifies every copy by hash, and in a separate confirmed run removes the originals that have an identical copy.",
+      "summary": "Copies backups, proposals, snapshots, media bundles, transfer packets and old logs from uploads/sync/ and the legacy log folder, plus DBVC's uploads storage (uploads/dbvc/ and the content collector folder), into <absolute root>-artifacts/, verifies every copy by hash, and in a separate confirmed run removes the originals that have an identical copy.",
       "status": "active",
       "primary_category": "cli_automation",
       "tags": [
@@ -3692,8 +3693,9 @@
       "artifacts": [],
       "storage_touched": [
         "Reads uploads/sync/{db-version-control-backups,db-version-control-snapshots,media-bundles,dbvc-transfer-packets}/ and dbvc-backup.log* in the legacy log folder",
-        "Writes <absolute root>-artifacts/ (same subfolder names; old logs in logs/legacy/)",
-        "--remove-originals deletes verified originals and the emptied area folders, never uploads/sync itself"
+        "Reads uploads/dbvc/ (AI sample packages and intake, configuration and Bricks portability exports, sessions and backups, official collections) and uploads/<content collector storage path>/",
+        "Writes <absolute root>-artifacts/ (same subfolder names; old logs in logs/legacy/; uploads storage in uploads/ with its uploads-relative paths)",
+        "--remove-originals deletes verified originals and the emptied area folders, never uploads/sync or the uploads folder itself"
       ],
       "settings": [],
       "hooks": [
@@ -3725,7 +3727,8 @@
         }
       ],
       "test_refs": [
-        "tests/phpunit/PrivateArtifactLocationTest.php"
+        "tests/phpunit/PrivateArtifactLocationTest.php",
+        "tests/phpunit/PrivateUploadsStorageLocationTest.php"
       ],
       "doc_refs": [],
       "related": [
@@ -3736,7 +3739,8 @@
       "known_gaps": [
         "The WP-CLI wrapper itself has no automated test; the service methods it calls are covered.",
         "Absolute paths stored in earlier media bundle metadata (storage.absolute) still name uploads/sync; the bundle lookup tries the current proposal directory first.",
-        "Not run against a live or Cloudways site."
+        "Not run against a live or Cloudways site.",
+        "A content collector storage path of sync, or one equal to another uploads area folder, is left out of the migration: it would be copied twice."
       ],
       "verification": {
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
@@ -3746,7 +3750,7 @@
           "focused_unit_test"
         ],
         "live_runtime_verified": false,
-        "notes": "PrivateArtifactLocationTest covers the service methods: the preview writes nothing and reports names and counts only, the copy verifies every file and keeps originals, a second preview finds everything verified, the removal preview deletes nothing, removal deletes only verified originals and keeps unrelated files and uploads/sync, conflicts and symlinks are never copied or removed, and an editor or a site without the absolute root is refused."
+        "notes": "PrivateArtifactLocationTest covers the service methods: the preview writes nothing and reports names and counts only, the copy verifies every file and keeps originals, a second preview finds everything verified, the removal preview deletes nothing, removal deletes only verified originals and keeps unrelated files and uploads/sync, conflicts and symlinks are never copied or removed, and an editor or a site without the absolute root is refused. PrivateUploadsStorageLocationTest covers the uploads storage areas: the preview names uploads/dbvc and content collector entries without contents, the copy lands in <absolute root>-artifacts/uploads/ and the storage APIs read it, a differing private copy keeps its original, and removal keeps the uploads folder and a dbvc-prefixed sibling."
       }
     },
     {
@@ -3822,7 +3826,8 @@
       "storage_touched": [
         "WordPress options",
         "Portability package files",
-        "Import-session review draft files"
+        "Import-session review draft files",
+        "Pre-import backups that copy whole option values, API keys included (uploads/dbvc/dbvc-config-portability/; <absolute root>-artifacts/uploads/dbvc/ while DBVC_SYNC_PATH_ABSOLUTE is active)"
       ],
       "settings": [],
       "hooks": [
@@ -3890,7 +3895,8 @@
       ],
       "test_refs": [
         "tests/phpunit/ConfigurationPortabilityRegistryTest.php",
-        "tests/phpunit/ConfigurationPortabilityExportPackageTest.php"
+        "tests/phpunit/ConfigurationPortabilityExportPackageTest.php",
+        "tests/phpunit/PrivateUploadsStorageLocationTest.php"
       ],
       "doc_refs": [
         "docs/implementation/active/configuration-portability-tool-guide.md"
@@ -6549,7 +6555,8 @@
       "test_refs": [
         "tests/phpunit/PrivateArtifactLocationTest.php",
         "tests/phpunit/SyncPathNginxExposureTest.php",
-        "tests/phpunit/SyncPathOutsideWebRootTest.php"
+        "tests/phpunit/SyncPathOutsideWebRootTest.php",
+        "tests/phpunit/PrivateUploadsStorageLocationTest.php"
       ],
       "doc_refs": [],
       "related": [
@@ -6880,7 +6887,8 @@
       "artifacts": [],
       "storage_touched": [
         "dbvc_collections",
-        "dbvc_collection_items"
+        "dbvc_collection_items",
+        "uploads/dbvc/official/collection-{id}/ (<absolute root>-artifacts/uploads/dbvc/official/ while DBVC_SYNC_PATH_ABSOLUTE is active)"
       ],
       "settings": [],
       "hooks": [],
@@ -6908,7 +6916,9 @@
           "path": "includes/Dbvc/Official/Collections.php"
         }
       ],
-      "test_refs": [],
+      "test_refs": [
+        "tests/phpunit/PrivateUploadsStorageLocationTest.php"
+      ],
       "doc_refs": [],
       "related": [],
       "known_gaps": [
@@ -9280,7 +9290,8 @@
         "Content Migration crawl collections under the add-on storage directory"
       ],
       "storage_touched": [
-        "Content Migration add-on storage directory under the uploads base"
+        "Content Migration add-on storage directory under the uploads base",
+        "While DBVC_SYNC_PATH_ABSOLUTE is active the storage root is <absolute root>-artifacts/uploads/<storage path>/"
       ],
       "settings": [
         "dbvc_cc_settings.artifact_retention_days"
@@ -9313,7 +9324,8 @@
         ]
       },
       "test_refs": [
-        "tests/phpunit/ContentMigrationSafetyHardeningTest.php"
+        "tests/phpunit/ContentMigrationSafetyHardeningTest.php",
+        "tests/phpunit/PrivateUploadsStorageLocationTest.php"
       ],
       "doc_refs": [
         "docs/implementation/proposed/content-collection-v3/README.md"
@@ -9424,7 +9436,8 @@
         "source-normalization.v1 derived from the ingested artifact"
       ],
       "storage_touched": [
-        "Content Migration add-on storage directory under the uploads base"
+        "Content Migration add-on storage directory under the uploads base",
+        "While DBVC_SYNC_PATH_ABSOLUTE is active the storage root is <absolute root>-artifacts/uploads/<storage path>/"
       ],
       "settings": [],
       "source_refs": [
