@@ -933,6 +933,11 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'duplicate_target_collision' => 'Duplicate target collision',
             'low_mapping_evidence' => 'Low mapping evidence',
             'missing_media_slot' => 'Missing media slot',
+            // The mapper's default placement for this value — the `<title>` tag into the post
+            // title, the meta description into the excerpt — is only a default, and this target
+            // site has its own field for it. Which one is right depends on how the site is
+            // built, so it is the reviewer's call rather than the scorer's.
+            'contested_structural_default' => 'Contested default placement',
             // The interpreter read the item and judged that no offered field fits it.
             // Distinct from a missing slot: the schema may be complete and the content
             // simply belongs nowhere on this object.

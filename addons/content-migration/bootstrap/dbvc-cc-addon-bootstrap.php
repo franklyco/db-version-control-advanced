@@ -281,16 +281,30 @@ final class DBVC_CC_Addon_Bootstrap
      */
     public static function clear_scheduled_hooks()
     {
-        if (! function_exists('wp_clear_scheduled_hook')) {
+        if (! function_exists('wp_unschedule_hook')) {
             return;
         }
 
-        wp_clear_scheduled_hook(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB);
-        wp_clear_scheduled_hook(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH);
+        // wp_unschedule_hook(), not wp_clear_scheduled_hook(). The latter matches only events
+        // whose argument list equals the one passed, keyed on md5(serialize($args)), so calling it
+        // with no arguments cleared nothing: every event on both hooks is scheduled with arguments
+        // ([domain, path, job_id] and the rebuild batch payload). This method had therefore been a
+        // no-op, and deactivating the runtime left its queues in the cron table.
+        wp_unschedule_hook(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB);
+        wp_unschedule_hook(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH);
     }
 
     /**
      * Re-attach legacy singleton hooks when V1 is reactivated in the same request.
+     *
+     * Each block below mirrors the feature-flag gate in the module that owns it. Without that,
+     * this path contradicted the gate: it is reached from bootstrap_v1_runtime() on a second
+     * activation in one request, which is exactly what DBVC_CC_V2_Runtime_Registrar does after a
+     * Configuration Portability import writes the flags -- the one path in the add-on that can
+     * turn a flag off at runtime. A flag set to '0' there was honoured by register_module_hooks()
+     * and then undone here for the collector (AJAX actions and storage roots), the explorer
+     * (REST routes), AI mapping (job handler and REST routes) and the workbench (REST routes and
+     * the mapping-rebuild handler). The ungated entries below are ungated in their modules too.
      *
      * @return void
      */
@@ -299,28 +313,38 @@ final class DBVC_CC_Addon_Bootstrap
         add_action('admin_init', [DBVC_CC_Settings_Service::class, 'register_settings']);
         add_action('admin_init', [DBVC_CC_Schema_Snapshot_Service::class, 'maybe_generate_initial_snapshot'], 20);
         add_action(DBVC_CC_Contracts::ACTION_RUN_SCHEMA_SNAPSHOT, [DBVC_CC_Schema_Snapshot_Service::class, 'generate_snapshot']);
-        add_action('init', [DBVC_CC_Artifact_Manager::class, 'ensure_storage_roots'], 15);
 
+        // Ungated in DBVC_CC_Collector_Module::register(), which builds the admin controller
+        // before consulting OPTION_FLAG_COLLECTOR.
         $admin_controller = DBVC_CC_Admin_Controller::get_instance();
         add_action('admin_menu', [$admin_controller, 'add_admin_menu'], 90);
         add_action('admin_enqueue_scripts', [$admin_controller, 'enqueue_scripts']);
 
-        $ajax_controller = DBVC_CC_Ajax_Controller::get_instance();
-        add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_GET_URLS_FROM_SITEMAP, [$ajax_controller, 'get_urls_from_sitemap']);
-        add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_PROCESS_SINGLE_URL, [$ajax_controller, 'process_single_url']);
-        add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_DBVC_CC_TRIGGER_DOMAIN_AI_REFRESH, [$ajax_controller, 'dbvc_cc_trigger_domain_ai_refresh']);
+        if (DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_COLLECTOR)) {
+            add_action('init', [DBVC_CC_Artifact_Manager::class, 'ensure_storage_roots'], 15);
 
-        $explorer_rest = DBVC_CC_Explorer_REST_Controller::get_instance();
-        add_action('rest_api_init', [$explorer_rest, 'register_routes']);
+            $ajax_controller = DBVC_CC_Ajax_Controller::get_instance();
+            add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_GET_URLS_FROM_SITEMAP, [$ajax_controller, 'get_urls_from_sitemap']);
+            add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_PROCESS_SINGLE_URL, [$ajax_controller, 'process_single_url']);
+            add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_DBVC_CC_TRIGGER_DOMAIN_AI_REFRESH, [$ajax_controller, 'dbvc_cc_trigger_domain_ai_refresh']);
+        }
 
-        $ai_service = DBVC_CC_AI_Service::get_instance();
-        add_action(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB, [$ai_service, 'process_job'], 10, 3);
+        if (DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_EXPLORER)) {
+            $explorer_rest = DBVC_CC_Explorer_REST_Controller::get_instance();
+            add_action('rest_api_init', [$explorer_rest, 'register_routes']);
+        }
 
-        $ai_rest = DBVC_CC_AI_REST_Controller::get_instance();
-        add_action('rest_api_init', [$ai_rest, 'register_routes']);
+        if (DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_AI_MAPPING)) {
+            DBVC_CC_AI_Service::get_instance()->register_hooks();
 
-        $workbench_rest = DBVC_CC_Workbench_REST_Controller::get_instance();
-        add_action('rest_api_init', [$workbench_rest, 'register_routes']);
+            $ai_rest = DBVC_CC_AI_REST_Controller::get_instance();
+            add_action('rest_api_init', [$ai_rest, 'register_routes']);
+        }
+
+        if (DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_MAPPING_WORKBENCH)) {
+            $workbench_rest = DBVC_CC_Workbench_REST_Controller::get_instance();
+            add_action('rest_api_init', [$workbench_rest, 'register_routes']);
+        }
 
         $catalog_rest = DBVC_CC_Target_Field_Catalog_REST_Controller::get_instance();
         add_action('rest_api_init', [$catalog_rest, 'register_routes']);
@@ -334,8 +358,9 @@ final class DBVC_CC_Addon_Bootstrap
         $import_executor_rest = DBVC_CC_Import_Executor_REST_Controller::get_instance();
         add_action('rest_api_init', [$import_executor_rest, 'register_routes']);
 
-        $mapping_rebuild = DBVC_CC_Mapping_Rebuild_Service::get_instance();
-        add_action(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH, [$mapping_rebuild, 'dbvc_cc_process_rebuild_batch_event'], 10, 1);
+        if (DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_MAPPING_WORKBENCH)) {
+            DBVC_CC_Mapping_Rebuild_Service::get_instance()->register_hooks();
+        }
     }
 
     /**

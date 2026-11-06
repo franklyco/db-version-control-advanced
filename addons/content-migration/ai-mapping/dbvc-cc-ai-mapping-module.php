@@ -28,7 +28,7 @@ final class DBVC_CC_AI_Mapping_Module implements DBVC_CC_Module_Interface
             return;
         }
 
-        DBVC_CC_AI_Service::get_instance();
+        DBVC_CC_AI_Service::get_instance()->register_hooks();
         DBVC_CC_AI_REST_Controller::get_instance();
     }
 }

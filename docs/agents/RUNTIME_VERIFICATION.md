@@ -426,3 +426,51 @@ Branch `claude/dbvc-connected-agency-m5-apply` (stacked; not the checkout loaded
 - Stale: A-prod edited `btn001` again, second release sealed, prepared and approved; A-stage then edited its own container (`txt002` colour) before polling; execution reported `stale` 0/0/1 with `container_changed_since_receipt`, the approval read `consumed stale`, and A-stage's concurrent edit survived byte-for-byte.
 
 Cleanup: three servers stopped, 97 lab tables dropped (0 remain), lab files removed. Focused PHPUnit: 79 tests / 1969 assertions OK. `live_runtime_verified` remains `false` for every connected/agency record.
+
+## Content Migration Import Net-Zero Clone Lab (V3 S4c) — 2026-10-20
+
+Branch `claude/practical-lovelace-14bf28` off `master` at `9269cec0` (not the checkout loaded by the live
+LocalWP site; the clone symlinks this worktree as its only active plugin). Target: a **disposable
+clone** of the live LocalWP site — its whole database copied into a throwaway MySQL database
+(`dbvc_s4c_clone`), served by WordPress 7.1.3 core copied out of the live docroot, `active_plugins`
+rewritten to this checkout alone, `upload_path` and `dbvc_sync_path` redirected inside the clone,
+WP-Cron disabled and external HTTP blocked except loopback. The source site was read once by
+`mysqldump` and never written. Before-state: 4,292 posts, 691 attachments, 67,707 post meta, 375
+terms, 368 term taxonomy, 2,935 term relationships, 6,388 term meta, and an empty uploads tree.
+
+- All eight of corpus slot 1's captured pages staged into Content Migration storage, catalog and
+  candidates built, mapping and media decisions approved, then per page `execute_dry_run` →
+  `approve_preflight` (confirmed) → `execute_write_skeleton` (token) — 8 entity writes (2 updates of
+  the clone's existing `home` and `contact` pages, 6 creates), 70 field writes, 6 media writes (5
+  attachments sideloaded over a real HTTP GET from a loopback fixture server, 1 existing attachment
+  reused). Every run `completed` with no guard failure and no execution failure.
+- `rollback_run()` for all eight runs, newest first: **84 journaled actions restored, 0 failed**,
+  every run `rolled_back` / `completed`.
+- Authoritative after-state captured the same way and diffed. **Row counts net zero** (identical on
+  all seven tables). **Row bytes net zero** across `wp_posts`, `wp_postmeta`, `wp_terms`,
+  `wp_termmeta`, `wp_term_taxonomy`, `wp_term_relationships` apart from one named exclusion. **Post
+  meta content net zero.** **Media files on disk net zero** — the five created attachments, their
+  generated sizes and their files are gone.
+- The one exclusion, measured not assumed: `post_modified` / `post_modified_gmt` on the 2 rows the
+  import updated. The strict comparison differs on exactly 4 lines; the comparison with only those
+  two columns blanked is net zero, which proves nothing else drifted. Cause:
+  `dbvc_cc_capture_entity_state()` records eight post columns and these are not among them.
+- Reported and named, never gating: journal `+96` rows (it is the run's audit record),
+  `AUTO_INCREMENT` on `wp_posts` `120898 → 120909` and `wp_postmeta` `732767 → 732821`, 16 files in
+  the add-on's own storage root (hardening, schema snapshot, append-only NDJSON logs), two empty
+  month directories `wp_delete_attachment()` leaves behind, and 4 files written by the plugin's own
+  export-on-save (whose content describes the *restored* state — `_thumbnail_id` back to the clone's
+  original attachment).
+- Found and deliberately not fixed: `normalize_media_url()` drops a non-default port from a media
+  source URL (V3 **D-23**). The harness restores the port at `pre_http_request` and says so.
+- Not exercised: no third-party plugin loads in the clone, so no ACF/Bricks `save_post` listener ran
+  and no ACF target family was written; the fixture images are generated JPEGs because the corpus
+  does not commit a third party's bytes; rollback was driven through the service, not the REST route.
+
+Cleanup: clone database dropped (`DROP DATABASE`), clone docroot and work files removed, fixture
+server stopped. The source site and its database were untouched throughout. Harness:
+`addons/content-migration/tools/dbvc-cc-import-net-zero-verify.sh` (exit 0 net zero / 4 on a gating
+difference), recipe in §12.7 of the V3 guide. PHPUnit: `ContentMigrationImportNetZeroTest` 3 tests /
+46 assertions OK; full suite 1545 tests / 15496 assertions with only the four pre-existing failures.
+`live_runtime_verified` remains `false` for `addon.content_migration.runtime_guard`: that record
+spans the whole migration subsystem and only the commitment path was live-exercised, on a clone.

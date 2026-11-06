@@ -23,3 +23,7 @@ tmp/cc_export_*.zip
 # Python bytecode from skill scripts
 __pycache__/
 *.py[cod]
+
+# personal agent-CLI prefs and drop-in archives
+.codex/config.toml
+docs/dropins/*.zip

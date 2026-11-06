@@ -30,7 +30,7 @@ final class DBVC_CC_Mapping_Workbench_Module implements DBVC_CC_Module_Interface
 
         DBVC_CC_Section_Field_Candidate_Service::get_instance();
         DBVC_CC_Mapping_Decision_Service::get_instance();
-        DBVC_CC_Mapping_Rebuild_Service::get_instance();
+        DBVC_CC_Mapping_Rebuild_Service::get_instance()->register_hooks();
         DBVC_CC_Workbench_REST_Controller::get_instance();
     }
 }

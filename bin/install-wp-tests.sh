@@ -60,6 +60,10 @@ if [ -z "$WP_TESTS_TABLE_PREFIX" ]; then
 	abort "WP_TESTS_TABLE_PREFIX must not be empty."
 fi
 
+if [ -z "$WP_TESTS_DIR" ] || [ -z "$WP_CORE_DIR" ]; then
+	abort "WP_TESTS_DIR and WP_CORE_DIR must not be empty."
+fi
+
 if [ "$WP_TESTS_TABLE_PREFIX" = "wp_" ]; then
 	abort "WP_TESTS_TABLE_PREFIX must not use the live WordPress default prefix 'wp_'."
 fi
@@ -67,6 +71,37 @@ fi
 LIVE_TABLE_PREFIX=$(detect_live_table_prefix)
 if [ -n "$LIVE_TABLE_PREFIX" ] && [ "$WP_TESTS_TABLE_PREFIX" = "$LIVE_TABLE_PREFIX" ] && [ "$DBVC_WP_TESTS_ALLOW_UNSAFE" != "1" ]; then
 	abort "WP_TESTS_TABLE_PREFIX matches the live site prefix '${LIVE_TABLE_PREFIX}'. Choose an isolated test prefix such as 'wptests_'."
+fi
+
+# The test library must match the core version under test. Trunk's includes
+# reference core APIs that stable releases do not define, so a trunk test suite
+# cannot bootstrap against a tagged release. Mirrors the tag resolution in
+# github.com/wp-cli/scaffold-command.
+if [[ $WP_VERSION =~ ^[0-9]+\.[0-9]+-(beta|RC)[0-9]+$ ]]; then
+	WP_TESTS_TAG="branches/${WP_VERSION%-*}"
+elif [[ $WP_VERSION =~ ^[0-9]+\.[0-9]+$ ]]; then
+	WP_TESTS_TAG="branches/$WP_VERSION"
+elif [[ $WP_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	if [[ $WP_VERSION =~ ^[0-9]+\.[0-9]+\.0$ ]]; then
+		# WordPress tags the first release of a major series as x.y, not x.y.0.
+		WP_TESTS_TAG="tags/${WP_VERSION%.0}"
+	else
+		WP_TESTS_TAG="tags/$WP_VERSION"
+	fi
+elif [ "$WP_VERSION" = "nightly" ] || [ "$WP_VERSION" = "trunk" ]; then
+	WP_TESTS_TAG="trunk"
+elif [ "$WP_VERSION" = "latest" ]; then
+	# http serves a single offer; https serves several and we only want one.
+	VERSION_CHECK_FILE=$(mktemp)
+	download "http://api.wordpress.org/core/version-check/1.7/" "$VERSION_CHECK_FILE"
+	LATEST_VERSION=$(grep -o '"version":"[^"]*' "$VERSION_CHECK_FILE" | head -n 1 | sed 's/"version":"//')
+	rm -f "$VERSION_CHECK_FILE"
+	if [ -z "$LATEST_VERSION" ]; then
+		abort "Could not determine the latest WordPress version from api.wordpress.org."
+	fi
+	WP_TESTS_TAG="tags/$LATEST_VERSION"
+else
+	abort "Unrecognised WordPress version '${WP_VERSION}'. Use x.y, x.y.z, x.y-beta1, x.y-RC1, latest, nightly, or trunk."
 fi
 
 mkdir -p "$WP_CORE_DIR"
@@ -88,15 +123,24 @@ if [ ! -f "$WP_CORE_DIR/wp-content/db.php" ]; then
 	download "https://github.com/markoheijnen/wp-mysqli/raw/master/db.php" "$WP_CORE_DIR/wp-content/db.php"
 fi
 
-if [ ! -d "$WP_TESTS_DIR/includes" ]; then
-    mkdir -p "$WP_TESTS_DIR"
-    if command -v svn >/dev/null; then
-        svn co --quiet https://develop.svn.wordpress.org/trunk/tests/phpunit/includes/ "$WP_TESTS_DIR/includes"
-        svn co --quiet https://develop.svn.wordpress.org/trunk/tests/phpunit/data/ "$WP_TESTS_DIR/data"
-    else
-        echo "Error: svn is required to fetch the WordPress test suite. Please install Subversion and rerun." >&2
-        exit 1
-    fi
+WP_TESTS_TAG_FILE="$WP_TESTS_DIR/.wp-tests-tag"
+INSTALLED_TESTS_TAG=""
+if [ -f "$WP_TESTS_TAG_FILE" ]; then
+	INSTALLED_TESTS_TAG=$(cat "$WP_TESTS_TAG_FILE")
+fi
+
+if [ ! -d "$WP_TESTS_DIR/includes" ] || [ "$INSTALLED_TESTS_TAG" != "$WP_TESTS_TAG" ]; then
+	if ! command -v svn >/dev/null; then
+		echo "Error: svn is required to fetch the WordPress test suite. Please install Subversion and rerun." >&2
+		exit 1
+	fi
+
+	# A library left behind by an earlier run may point at another tag or trunk.
+	rm -rf "$WP_TESTS_DIR/includes" "$WP_TESTS_DIR/data"
+	mkdir -p "$WP_TESTS_DIR"
+	svn co --quiet "https://develop.svn.wordpress.org/${WP_TESTS_TAG}/tests/phpunit/includes/" "$WP_TESTS_DIR/includes"
+	svn co --quiet "https://develop.svn.wordpress.org/${WP_TESTS_TAG}/tests/phpunit/data/" "$WP_TESTS_DIR/data"
+	printf '%s\n' "$WP_TESTS_TAG" > "$WP_TESTS_TAG_FILE"
 fi
 
 cat > "$WP_TESTS_DIR/wp-tests-config.php" <<EOF

@@ -8290,6 +8290,7 @@ const FLEET_STATE_BADGE = {
 	update_available: 'behind_version',
 	protected: 'approved',
 	needs_review: 'needs_rebase_review',
+	awaiting_state: 'stale',
 	not_reporting: 'offline',
 };
 
@@ -8303,6 +8304,8 @@ function fleetStateLabel( state ) {
 			return __( 'Client customization', 'dbvc' );
 		case 'needs_review':
 			return __( 'Needs review', 'dbvc' );
+		case 'awaiting_state':
+			return __( 'Live · awaiting report', 'dbvc' );
 		case 'not_reporting':
 			return __( 'Not reporting', 'dbvc' );
 		default:
@@ -8444,6 +8447,10 @@ function Fleet( { notify, onCompare } ) {
 					value={ summary.needs_review || 0 }
 				/>
 				<StatCard
+					label={ __( 'Awaiting report', 'dbvc' ) }
+					value={ summary.awaiting_state || 0 }
+				/>
+				<StatCard
 					label={ __( 'Not reporting', 'dbvc' ) }
 					value={ summary.not_reporting || 0 }
 				/>
@@ -8579,10 +8586,35 @@ function Fleet( { notify, onCompare } ) {
 													site.last_contact_at
 												) }
 											</span>
-											{ ! site.fresh && (
+											{ ! site.fresh && site.live && (
+												<span
+													className="subtle"
+													title={ absoluteTime(
+														site.last_inbox_poll_at
+													) }
+												>
+													{ ' ' }
+													·{ ' ' }
+													{ sprintf(
+														/* translators: %s: relative time of the site's last inbox poll */
+														__(
+															'alive · checked %s',
+															'dbvc'
+														),
+														relative(
+															site.last_inbox_poll_at
+														)
+													) }
+												</span>
+											) }
+											{ ! site.fresh && ! site.live && (
 												<span className="subtle">
 													{ ' ' }
-													· { __( 'stale', 'dbvc' ) }
+													·{ ' ' }
+													{ __(
+														'not reporting',
+														'dbvc'
+													) }
 												</span>
 											) }
 										</td>

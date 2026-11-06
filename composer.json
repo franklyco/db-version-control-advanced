@@ -14,6 +14,7 @@
             "@agent-docs:build"
         ],
         "agent-docs:check": "php scripts/agent-docs.php check",
+        "agent-docs:normalize": "php scripts/agent-docs.php normalize",
         "agent-docs:query": "php scripts/agent-docs.php query",
         "dist:drift": "php scripts/check-distribution-drift.php",
         "dist:drift-json": "php scripts/check-distribution-drift.php --json",

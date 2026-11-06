@@ -1,5 +1,6 @@
 <?php
 
+use Dbvc\AgencyControl\Comparison\ComparisonService;
 use Dbvc\AgencyControl\Enrollment\EnrollmentService;
 use Dbvc\AgencyControl\Fleet\FleetService;
 use Dbvc\AgencyControl\Storage\OverrideStore;
@@ -9,9 +10,11 @@ use Dbvc\ConnectedProtocol\Protocol;
 
 /**
  * M9 slice 3: the fleet rollup. One row per enrolled client environment with a
- * composed, worst-wins site status (not_reporting > needs_review >
- * update_available > protected > in_sync), aggregated from freshness + approved
- * overrides + framework status. A stale/never-reporting site is never in sync.
+ * composed, worst-wins site status. A fresh state report yields needs_review >
+ * update_available > protected > in_sync; without one, a site that still polls
+ * the hub is awaiting_state (alive) and a silent site is not_reporting. Aggregated
+ * from freshness + liveness + approved overrides + framework status. A stale state
+ * report is never rolled up as in sync (BT-0: liveness vs state-recency split).
  *
  * @group connected-environments
  */
@@ -76,7 +79,7 @@ class ConnectedFleetTest extends WP_UnitTestCase
 
         $overview = (new FleetService())->overview(null, 'fleetc');
         $this->assertSame(
-            ['sites' => 4, 'in_sync' => 1, 'update_available' => 0, 'protected' => 1, 'needs_review' => 1, 'not_reporting' => 1],
+            ['sites' => 4, 'in_sync' => 1, 'update_available' => 0, 'protected' => 1, 'needs_review' => 1, 'awaiting_state' => 0, 'not_reporting' => 1],
             $overview['summary']
         );
 
@@ -97,6 +100,69 @@ class ConnectedFleetTest extends WP_UnitTestCase
 
         $this->assertSame('not_reporting', $states['f-stale']['state'], 'A site that never reported is not in sync.');
         $this->assertFalse($states['f-stale']['fresh']);
+    }
+
+    public function test_live_but_quiet_site_is_awaiting_state_not_offline(): void
+    {
+        $registry = new \Dbvc\AgencyControl\Storage\EnvironmentRegistry();
+
+        // f-sync delivers a fresh observation -> a trustworthy state report -> in_sync.
+        $this->report('f-sync');
+
+        // f-review polled the hub just now but has NOT delivered a fresh observation:
+        // it is alive, yet its last state report is stale -> awaiting_state, not offline.
+        $registry->update('f-review', ['last_inbox_poll_at' => current_time('mysql', true)]);
+
+        // f-prot and f-stale have neither reported nor polled -> not_reporting.
+
+        $overview = (new FleetService())->overview(null, 'fleetc');
+        $states = [];
+        foreach ($overview['sites'] as $site) {
+            $states[$site['environment_id']] = $site;
+        }
+
+        $this->assertSame('in_sync', $states['f-sync']['state']);
+        $this->assertTrue($states['f-sync']['live']);
+
+        $this->assertSame('awaiting_state', $states['f-review']['state'], 'A live site with a stale observation is awaiting report, not offline.');
+        $this->assertFalse($states['f-review']['fresh'], 'Liveness never makes a stale state report look fresh.');
+        $this->assertTrue($states['f-review']['live']);
+
+        $this->assertSame('not_reporting', $states['f-stale']['state'], 'No recent contact at all is still not_reporting.');
+        $this->assertFalse($states['f-stale']['fresh']);
+        $this->assertFalse($states['f-stale']['live']);
+
+        // The summary tells a quiet-but-alive site apart from a silent one.
+        $this->assertSame(1, $overview['summary']['awaiting_state']);
+        $this->assertSame(2, $overview['summary']['not_reporting'], 'f-prot and f-stale have no recent contact.');
+        $this->assertSame(1, $overview['summary']['in_sync']);
+    }
+
+    public function test_is_live_honours_either_contact_or_poll_within_the_window(): void
+    {
+        $registry = new \Dbvc\AgencyControl\Storage\EnvironmentRegistry();
+        $registry->update('f-stale', ['last_contact_at' => null, 'last_inbox_poll_at' => null]);
+        $env = $this->env_row('f-stale');
+        $this->assertFalse(FleetService::is_live($env), 'No contact and no poll = not live.');
+
+        $registry->update('f-stale', ['last_inbox_poll_at' => gmdate('Y-m-d H:i:s', time() - 60)]);
+        $this->assertTrue(FleetService::is_live($this->env_row('f-stale')), 'A recent poll alone makes a site live.');
+
+        $registry->update('f-stale', ['last_inbox_poll_at' => gmdate('Y-m-d H:i:s', time() - (ComparisonService::freshness_seconds() + 3600))]);
+        $this->assertFalse(FleetService::is_live($this->env_row('f-stale')), 'A poll older than the window is not live.');
+
+        $registry->update('f-stale', ['status' => 'held', 'last_inbox_poll_at' => current_time('mysql', true)]);
+        $this->assertFalse(FleetService::is_live($this->env_row('f-stale')), 'Only an enabled environment can be live.');
+    }
+
+    private function env_row(string $environment_id): array
+    {
+        foreach ((new \Dbvc\AgencyControl\Storage\EnvironmentRegistry())->all('fleetc', 50) as $row) {
+            if ($row['environment_id'] === $environment_id) {
+                return $row;
+            }
+        }
+        $this->fail('environment not found: ' . $environment_id);
     }
 
     public function test_revoked_sites_leave_the_fleet_and_client_scope_filters(): void

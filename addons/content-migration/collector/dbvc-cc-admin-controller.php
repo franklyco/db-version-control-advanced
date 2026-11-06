@@ -140,6 +140,12 @@ final class DBVC_CC_Admin_Controller
                 'process_url' => DBVC_CC_Contracts::AJAX_ACTION_PROCESS_SINGLE_URL,
                 'trigger_domain_ai_refresh' => DBVC_CC_Contracts::AJAX_ACTION_DBVC_CC_TRIGGER_DOMAIN_AI_REFRESH,
             ],
+            // The post-crawl AI refresh fires automatically, so without this the crawl log would
+            // report a deliberately disabled feature as a crawl error on every run. The server
+            // guard in DBVC_CC_AI_Service is the boundary; this only picks the right severity.
+            'capabilities' => [
+                'ai' => DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_AI_MAPPING),
+            ],
         ]);
     }
 

@@ -63,7 +63,7 @@ final class FleetService
         }
 
         $sites = [];
-        $summary = ['sites' => 0, 'in_sync' => 0, 'update_available' => 0, 'protected' => 0, 'needs_review' => 0, 'not_reporting' => 0];
+        $summary = ['sites' => 0, 'in_sync' => 0, 'update_available' => 0, 'protected' => 0, 'needs_review' => 0, 'awaiting_state' => 0, 'not_reporting' => 0];
         foreach ($this->environments->all($client_id, 500) as $env) {
             if ($agency_id !== null && $env['agency_id'] !== $agency_id) {
                 continue;
@@ -90,8 +90,37 @@ final class FleetService
             'freshness_seconds' => ComparisonService::freshness_seconds(),
             'summary' => $summary,
             'sites' => $sites,
-            'note' => 'Composed from each environment\'s own framework-status report, approved overrides and last contact; a stale or never-reporting site is never rolled up as in sync.',
+            'note' => 'Composed from each environment\'s own framework-status report, approved overrides and last contact; a stale state report is never rolled up as in sync. A site whose observation is stale but which still polls the hub reads as "awaiting current state" (alive), distinct from "not reporting" (no recent contact at all).',
         ];
+    }
+
+    /**
+     * Liveness for the dashboard only: the environment is enabled and has
+     * contacted the hub — by delivering an observation OR by polling its inbox —
+     * within the freshness window. This is deliberately distinct from
+     * {@see FrameworkStatusService::is_fresh()}, which keys only on the last
+     * observation delivery (state-report recency) and still gates `in_sync` and
+     * framework-publish trust. A live site whose last observation is older than
+     * the window is alive but "awaiting current state", not offline — so the
+     * rollup can tell a quiet healthy site apart from one that has gone silent.
+     *
+     * @param array<string, mixed> $env
+     * @return bool
+     */
+    public static function is_live(array $env)
+    {
+        if (($env['status'] ?? '') !== EnvironmentRegistry::STATUS_ENABLED) {
+            return false;
+        }
+        $window = ComparisonService::freshness_seconds();
+        foreach (['last_contact_at', 'last_inbox_poll_at'] as $key) {
+            $ts = empty($env[$key]) ? 0 : (int) strtotime((string) $env[$key] . ' UTC');
+            if ($ts > 0 && (time() - $ts) <= $window) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -102,6 +131,7 @@ final class FleetService
     private function roll_up(array $env, array $framework_rows)
     {
         $fresh = FrameworkStatusService::is_fresh($env);
+        $live = self::is_live($env);
 
         // Locked (approved-override) client work on this environment.
         $locked = $this->overrides->locked_for_environment($env['environment_id']);
@@ -136,9 +166,12 @@ final class FleetService
             }
         }
 
-        // Composed site state, worst-wins.
+        // Composed site state, worst-wins. A fresh state report is required to
+        // assert framework parity (in_sync / protected / review / behind). Without
+        // one, a site that still polls the hub is alive but "awaiting current
+        // state"; a site with no recent contact at all is "not reporting".
         if (! $fresh) {
-            $state = 'not_reporting';
+            $state = $live ? 'awaiting_state' : 'not_reporting';
         } elseif ($needs_rebase > 0) {
             $state = 'needs_review';
         } elseif ($behind) {
@@ -158,7 +191,9 @@ final class FleetService
             'tags' => array_values((array) ($env['tags'] ?? [])),
             'state' => $state,
             'fresh' => $fresh,
+            'live' => $live,
             'last_contact_at' => (string) ($env['last_contact_at'] ?? ''),
+            'last_inbox_poll_at' => (string) ($env['last_inbox_poll_at'] ?? ''),
             'framework' => $framework_rows !== []
                 ? ['adopted_version' => $adopted_version, 'desired_version' => $desired_version, 'behind' => $behind]
                 : null,

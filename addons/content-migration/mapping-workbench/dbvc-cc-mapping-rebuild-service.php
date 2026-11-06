@@ -27,6 +27,23 @@ final class DBVC_CC_Mapping_Rebuild_Service
 
     private function __construct()
     {
+    }
+
+    /**
+     * Registers the hooks this service owns.
+     *
+     * Deliberately not done in the constructor. This handler is gated on
+     * OPTION_FLAG_MAPPING_WORKBENCH, and a constructor registers it for whoever calls
+     * get_instance() -- which is how the same pattern in DBVC_CC_AI_Service came to attach a cron
+     * handler the AI flag had switched off, from two readers in other modules. Nothing reaches
+     * this one across a module boundary today, so moving it closes the hole while it is still
+     * latent. Registration now happens only where the flag is checked, in
+     * DBVC_CC_Mapping_Workbench_Module::register() and in the runtime's restore path.
+     *
+     * @return void
+     */
+    public function register_hooks()
+    {
         add_action(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH, [$this, 'dbvc_cc_process_rebuild_batch_event'], 10, 1);
     }
 

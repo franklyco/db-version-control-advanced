@@ -1,0 +1,13 @@
+root = true
+
+# The agent capability library's JSON is written by scripts/agent-docs.php through PHP's
+# JSON_PRETTY_PRINT, which is fixed at four spaces. docs/agents/manifest.json is curated rather
+# than generated, so nothing rewrites it for you -- an editor or script that saves it with a
+# different indent rewrites every line and conflicts with every other branch that has a manifest
+# edit in flight. `composer agent-docs:check` enforces this; `composer agent-docs:normalize`
+# restores it.
+[docs/agents/**.json]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true

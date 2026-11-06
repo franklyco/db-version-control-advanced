@@ -220,28 +220,93 @@ final class DBVC_CC_V2_Mapping_Assignment_Service
         $default_decision = 'approve';
 
         $is_section_item = $item_type === 'section';
-        if ($is_section_item && count($evaluated) > 1 && $margin_to_next < 0.05) {
+
+        // Which items the four ambiguity gates below judge.
+        //
+        // They were written for one named problem — "ambiguity reduction on low-margin hero/body
+        // collisions", the last open seam in Tranche B of
+        // `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
+        // — and were scoped to `item_type === 'section'` to match it. That scoping was never a
+        // decision about head-metadata items: the same guide's own selection rule is item-type
+        // neutral ("choose `unresolved` when the evidence gap is too small"), and
+        // `resolve_unresolved_class()` below still carries a `media` branch for an item type
+        // these gates can never escalate. It left `page_title` and `page_description` exempt from
+        // all four however their numbers looked, which is why nothing in the product could catch
+        // D-22. Measured on corpus slot 1's homepage with the model off, the head description
+        // item carries four candidates whose top two are EXACTLY TIED on the number this gate
+        // reads: 0.81 and 0.78 raw, both 0.81 after `evaluate_candidate()` gives the second a
+        // +0.03 section-family agreement. So `margin_to_next` is 0.00 and the winner is settled
+        // by a 0.03 raw difference the adjustment had already erased — and the one that loses,
+        // `meta:_seo_description`, is the one ground truth calls correct. Its only protection was `autoAcceptMinConfidence` (0.92) sitting above
+        // 0.81, and §6.1b expects S3 to calibrate that threshold DOWNWARD for the model. An
+        // escalation that holds only while a threshold stays high is not an escalation.
+        //
+        // What they still do not judge is an answer the interpreter authored. The three numbers
+        // in these gates — 0.76, 0.05, 0.08 — are calibrated against the lexical scorer's own
+        // confidence scale (slot graph 0.88, catalog pattern 0.84, pattern memory 0.96). A
+        // model places its confidence somewhere else entirely, which is the same observation
+        // §6.1c makes about G-4's inherited 0.92, so reading a model's number against a lexical
+        // bar is a category error rather than a safety check. `apply_interpretation_ranking()`
+        // replaces the whole candidate list with the interpreter's when it answers an item, so
+        // the selected candidate's own reason is a complete test for which scale applies.
+        //
+        // Section items keep exactly the gates they had — `$is_section_item` short-circuits —
+        // so turning the flag on changes nothing about which items are gated, in either
+        // direction, and the model path's G-4/G-5 are untouched by construction.
+        $ambiguity_gates_apply = $is_section_item || ! $this->candidate_is_interpreter_authored($best);
+
+        // The one case the evidence floor has nothing to say about. A structural default's
+        // confidence is a prior about the shape of the target, not a measurement of a match, so
+        // reading it against a floor calibrated on evidence is meaningless — and when it is the
+        // sole candidate there is no second target for a reviewer to move the value to, so the
+        // escalation would cost a decision with one possible answer and block the package until
+        // someone made it. `contested_structural_default` below is the gate for a default that
+        // does have a competitor, which is where the reviewer has a real choice; this keeps that
+        // boundary whole rather than reaching around it through a different gate.
+        //
+        // Inert for section items: the three reasons in `STRUCTURAL_DEFAULT_REASONS` are emitted
+        // only by the head-item builders, so a section item's sole candidate is never one.
+        $sole_structural_default = count($evaluated) === 1 && $this->candidate_is_structural_default($best);
+
+        if ($ambiguity_gates_apply && count($evaluated) > 1 && $margin_to_next < 0.05) {
             $status = 'ambiguous';
             $default_decision = 'unresolved';
             $reason_codes[] = 'low_margin';
         }
 
-        if ($is_section_item && (float) $best['adjusted_confidence'] < 0.76) {
+        if ($ambiguity_gates_apply && ! $sole_structural_default && (float) $best['adjusted_confidence'] < 0.76) {
             $status = 'ambiguous';
             $default_decision = 'unresolved';
             $reason_codes[] = 'low_adjusted_confidence';
         }
 
-        if ($is_section_item && ! empty($best['duplicate_penalty_applied']) && count($evaluated) > 1) {
+        if ($ambiguity_gates_apply && ! empty($best['duplicate_penalty_applied']) && count($evaluated) > 1) {
             $status = 'ambiguous';
             $default_decision = 'unresolved';
             $reason_codes[] = 'duplicate_target_pressure';
         }
 
-        if ($is_section_item && ! empty($best['competition_penalty_applied']) && count($evaluated) > 1 && $margin_to_next < 0.08) {
+        if ($ambiguity_gates_apply && ! empty($best['competition_penalty_applied']) && count($evaluated) > 1 && $margin_to_next < 0.08) {
             $status = 'ambiguous';
             $default_decision = 'unresolved';
             $reason_codes[] = 'competition_group_pressure';
+        }
+
+        // Keyed on the candidate's KIND rather than the item's, so it applies wherever a
+        // structural default is the one about to be accepted.
+        //
+        // Measured on corpus slot 1's homepage with the model off: the head `<title>` was
+        // auto-accepted into `core:post_title` at a fixed 0.97 while the target site's own
+        // `meta:_seo_title` sat in the catalog. That was 1 wrong of 2 auto-accepted = 50%
+        // against G-5's 2% ceiling, and nothing downstream could catch it, because a reviewer
+        // is never shown an auto-accepted mapping. Lexical overlap cannot separate those two
+        // fields — the text is identical either way — so the honest move is to escalate rather
+        // than to invent a reason for preferring one. The default stays pre-selected, so the
+        // reviewer confirms a choice instead of making a mapping from nothing.
+        if (count($evaluated) > 1 && $this->candidate_is_structural_default($best)) {
+            $status = 'ambiguous';
+            $default_decision = 'unresolved';
+            $reason_codes[] = 'contested_structural_default';
         }
 
         if (! empty($best['winner_changed'])) {
@@ -352,6 +417,44 @@ final class DBVC_CC_V2_Mapping_Assignment_Service
             'section_family' => $section_family,
             'competition_group' => $competition_group,
         ];
+    }
+
+    /**
+     * Whether this candidate came from the interpretation boundary rather than from the lexical
+     * scorer.
+     *
+     * The producer is `DBVC_CC_V2_Mapping_Index_Service::build_interpretation_index()`, which
+     * stamps every recommendation it accepts with this reason;
+     * `apply_interpretation_ranking()` then replaces the item's whole candidate list with them,
+     * so one candidate's reason answers for the set.
+     *
+     * @param array<string, mixed> $candidate
+     * @return bool
+     */
+    private function candidate_is_interpreter_authored(array $candidate)
+    {
+        $reason = isset($candidate['reason']) ? sanitize_key((string) $candidate['reason']) : '';
+
+        return $reason === 'model_interpretation';
+    }
+
+    /**
+     * Whether this candidate is a default placement the shape of the target implies, rather than
+     * a match the page's content evidences.
+     *
+     * The producer owns the list: `DBVC_CC_V2_Mapping_Index_Service::STRUCTURAL_DEFAULT_REASONS`.
+     *
+     * @param array<string, mixed> $candidate
+     * @return bool
+     */
+    private function candidate_is_structural_default(array $candidate)
+    {
+        $reason = isset($candidate['reason']) ? sanitize_key((string) $candidate['reason']) : '';
+        if ($reason === '') {
+            return false;
+        }
+
+        return in_array($reason, DBVC_CC_V2_Mapping_Index_Service::STRUCTURAL_DEFAULT_REASONS, true);
     }
 
     /**
@@ -558,6 +661,13 @@ final class DBVC_CC_V2_Mapping_Assignment_Service
 
         if ($item_type === 'media') {
             return 'missing_media_slot';
+        }
+
+        // Distinct from an ambiguous sibling: the competing fields are not siblings in one group,
+        // they are two different kinds of home for the same value, and the reviewer is being
+        // asked which kind this target site uses.
+        if (in_array('contested_structural_default', $reason_codes, true)) {
+            return 'contested_structural_default';
         }
 
         if (in_array('competition_group_pressure', $reason_codes, true) || in_array('low_margin', $reason_codes, true)) {

@@ -69,22 +69,38 @@ Validation must match the change:
 
 - source change: syntax/static checks, focused tests, required build, then the full affected regression suite once at batch close;
 - runtime-evidence-only run: exact applicable CLI, API, service, UI, authoritative-state, and cleanup assertions; do not require unrelated evidence types, rebuild, or rerun unrelated source suites;
-- manifest or agent-doc change: `composer agent-docs:refresh`, `composer agent-docs:check`, and `git diff --check`;
+- manifest or agent-doc change: `composer agent-docs:normalize`, `composer agent-docs:refresh`, `composer agent-docs:check`, and `git diff --check`;
 - prose-only guidance change with no manifest/discovery effect: `composer agent-docs:check` and `git diff --check` are sufficient.
 
 Do not add a separate run-ledger schema while the manifest plus one compact runtime summary can represent the remaining work accurately. Reconsider a machine-readable run ledger only if multiple capabilities require recurring matrices that can no longer be summarized without ambiguity.
 
 Do not edit files under `docs/agents/generated/` manually. `manifest.json` is curated authority; the discovery snapshot and Markdown indexes are replaceable derivatives.
 
+### Manifest serialization
+
+`manifest.json` is edited by hand, so `agent-docs:build` never rewrites it and nothing corrects how it was saved. Write it back in the canonical serialization: four-space indent, unescaped slashes and unicode, one trailing newline — what `scripts/agent-docs.php` already produces for every generated file through PHP's `JSON_PRETTY_PRINT`.
+
+Run `composer agent-docs:normalize` after editing it, before `agent-docs:refresh`. `agent-docs:check` fails when the file is not canonical and names that command. The normalizer rewrites whitespace and escaping only — it preserves key and record order, so it cannot reorder or alter a curated record. `.editorconfig` carries the same rule for editors.
+
+This is not cosmetic. A writer with a different indent (a two-space `json.dump`, a formatter-on-save) rewrites all ~9,000 lines, and git then cannot align anyone else's record edit against it: every open branch carrying a manifest edit conflicts in full, even when no two branches touched the same record. That has happened more than once.
+
+**Resolving a `manifest.json` conflict.** Do not hand-merge it, and do not resolve it by taking one whole side. Start from the base branch's copy, replay only your own record onto it, then normalize:
+
+```bash
+git checkout --theirs docs/agents/manifest.json   # or --ours; either is a valid starting point
+```
+
+Then re-apply your record's edit, run `composer agent-docs:normalize && composer agent-docs:refresh && composer agent-docs:check`, and re-check any `source_refs` line numbers your record carries — commits merged from the base branch commonly shift them. `docs/agents/generated/` conflicts need no thought at all: take either side and run `composer agent-docs:refresh`.
+
 ### Clean clones and development-only paths
 
-This repository is the distribution copy of db-version-control-main. That repository tracks a few paths it deliberately never copies here: `_source/`, `uninstall.php`, `tests/playwright/` and `tests/*.test.cjs` (its `scripts/distribution-drift.json` lists them as `development_only`). `scripts/agent-docs.php` declares the same paths in `DBVC_AGENT_DEVELOPMENT_ONLY_PATHS`, and treats them as follows:
+db-version-control-main is copied file by file into its distribution repository, db-version-control-advanced, and tracks a few paths it deliberately never copies there: `_source/`, `uninstall.php`, `tests/playwright/` and `tests/*.test.cjs` (`scripts/distribution-drift.json` lists them as `development_only`). The agent-docs files — `scripts/agent-docs.php`, `manifest.json` and everything under `generated/` — are copied verbatim, so they must validate in both repositories. `scripts/agent-docs.php` declares the same paths in `DBVC_AGENT_DEVELOPMENT_ONLY_PATHS`, and treats them as follows:
 
-- Discovery never scans them. The committed `discovery-snapshot.json` is therefore byte-identical whether or not a checkout holds a copy of `_source/`, and `composer agent-docs:refresh` in a clean clone is the canonical way to regenerate it. Do not copy `_source/` in to refresh the snapshot; it changes nothing.
-- A manifest `source_refs`, `test_refs` or `doc_refs` entry into one of them is validated normally when the file is present. When it is absent, `check`, `build` and `query` print a `[agent-docs] WARNING: ... is development-only and absent from this checkout` line naming the record and path, and carry on. Every other missing reference is still an error.
+- Discovery never scans them. The committed `discovery-snapshot.json` is therefore byte-identical whether or not a checkout holds `_source/`, so a refresh here produces the snapshot a clean distribution clone expects.
+- A manifest `source_refs`, `test_refs` or `doc_refs` entry into one of them is validated normally when the file is present, as it always is in this repository. When it is absent, as in a distribution clone, `check`, `build` and `query` print a `[agent-docs] WARNING: ... is development-only and absent from this checkout` line naming the record and path, and carry on. Every other missing reference is still an error.
 - The `source.content_collector.*` records keep their surfaces and source references, but carry no discovery IDs, because those surfaces are no longer discovered.
 
-Add a path to `DBVC_AGENT_DEVELOPMENT_ONLY_PATHS` only when the drift config already declares it development-only. A file that belongs in this repository and is missing must be committed or its reference fixed, never declared optional.
+Add a path to `DBVC_AGENT_DEVELOPMENT_ONLY_PATHS` only when the drift config already declares it development-only. A file that belongs in the distribution and is missing must be committed or its reference fixed, never declared optional.
 
 `RECIPES.md` is a compact reviewed layer, not a generated command reference. Every recipe must keep its adjacent `recipe`, `safety`, and `capability-records` metadata comments valid. Phase 11 permits only `read_only` recipes, requires the `cli.core.capabilities.inspect` preflight record, and rejects unknown or duplicate record references during `agent-docs:check`.
 

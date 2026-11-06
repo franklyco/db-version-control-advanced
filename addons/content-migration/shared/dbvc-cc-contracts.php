@@ -21,6 +21,19 @@ final class DBVC_CC_Contracts
     public const OPTION_FLAG_COLLECTOR = 'dbvc_cc_flag_collector';
     public const OPTION_FLAG_EXPLORER = 'dbvc_cc_flag_explorer';
     public const OPTION_FLAG_AI_MAPPING = 'dbvc_cc_flag_ai_mapping';
+    /**
+     * Scope: the Workbench **operator surface** -- its submenu page and the dbvc_cc/v1 workbench
+     * routes -- and the mapping-rebuild queue reachable only from those routes. It is NOT a switch
+     * for the mapping services themselves. DBVC_CC_Section_Field_Candidate_Service and
+     * DBVC_CC_Mapping_Decision_Service are shared pipeline infrastructure: the import-plan
+     * handoff reads, and builds, mapping artifacts through them under
+     * OPTION_FLAG_MAPPING_CATALOG_BRIDGE, and must keep working for an operator who only wanted
+     * the review UI hidden. Failing those calls closed would break import planning as a side
+     * effect of turning off a page. Contrast OPTION_FLAG_AI_MAPPING, which does mean "this surface
+     * does no work" and is enforced inside DBVC_CC_AI_Service, because every caller there was a
+     * way of starting AI jobs rather than a consumer of artifacts already on disk.
+     * ContentMigrationWorkbenchFlagScopeTest pins both halves of this.
+     */
     public const OPTION_FLAG_MAPPING_WORKBENCH = 'dbvc_cc_flag_mapping_workbench';
     public const OPTION_FLAG_IMPORT_PLAN = 'dbvc_cc_flag_import_plan';
     public const OPTION_FLAG_IMPORT_EXECUTE = 'dbvc_cc_flag_import_execute';
@@ -245,24 +258,50 @@ final class DBVC_CC_Contracts
             add_option($option_key, $default_value);
         }
 
-        // Rollout gate. Every value below matches get_feature_flag_defaults(), so a fresh install
-        // is unaffected and the two sources cannot drift. On an upgrade the gate re-asserts the
-        // shipped value, which also discards an administrator's explicit choice for these keys.
-        // That override is longstanding behaviour and is left as-is: changing it is a rollout
-        // decision, not part of keeping the defaults and the gate in agreement.
+        // Rollout gate, scoped per version. It used to re-assert ten flags on every version bump,
+        // which could only ever undo an administrator's choice: all ten values it wrote were
+        // identical to get_feature_flag_defaults(), and the loop above already seeds every flag at
+        // its default, so on a site whose flags were never changed the block was a no-op. Its only
+        // observable effect was reverting an explicit '0' -- including the one that now switches
+        // off the AI job surface, so a release that bumped this constant silently turned it back on.
+        //
+        // A bump now applies only the keys its own entry names, so re-enabling a flag is a
+        // deliberate, reviewable act rather than a side effect of the version moving.
         $feature_flag_version = (int) get_option(self::OPTION_FEATURE_FLAG_VERSION, 0);
         if ($feature_flag_version < self::FEATURE_FLAG_VERSION) {
-            update_option(self::OPTION_FLAG_COLLECTOR, '1');
-            update_option(self::OPTION_FLAG_EXPLORER, '1');
-            update_option(self::OPTION_FLAG_AI_MAPPING, '1');
-            update_option(self::OPTION_FLAG_MAPPING_WORKBENCH, '1');
-            update_option(self::OPTION_FLAG_DEEP_CAPTURE, '1');
-            update_option(self::OPTION_FLAG_CONTEXT_BUNDLE, '0');
-            update_option(self::OPTION_FLAG_AI_SECTION_TYPING, '0');
-            update_option(self::OPTION_FLAG_ATTRIBUTE_SCRUB_CONTROLS, '1');
-            update_option(self::OPTION_FLAG_MAPPING_CATALOG_BRIDGE, '1');
-            update_option(self::OPTION_FLAG_MEDIA_MAPPING_BRIDGE, '1');
+            foreach (self::get_feature_flag_rollouts() as $rollout_version => $rollout_values) {
+                $rollout_version = (int) $rollout_version;
+                if ($rollout_version <= $feature_flag_version || $rollout_version > self::FEATURE_FLAG_VERSION) {
+                    continue;
+                }
+
+                foreach ($rollout_values as $option_key => $option_value) {
+                    update_option($option_key, $option_value);
+                }
+            }
+
             update_option(self::OPTION_FEATURE_FLAG_VERSION, (string) self::FEATURE_FLAG_VERSION);
         }
+    }
+
+    /**
+     * Feature-flag values a version bump imposes on sites below that version, applied in ascending
+     * version order. A key here overwrites an administrator's stored choice, so list a flag only
+     * when the release genuinely intends to force it, and never a write or export path -- those
+     * stay default-off and operator-owned. ContentMigrationFeatureFlagRolloutGateTest enforces
+     * both rules.
+     *
+     * @return array<int, array<string, string>>
+     */
+    public static function get_feature_flag_rollouts()
+    {
+        return [
+            // Deliberately empty. The version-6 bump re-asserted ten flags, but every value it
+            // wrote equalled the declared default, which ensure_phase_zero_defaults() already
+            // seeds with add_option(). So replaying it changes nothing on a site that never
+            // touched its flags, and on one that did it would discard the operator's choice --
+            // which is the defect this entry exists to record rather than repeat.
+            6 => [],
+        ];
     }
 }
