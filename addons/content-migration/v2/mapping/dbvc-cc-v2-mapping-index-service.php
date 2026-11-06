@@ -7,6 +7,26 @@ if (! defined('WPINC')) {
 final class DBVC_CC_V2_Mapping_Index_Service
 {
     /**
+     * Candidate reasons that are a DEFAULT PLACEMENT rather than evidence of a match.
+     *
+     * Every other candidate this service emits is derived from something about the page or the
+     * target: a slot-graph context match, a catalog pattern hit, a remembered reviewer decision.
+     * These three are derived from the SHAPE of the target alone — a post has a title, so the
+     * `<title>` tag goes in it; a post may have an excerpt, so the meta description goes there.
+     * The number attached to each is the same whatever the page says and whatever else the
+     * catalog offers, which makes it a prior, not a measurement.
+     *
+     * A prior is safe to act on unreviewed only while it is the sole home for the value. The
+     * assignment service reads this list to escalate the contested case; see
+     * `DBVC_CC_V2_Mapping_Assignment_Service::candidate_is_structural_default()`.
+     */
+    const STRUCTURAL_DEFAULT_REASONS = [
+        'page_title_to_post_title',
+        'meta_description_to_excerpt',
+        'meta_description_to_content',
+    ];
+
+    /**
      * @var DBVC_CC_V2_Mapping_Index_Service|null
      */
     private static $instance = null;
@@ -253,6 +273,10 @@ final class DBVC_CC_V2_Mapping_Index_Service
         $pattern_keys = ['title', 'headline', 'hero'];
         $candidates = [];
         if (! empty($narrowed_catalog['supports']['title'])) {
+            // 0.97 is the confidence of the structural claim "a post has a title", not of a match
+            // between this page's `<title>` and that field. See STRUCTURAL_DEFAULT_REASONS: it
+            // stays the top-ranked default, and the assignment service stops it auto-accepting
+            // once the catalog offers somewhere else to put the value.
             $candidates[] = [
                 'target_ref' => 'core:post_title',
                 'confidence' => 0.97,

@@ -56,6 +56,11 @@ final class DBVC_CC_Import_Plan_Handoff_Service
             return $catalog_result;
         }
 
+        // Workbench-owned services, called under the catalog-bridge flag rather than
+        // OPTION_FLAG_MAPPING_WORKBENCH, and intentionally: that flag scopes the Workbench's
+        // operator surface, not the mapping services the import pipeline shares. See its
+        // declaration in DBVC_CC_Contracts. With $build_if_missing this writes a candidates
+        // artifact, which is why the distinction is worth stating at the call site.
         $section_candidate_result = DBVC_CC_Section_Field_Candidate_Service::get_instance()->get_candidates($domain, $path, $build_if_missing);
         if (is_wp_error($section_candidate_result)) {
             return $section_candidate_result;

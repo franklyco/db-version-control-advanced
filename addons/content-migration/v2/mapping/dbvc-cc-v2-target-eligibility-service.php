@@ -51,6 +51,19 @@ final class DBVC_CC_V2_Target_Eligibility_Service
         $is_section_item = isset($item_context['item_type']) && sanitize_key((string) $item_context['item_type']) === 'section';
         $strict_section_family = false;
 
+        // Scoped to section items on purpose, and this one stays scoped — unlike the ambiguity
+        // gates in `DBVC_CC_V2_Mapping_Assignment_Service`, which share the shape and not the
+        // reason. This is candidate ELIGIBILITY, not escalation: it narrows the pool to one
+        // section family, so a wrong scope silently deletes the right answer rather than sending
+        // it to a reviewer.
+        //
+        // `resolve_preferred_section_family()` falls back to `context_tag`, and a head item's
+        // `context_tag` is the literal `title` or `description` that
+        // `build_page_title_item()` / `build_page_description_item()` set. Those are content
+        // roles, not section families — no catalog spells a slot's `section_family` as `title` —
+        // so applying this to a head item would reject every ACF slot it has and leave it with
+        // the structural default alone. Widening it would make the mapper worse in exactly the
+        // way D-22 was about.
         if (
             $is_section_item
             && $preferred_section_family !== ''
@@ -161,6 +174,9 @@ final class DBVC_CC_V2_Target_Eligibility_Service
         $strict_section_family = false;
         $preferred_section_family = $this->resolve_preferred_section_family($item_context);
 
+        // Section-scoped for the same reason as in `collect_slot_candidates()`: this filter drops
+        // candidates, so a head item run through it would lose every ACF slot to a `context_tag`
+        // that is a content role rather than a section family.
         if (
             isset($item_context['item_type'])
             && sanitize_key((string) $item_context['item_type']) === 'section'

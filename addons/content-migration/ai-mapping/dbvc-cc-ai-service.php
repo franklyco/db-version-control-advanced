@@ -33,7 +33,87 @@ final class DBVC_CC_AI_Service
     private function __construct()
     {
         $this->options = DBVC_CC_Settings_Service::get_options();
+    }
+
+    /**
+     * Registers the hooks this service owns.
+     *
+     * Deliberately not done in the constructor. get_instance() is reached from ungated readers
+     * (the Explorer and Workbench domain lists), and registering the job handler there would
+     * attach a surface OPTION_FLAG_AI_MAPPING had already turned off. Registration now happens
+     * only where the flag is checked, in DBVC_CC_AI_Mapping_Module::register().
+     *
+     * @return void
+     */
+    public function register_hooks()
+    {
         add_action(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB, [$this, 'process_job'], 10, 3);
+
+        // The on->off edge. Nothing else in the add-on reacts to a feature flag changing, so a
+        // flag flipped by WP-CLI or by a Configuration Portability import used to leave already
+        // scheduled events behind on a hook that no longer has a listener, and their status files
+        // stuck at 'queued'. These listeners exist exactly while the feature is on, which is the
+        // only state the transition can start from. Only this hook is retracted -- not
+        // DBVC_CC_Addon_Bootstrap::clear_scheduled_hooks(), which would also drop the Workbench's
+        // unrelated mapping-rebuild queue.
+        add_action('update_option_' . DBVC_CC_Contracts::OPTION_FLAG_AI_MAPPING, [$this, 'retract_scheduled_jobs_if_disabled'], 10, 0);
+        add_action('add_option_' . DBVC_CC_Contracts::OPTION_FLAG_AI_MAPPING, [$this, 'retract_scheduled_jobs_if_disabled'], 10, 0);
+    }
+
+    /**
+     * Unschedules pending AI jobs once the AI mapping feature is off.
+     *
+     * Reads the flag rather than the hook arguments so it is correct for both the update_option_*
+     * and add_option_* edges, and a no-op while the feature is still on.
+     *
+     * @return void
+     */
+    public function retract_scheduled_jobs_if_disabled()
+    {
+        if (self::is_enabled()) {
+            return;
+        }
+
+        if (! function_exists('wp_unschedule_hook')) {
+            return;
+        }
+
+        // wp_unschedule_hook(), because AI job events always carry [domain, path, job_id] and
+        // wp_clear_scheduled_hook() only matches an identical argument list.
+        wp_unschedule_hook(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB);
+    }
+
+    /**
+     * @return bool
+     */
+    public static function is_enabled()
+    {
+        return DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_AI_MAPPING);
+    }
+
+    /**
+     * Fails closed when OPTION_FLAG_AI_MAPPING is off.
+     *
+     * The flag gates module registration, but registration alone is not a boundary: queueing runs
+     * from the collector's crawl-finished AJAX action, which belongs to a separately flagged
+     * module, so with AI mapping off a crawl used to write 'queued' status files and schedule
+     * events that no listener would ever answer. Guarding the service's own work mirrors how
+     * OPTION_FLAG_IMPORT_EXECUTE is enforced inside DBVC_CC_Import_Executor_Service, and every
+     * caller already propagates a WP_Error to the operator.
+     *
+     * @return WP_Error|null
+     */
+    private function guard_enabled()
+    {
+        if (self::is_enabled()) {
+            return null;
+        }
+
+        return new WP_Error(
+            'dbvc_cc_ai_disabled',
+            __('AI mapping is disabled by the dbvc_cc_flag_ai_mapping feature flag. Enable it before running an AI pass.', 'dbvc'),
+            ['status' => 409]
+        );
     }
 
     /**
@@ -48,6 +128,11 @@ final class DBVC_CC_AI_Service
      * @return array|WP_Error
      */
     public function queue_job($domain, $path, $trigger = 'manual_rerun', $requested_by = 0, $run_now = true, $spawn_cron = true) {
+        $disabled = $this->guard_enabled();
+        if ($disabled instanceof WP_Error) {
+            return $disabled;
+        }
+
         $context = $this->resolve_page_context($domain, $path);
         if (is_wp_error($context)) {
             return $context;
@@ -129,6 +214,11 @@ final class DBVC_CC_AI_Service
      * @return array|WP_Error
      */
     public function queue_branch_jobs($domain, $path, $trigger = 'manual_branch_rerun', $requested_by = 0, $run_now = false, $max_jobs = 150, $offset = 0) {
+        $disabled = $this->guard_enabled();
+        if ($disabled instanceof WP_Error) {
+            return $disabled;
+        }
+
         $subtree_context = $this->resolve_subtree_context($domain, $path);
         if (is_wp_error($subtree_context)) {
             return $subtree_context;
@@ -311,6 +401,18 @@ final class DBVC_CC_AI_Service
             'updated_at' => null,
         ];
 
+        // Reads stay allowed with the flag off -- they only count artifacts already on disk -- but
+        // the honest answer is that the feature is off, not that a pass is in progress. Returning
+        // before the subtree walk also keeps the two ungated callers of this method (the Explorer
+        // and Workbench domain lists) from scanning the whole domain tree for a disabled feature.
+        // warning_badge stays false on purpose: the Explorer renders it as an "AI Warning: Refresh
+        // Domain AI" button, and a refresh is exactly what the flag refuses.
+        if (! self::is_enabled()) {
+            $dbvc_cc_health['status'] = 'disabled';
+
+            return $dbvc_cc_health;
+        }
+
         $dbvc_cc_context = $this->resolve_subtree_context($domain, '');
         if (is_wp_error($dbvc_cc_context)) {
             $dbvc_cc_health['status'] = 'missing';
@@ -443,6 +545,11 @@ final class DBVC_CC_AI_Service
      * @return array|WP_Error
      */
     public function process_job($domain, $path, $job_id = '') {
+        $disabled = $this->guard_enabled();
+        if ($disabled instanceof WP_Error) {
+            return $disabled;
+        }
+
         $context = $this->resolve_page_context($domain, $path);
         if (is_wp_error($context)) {
             return $context;

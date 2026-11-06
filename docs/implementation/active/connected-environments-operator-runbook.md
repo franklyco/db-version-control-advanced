@@ -28,6 +28,20 @@ Each task lists both the **admin page** path (`DBVC Export → Connected Environ
    * * * * * cd /path/to/hub/wordpress && wp dbvc agency scheduler-run >/dev/null 2>&1
    ```
    Check it is firing: `wp dbvc agency scheduler-status` (an `overdue` flag turns true after two missed hours).
+
+   **If `wp` is not on PATH** (e.g. a LocalWP hub, which ships its own wp-cli phar and a per-site MySQL socket), the bare `wp …` line will not run from cron. Point the crontab at a small wrapper that pins the php socket, phar, `--path`, and `--url`, then runs `dbvc agency scheduler-run`:
+   ```bash
+   #!/bin/zsh
+   SOCK="$HOME/Library/Application Support/Local/run/<SITE_ID>/mysql/mysqld.sock"
+   PHAR="/Applications/Local.app/Contents/Resources/extraResources/bin/wp-cli/wp-cli.phar"
+   php -d mysqli.default_socket="$SOCK" -d error_reporting=0 -d display_errors=0 \
+     "$PHAR" --path="/path/to/hub/app/public" --url="https://<hub-host>" \
+     dbvc agency scheduler-run >/dev/null 2>&1
+   ```
+   ```bash
+   # crontab points at the wrapper; the socket exists only while Local is running (the tick no-ops otherwise)
+   * * * * * "$HOME/bin/dbvc-hub-scheduler.sh"
+   ```
 4. **Delegate roles (optional).** To let a non-admin publish or approve without full admin access: Connected Environments → **Roles** → grant **publisher** (authoring/distribution) or **approver** (review/approve/rollback) to a user. CLI: `wp dbvc agency role-grant --user=<id|login|email> --role=publisher|approver`. Granting is admin-only (privilege delegation); administrators already hold both.
 5. **Notifications (optional).** `wp dbvc agency notification-channel-set …` registers a webhook or email channel; terminal rollout states, drift, and needs-rebase events are queued and flushed on the scheduler tick (or `wp dbvc agency notification-flush`).
 

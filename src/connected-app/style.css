@@ -34,7 +34,7 @@
 .dbvc-ce {
   --dbvc-ce-color-text: var(--dbvc-color-text-primary);
   --dbvc-ce-color-text-muted: var(--dbvc-color-text-muted);
-  --dbvc-ce-color-text-subtle: var(--dbvc-color-gray-600); /* #6b7280: WCAG-AA (4.8:1) on white; #8c8f94 was 3.2:1 */
+  --dbvc-ce-color-text-subtle: #5c636d; /* AA (>=4.5:1) on white AND the muted/table surfaces (#f6f7f7/#f9f9f9); #6b7280 dipped to 4.4:1 on muted */
   --dbvc-ce-color-border: var(--dbvc-color-border-default);
   --dbvc-ce-color-border-strong: var(--dbvc-color-border-muted);
   --dbvc-ce-color-surface: var(--dbvc-color-white);
@@ -56,18 +56,35 @@
 }
 /* Dark: the app follows the viewer's OS/browser preference; .dbvc-ce--dark-preview forces it for the mockup gallery. */
 @media (prefers-color-scheme: dark) {
-  .dbvc-ce { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #a7aaad; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent: #4f94d4; --dbvc-ce-color-accent-text: #79b0e6; --dbvc-ce-color-accent-soft: #1b2a3d; --dbvc-ce-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); background: #16191d; padding: 12px 16px 20px; border-radius: 12px; }
+  .dbvc-ce { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #a7aaad; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent: #4f94d4; --dbvc-ce-color-accent-text: #79b0e6; --dbvc-ce-color-accent-soft: #1b2a3d; --dbvc-ce-color-success: #5fd07e; --dbvc-ce-color-warning: #e3a74a; --dbvc-ce-color-danger: #f08c8d; --dbvc-ce-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); background: #16191d; padding: 12px 16px 20px; border-radius: 12px; }
   /* Badge tones read on a dark surface: lighten the text/border instead of darkening. */
   .dbvc-ce .dbvc-badge { --dbvc-badge-text-darken: -34%; --dbvc-badge-border-darken: -14%; }
 }
-.dbvc-ce--dark-preview { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #a7aaad; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent: #4f94d4; --dbvc-ce-color-accent-text: #79b0e6; --dbvc-ce-color-accent-soft: #1b2a3d; --dbvc-ce-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); background: #16191d; padding: 12px 16px 20px; border-radius: 12px; }
+.dbvc-ce--dark-preview { --dbvc-ce-color-text: #f0f0f1; --dbvc-ce-color-text-muted: #c3c4c7; --dbvc-ce-color-text-subtle: #a7aaad; --dbvc-ce-color-border: #3c434a; --dbvc-ce-color-border-strong: #50575e; --dbvc-ce-color-surface: #1d2327; --dbvc-ce-color-surface-muted: #2c3338; --dbvc-ce-color-surface-table: #23282d; --dbvc-ce-color-accent: #4f94d4; --dbvc-ce-color-accent-text: #79b0e6; --dbvc-ce-color-accent-soft: #1b2a3d; --dbvc-ce-color-success: #5fd07e; --dbvc-ce-color-warning: #e3a74a; --dbvc-ce-color-danger: #f08c8d; --dbvc-ce-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); background: #16191d; padding: 12px 16px 20px; border-radius: 12px; }
 .dbvc-ce--dark-preview .dbvc-badge { --dbvc-badge-text-darken: -34%; --dbvc-badge-border-darken: -14%; }
 
 .dbvc-ce input[type="text"], .dbvc-ce input[type="url"], .dbvc-ce input[type="password"], .dbvc-ce input[type="number"], .dbvc-ce input[type="search"], .dbvc-ce select, .dbvc-ce textarea { background: var(--dbvc-ce-color-surface); color: var(--dbvc-ce-color-text); border: 1px solid var(--dbvc-ce-color-border-strong); border-radius: var(--dbvc-ce-radius-sm); padding: 4px 8px; font: inherit; }
+/* Checkbox/radio were not in the reset above — tint them so they theme in dark mode. */
+.dbvc-ce input[type="checkbox"], .dbvc-ce input[type="radio"] { accent-color: var(--dbvc-ce-color-accent); }
+/* WordPress-core buttons used in the enrollment/activity region adopt the page tokens so they read on the dark panel (and stay consistent in light); interaction states fall back to WP defaults. */
+.dbvc-ce .button, .dbvc-ce .button-secondary { background: var(--dbvc-ce-color-surface-muted); color: var(--dbvc-ce-color-text); border-color: var(--dbvc-ce-color-border-strong); }
+.dbvc-ce .button-primary { background: var(--dbvc-ce-color-accent); color: var(--dbvc-ce-color-surface); border-color: var(--dbvc-ce-color-accent); }
+.dbvc-ce .button-link-delete { background: transparent; border-color: transparent; color: var(--dbvc-ce-color-danger); }
 .dbvc-ce input::placeholder, .dbvc-ce textarea::placeholder { color: var(--dbvc-ce-color-text-subtle); }
 .dbvc-ce *:focus-visible { outline: 0; box-shadow: var(--dbvc-ce-focus-ring); border-radius: var(--dbvc-ce-radius-sm); }
 .dbvc-ce code { font: 12px/1.4 SFMono-Regular, Menlo, Consolas, monospace; color: inherit; background: transparent; padding: 0; }
 .dbvc-ce .num { font-variant-numeric: tabular-nums; text-align: right; }
+/* Headings use the scoped text token. WP-admin core colors bare h1–h4 directly
+   (h1 { color:#1d2327 }), which beats the color inherited from .dbvc-ce and goes
+   near-invisible on the dark page background in dark mode; restore the token here.
+   No-op in light (token is #1d2327 anyway). Specific heading rules below that set
+   their own color (e.g. the muted drawer h3) still win by source order. */
+.dbvc-ce h1, .dbvc-ce h2, .dbvc-ce h3, .dbvc-ce h4 { color: var(--dbvc-ce-color-text); }
+/* WP-admin core .description is #646970 (fine on white, ~3:1 on the dark panel);
+   use the muted token instead. The nested code override beats WP core's
+   `p.description code` (#50575e, specificity 0,1,2) so inline code inherits too. */
+.dbvc-ce .description { color: var(--dbvc-ce-color-text-muted); }
+.dbvc-ce .description code { color: inherit; }
 
 /* ---- Header ---- */
 .dbvc-ce__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 4px 0 12px; }
@@ -80,7 +97,7 @@
 
 /* ---- Buttons (WP button parity, mockup-local) ---- */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 30px; border-radius: 3px; border: 1px solid var(--dbvc-ce-color-accent); background: var(--dbvc-ce-color-surface); color: var(--dbvc-ce-color-accent); font: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
-.btn--primary { background: var(--dbvc-ce-color-accent); color: #fff; }
+.btn--primary { background: var(--dbvc-ce-color-accent); color: var(--dbvc-ce-color-surface); }
 .btn--danger { border-color: var(--dbvc-ce-color-danger); color: var(--dbvc-ce-color-danger); }
 .btn--ghost { border-color: var(--dbvc-ce-color-border-strong); color: var(--dbvc-ce-color-text); }
 .btn--small { min-height: 26px; padding: 0 8px; font-size: 12px; }
@@ -144,7 +161,7 @@
 /* ---- Filter chips (mirrors .dbvc-status-badge) ---- */
 .dbvc-ce-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
 .dbvc-status-badge { border: 1px solid var(--dbvc-ce-color-border-strong); border-radius: 20px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; background: var(--dbvc-ce-color-surface-muted); cursor: pointer; color: var(--dbvc-ce-color-text); font-family: inherit; }
-.dbvc-status-badge[aria-pressed="true"] { background: var(--dbvc-ce-color-text); color: #fff; border-color: var(--dbvc-ce-color-text); }
+.dbvc-status-badge[aria-pressed="true"] { background: var(--dbvc-ce-color-text); color: var(--dbvc-ce-color-surface); border-color: var(--dbvc-ce-color-text); }
 .dbvc-status-badge .n { font-variant-numeric: tabular-nums; font-weight: 600; }
 .dbvc-status-badge.is-uncertain { border-style: dashed; color: var(--dbvc-ce-color-text-muted); }
 
@@ -226,9 +243,9 @@
 .dbvc-ce-linkbtn:hover { text-decoration: underline; }
 .dbvc-ce-steps { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; padding: 0; }
 .dbvc-ce-steps button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dbvc-ce-color-border-strong); background: var(--dbvc-ce-color-surface); border-radius: 20px; padding: 4px 12px; font: inherit; font-size: 12px; color: inherit; cursor: pointer; }
-.dbvc-ce-steps button.is-active { background: var(--dbvc-ce-color-text); color: #fff; border-color: var(--dbvc-ce-color-text); }
+.dbvc-ce-steps button.is-active { background: var(--dbvc-ce-color-text); color: var(--dbvc-ce-color-surface); border-color: var(--dbvc-ce-color-text); }
 .dbvc-ce-steps__n { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--dbvc-ce-color-surface-muted); color: var(--dbvc-ce-color-text); font-size: 11px; font-weight: 600; }
-.dbvc-ce-steps button.is-active .dbvc-ce-steps__n { background: rgba(255,255,255,.24); color: #fff; }
+.dbvc-ce-steps button.is-active .dbvc-ce-steps__n { background: color-mix(in srgb, var(--dbvc-ce-color-surface) 22%, transparent); color: var(--dbvc-ce-color-surface); }
 .dbvc-ce-prep { border: 1px solid var(--dbvc-ce-color-border); border-radius: var(--dbvc-ce-radius-sm); padding: 10px 12px; margin: 0 0 8px; }
 .dbvc-ce-prep__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dbvc-ce-prep__head code { font-size: 12px; }
@@ -266,10 +283,10 @@
 
 /* ---- Publish to fleet wizard — M9 slice 4f ---- */
 .dbvc-ce-steps li { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dbvc-ce-color-border-strong); background: var(--dbvc-ce-color-surface); border-radius: 20px; padding: 4px 12px; font-size: 12px; }
-.dbvc-ce-steps li.is-active { background: var(--dbvc-ce-color-text); color: #fff; border-color: var(--dbvc-ce-color-text); }
+.dbvc-ce-steps li.is-active { background: var(--dbvc-ce-color-text); color: var(--dbvc-ce-color-surface); border-color: var(--dbvc-ce-color-text); }
 .dbvc-ce-steps li.is-done { border-color: var(--dbvc-ce-color-accent); }
 .dbvc-ce-steps .num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--dbvc-ce-color-surface-muted); color: var(--dbvc-ce-color-text); font-size: 11px; font-weight: 600; }
-.dbvc-ce-steps li.is-active .num { background: rgba(255,255,255,.24); color: #fff; }
+.dbvc-ce-steps li.is-active .num { background: color-mix(in srgb, var(--dbvc-ce-color-surface) 22%, transparent); color: var(--dbvc-ce-color-surface); }
 .dbvc-ce-objrow { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--dbvc-ce-color-border-strong); border-radius: var(--dbvc-ce-radius); padding: 10px 12px; margin: 0 0 8px; cursor: pointer; }
 .dbvc-ce-objrow input { margin-top: 3px; }
 .dbvc-ce-objrow b { display: block; }

@@ -206,6 +206,11 @@ Each entry is independently reproducible. Severity is against the goal in Sectio
 | D-19 | **High** | **One source URL cannot produce more than one target entity.** `mapping-recommendations.v2` carries a single `recommended_target_object`, and entity resolution resolves one target per page. Slot 1's `/dental-team` must yield **five** `team_member` entities; it cannot, no matter how good the interpreter is. The same shape blocks service listings, FAQ pages, location pages and any index that should become a set of records — a large share of what a studio migrates. Surfaced by authoring S1's ground truth against a pinned schema, which is what made the impossibility explicit instead of looking like low accuracy. | `v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php` (`recommended_target_object` is one object, not a list) |
 | D-20 | ~~Blocker~~ **RESOLVED 2026-10-20 (S1c-b)** | **The interpretation boundary was not loaded by the plugin, and then was loaded but never called.** S1b built and measured it; `grep -rln "DBVC_CC_Interp" .` returned its own five files and the corpus evaluator, nothing else. S1c loaded it and built `DBVC_CC_V2_Interpretation_Bridge_Service`, the adapter that turns the live catalog and the captured artifacts into its contracts — and stopped at the seam, so a run's recommendations were still floor-produced and **D-2 was still true of the shipping product**. **S1c-b gave it a caller**: `DBVC_CC_V2_Mapping_Interpretation_Service` is invoked by the AI pipeline orchestrator's mapping stage, its `interpretation-result.v1` is persisted beside the mapping artifacts, and `DBVC_CC_V2_Mapping_Index_Service` takes the interpreter's ranking for the items it answered. Measured on the wired path with a real model call: **100% field accuracy, G-5 0% wrong auto-accepted**, against the product's own lexical scorer at 6.7% on the same run. See §6.1c. | `addons/content-migration/v2/interpretation/dbvc-cc-v2-mapping-interpretation-service.php`; `addons/content-migration/v2/mapping/dbvc-cc-v2-mapping-index-service.php` (`finalize_item` seam) |
 | D-21 | ~~Blocker~~ **RESOLVED 2026-10-16 (S2c)** | **Nothing could ingest an externally produced artifact set.** `page-artifact.v1` is written by exactly one thing — the capture service Q5 retired — and read by mapping, ai-context and media. `capture_page()` is its sole entry point, with no filter and no alternate constructor, so the acquisition skill's output has nowhere to go. The only handoff that exists, `start_run.php`, passes a **URL list** to a V2 run, which then re-captures every page with the retired path, reintroducing D-5 through D-8, D-15 and D-18 on the way. The consequence for the gates is worse than the consequence for the code: G-2 and G-3 were re-pointed at the skill's artifacts in S4b and now pass, certifying fidelity for a producer the product cannot consume. Introduced by S2b/S4b, which built the producer and moved the gates without building the joint. **Fixed by S2c**: `DBVC_CC_V2_External_Artifact_Ingest_Service` plus `FILTER_EXTERNAL_PAGE_ARTIFACTS` on the orchestrator, `ingestDir` on `POST /runs`, and `wp dbvc content-migration ingest validate|run`. Proven by a test asserting an ingest run makes **zero** HTTP requests. | `addons/content-migration/v2/ingest/dbvc-cc-v2-external-artifact-ingest-service.php`; `addons/content-migration/v2/capture/dbvc-cc-v2-capture-orchestrator-service.php` |
+| D-22 | ~~High~~ **RESOLVED 2026-10-20** | **The lexical scorer auto-accepted a wrong mapping, on the path a default install takes.** `build_page_title_item()` emits `core:post_title` at a hardcoded **0.97** whenever the routed object supports a title — a prior about the shape of the target, identical whatever the page says and whatever else the catalog offers, sitting above `autoAcceptMinConfidence` (0.92) and above the ceiling of every evidence-derived candidate (slot graph 0.88, catalog pattern 0.84, pattern memory 0.96). On slot 1's homepage that auto-accepted the head `<title>` into `core:post_title` while the target site's own `meta:_seo_title` was in the catalog: 1 wrong of 2 auto-accepted = **50%** against G-5's 2% ceiling, and a reviewer never sees an auto-accepted mapping. Two contributing findings, recorded rather than fixed here: every ambiguity gate in `evaluate_content_item()` was scoped to `$item_type === 'section'`, so head items were structurally exempt from escalation (**resolved 2026-10-21, §6.1e**); and `meta:post:page:_seo_title` was cut from the candidate list by `finalize_item()`'s six-row cap, which an **image** field survived, because all catalog pattern matches share a flat 0.84 and tie-break alphabetically (**still open**, S3). **Fixed by escalating, not re-scoring**: a structural default (`STRUCTURAL_DEFAULT_REASONS`) stops auto-accepting once the item has a competing candidate and becomes a `contested_structural_default` exception with the default still pre-selected. No threshold moved, no `target_ref` changed, and the model path cannot trip the gate because it keys on the candidate's reason. G-5 on the flag-off path 50% → **0% (pass)**; G-4 9.5% → 4.8%, already failing against 80%. See §6.1d. | `v2/mapping/dbvc-cc-v2-mapping-index-service.php` (`build_page_title_item`, `STRUCTURAL_DEFAULT_REASONS`); `v2/mapping/dbvc-cc-v2-mapping-assignment-service.php` (`evaluate_content_item`); `tests/phpunit/ContentMigrationLexicalAutoAcceptPrecisionTest.php` |
+| D-23 | Low | **A non-default port is dropped from a media source URL.** `normalize_media_url()` rebuilds a candidate URL as scheme + host + path (plus query), so `http://host:8731/a.jpg` normalizes to `http://host/a.jpg` and the executor then fetches the wrong port. Media on a source site served on a non-default port is unfetchable. Found by S4c, whose fixture server runs on a loopback port; its harness restores the port at `pre_http_request` and says so, rather than papering over the behaviour. Not fixed in S4c by design — that slice is a proof, and a defect found by a proof earns its own change. | `addons/content-migration/mapping-media/dbvc-cc-media-candidate-service.php` (`normalize_media_url`) |
+| D-24 | ~~Low~~ **RESOLVED 2026-10-22 (S7a)** | **`OPTION_FLAG_MAPPING_WORKBENCH` did not say what it gates.** With the flag off, the module skips the workbench REST controller and its three services — but `get_handoff_payload()` in the import-plan module calls two of those same services anyway, gated on `OPTION_FLAG_MAPPING_CATALOG_BRIDGE` instead, and `get_candidates($domain, $path, $build_if_missing)` **writes** a candidates artifact. So "workbench off" still builds mapping artifacts through workbench-owned code. Unlike D-25 and the AI flag before #165 this is not a dead queue: the call succeeds and the operator gets a result. The defect was that the flag's meaning was unstated, so nobody could tell whether that was correct. **Decided: the flag scopes the Workbench operator surface — its page, its routes, and the rebuild queue reachable only from them — and not the mapping services the import pipeline shares.** Recorded at the flag's declaration and at the cross-module call site, and pinned by `ContentMigrationWorkbenchFlagScopeTest` in both directions, so gating the shared services or un-gating the surface both fail. | `import-plan/dbvc-cc-import-plan-handoff-service.php:36,59,64`; `mapping-workbench/dbvc-cc-mapping-workbench-module.php:27` |
+| D-25 | ~~Low~~ **RESOLVED 2026-10-22 (S7b)** | **A flag-gated cron handler was registered by a constructor.** `DBVC_CC_Mapping_Rebuild_Service::__construct()` calls `add_action(CRON_HOOK_MAPPING_REBUILD_BATCH, …)`, so any `get_instance()` registers the handler regardless of `OPTION_FLAG_MAPPING_WORKBENCH`. This is the pattern #165 moved out of `DBVC_CC_AI_Service` into an explicit `register_hooks()`, where the flag is checked. **Latent, not live:** the only callers outside the workbench module are `deactivate_v1_runtime()` and `restore_v1_runtime_hooks()`, both now gated, so nothing reaches it today. It would have become live the moment anyone added a cross-module caller — which is exactly how the AI defect arose. Registration moved to `register_hooks()`, called from the module and the restore path where the flag is checked; a test asserts the constructor registers nothing and that the only caller of the queueing method is still the gated REST controller. | `mapping-workbench/dbvc-cc-mapping-rebuild-service.php:30` |
+| D-26 | ~~Low~~ **DOCUMENTED 2026-10-22 (S7c)** | **AI status files stranded at `queued` by the pre-#165 defect.** On a site that ran a build where the AI flag was off, `queue_job()` wrote `status: queued` and scheduled an event no listener answered, so `*.analysis.status.json` files remain `queued` forever and the health rollup reports the domain as `processing`. No code gap remains — with the flag on, a domain AI refresh re-queues every page and overwrites each status file — but nothing tells an operator that, and the rollup's `processing` reads as work in flight rather than as residue. Documentation, not a fix: `docs/troubleshooting/content-migration-ai-jobs-stuck-queued.md` names the symptom, says current builds cannot reach the state, and gives the re-queue remedy. While writing it one assumption was checked and found false — the rollup and the refresh walk the same discovery, so the refresh cannot miss a page the rollup counts; a surviving `queued` row therefore means a queue *write* failure, which the refresh already reports as `failed_jobs` with a per-page code. | `ai-mapping/dbvc-cc-ai-service.php` (`queue_job`, `dbvc_cc_get_domain_ai_health`) |
 | D-17 | Low | Two complete implementations ship and are both `require_once`d at bootstrap. Which one registers surfaces *is* correctly gated by the `dbvc_cc_runtime_version` option — but **its default is `v1`**, so after 32 phases V2 is still opt-in, both codebases are maintained, and no retirement decision is recorded. 13 feature flags and 66 settings keys gate one add-on. | `v2/shared/dbvc-cc-v2-contracts.php:142,187`; `v2/bootstrap/dbvc-cc-v2-runtime-registrar.php:33-45` |
 
 ### 5.1 Corrections to assumptions made earlier in this investigation
@@ -348,7 +353,8 @@ service's gates — and scored against the same `expected-mappings.json`.
 
 | path | recs | G-4 auto-resolve | G-5 wrong accepted | field accuracy |
 |---|---|---|---|---|
-| V2's lexical scorer (flag off) | 21 | 2/21 = **9.5%** fail | 1/2 = **50%** fail | 1 right / 14 wrong = **6.7%** |
+| V2's lexical scorer (flag off), as measured | 21 | 2/21 = **9.5%** fail | 1/2 = **50%** fail | 1 right / 14 wrong = **6.7%** |
+| V2's lexical scorer (flag off), after the fix below | 21 | 1/21 = **4.8%** fail | 0/1 = **0%** **pass** | 1 right / 14 wrong = **6.7%** |
 | `gpt-5.6-terra` (flag on) | 18 | 6/18 = **33.3%** fail | 0/6 = **0%** **pass** | 14 right / 0 wrong = **100%** |
 
 Reproduce with
@@ -364,10 +370,11 @@ confidences move run to run — while field accuracy was 100% and G-5 was 0% in 
 
 Three findings the headless harness could not produce:
 
-- **The product's own lexical scorer auto-accepts a wrong mapping.** §6.2 records the compact
-  headless floor auto-accepting nothing. V2's full scorer, with the slot graph and pattern memory
-  behind it, auto-accepts 2 of 21 and one of those two is wrong. A confidently wrong mapping is
-  shipping today, and only the wired path shows it.
+- **The product's own lexical scorer auto-accepted a wrong mapping. Diagnosed and fixed
+  2026-10-20; see §6.1d.** §6.2 records the compact headless floor auto-accepting nothing. V2's
+  full scorer, with the slot graph and pattern memory behind it, auto-accepted 2 of 21 and one of
+  those two was wrong — on the path a default install takes, since the flag is off by default.
+  Only the wired path shows it.
 - **The mapping index's item set is narrower than the interpreter's input set.** The interpreter is
   offered every non-chrome element; the mapping index builds items from section *units* — one
   headline, one body, one CTA per section — so a section with two paragraphs drops the answer for
@@ -383,6 +390,282 @@ Three findings the headless harness could not produce:
   `meta:post:<subtype>:<key>`. The measurement reconciles the two for scoring only and says so; the
   divergence is real and belongs to whichever slice next authors ground truth (S3).
 
+### 6.1d The wrong lexical auto-accept, diagnosed and fixed (2026-10-20)
+
+§6.1c's first finding, closed. The defect was on the **default** path — the flag is off by
+default, so the lexical scorer is what a fresh install runs — and G-5 exists precisely because the
+reviewer never sees an auto-accepted mapping. Pinned first, then diagnosed, then fixed:
+`ContentMigrationLexicalAutoAcceptPrecisionTest`, four behaviour-named tests driving the real
+pipeline through `POST /dbvc_cc/v2/runs` with no network, no API key and no external corpus
+fixture.
+
+**Which of the four candidate causes it was: the first — the confidence is overstated for this
+class of candidate.** The numbers that say so, read off the mapping index for corpus slot 1's
+homepage:
+
+| candidate for the head `<title>` | confidence | reason | where the number comes from |
+|---|---|---|---|
+| `core:post_title` | **0.97** | `page_title_to_post_title` | a hardcoded constant in `build_page_title_item()`, emitted whenever the routed object supports a title |
+| `acf:page_hero:heading` | 0.88 | `slot_graph_context_match` | the slot graph |
+| `acf:page_hero:subheading` | 0.88 | `slot_graph_context_match` | the slot graph |
+| `acf:page_cards:card_title` | 0.85 | `slot_graph_context_match` | the slot graph |
+| `acf:page_intro:heading` | 0.85 | `slot_graph_context_match` | the slot graph |
+| `acf:page_hero:background` | 0.84 | `pattern_field_catalog_match` | the catalog, pattern key `hero` |
+
+The 0.97 is a **prior, not a measurement**: it is the same number whatever the page says and
+whatever else the catalog offers, and it sits above `autoAcceptMinConfidence` (0.92) and above the
+ceiling of every evidence-derived candidate (slot graph 0.88, catalog pattern 0.84, pattern memory
+0.96). Ground truth puts that `<title>` — `Family Dentist in Broadview Heights, OH - Mircea
+Olteanu DDS`, a keyword-stuffed document title rather than the page's name — in the target site's
+own `meta:_seo_title`. So the prior was wrong, and it was wrong at a confidence no evidence can
+reach.
+
+Three things the diagnosis ruled out, each worth recording because each was a plausible cause:
+
+- **It is not the slot graph or pattern memory inflating the score.** Every slot-graph candidate
+  for this item sits at 0.88 or below, and the 0.97 is a literal in the source. The assignment
+  service's adjustments took it from 0.97 to 0.99 (a +0.03 section-family agreement, then the
+  0.99 display cap), which is not where the problem is.
+- **It is not the gate reading confidence wrongly.** `build_recommendations()` compares the
+  selected candidate's own confidence against `autoAcceptMinConfidence` correctly. There *is* a
+  real second defect next to it, and it is why nothing caught this: all four ambiguity gates in
+  `evaluate_content_item()` are guarded by `$is_section_item = $item_type === 'section'`, so a
+  `page_title` or `page_description` item is structurally exempt from `low_margin`,
+  `low_adjusted_confidence`, `duplicate_target_pressure` and `competition_group_pressure` alike,
+  whatever its numbers. It is a latent exemption rather than the cause here — the margin was 0.12,
+  comfortably past the 0.05 bar. **Resolved 2026-10-21, see §6.1e**, which also settles the
+  `strict_section_family` half of this finding the other way: that one is correctly scoped and
+  stays scoped.
+- **It is not a case only a semantic reader can resolve.** `meta:post:page:_seo_title` is in the
+  catalog, reachable under pattern key `title` (`extract_patterns_from_field_key('_seo_title')`
+  yields `title`). It never reached the candidate list because every `pattern_field_catalog_match`
+  scores the same flat 0.84, so ordering among them is alphabetical and `finalize_item()`'s
+  six-row `array_slice` cut it — leaving an **image** field, `acf:page_hero:background`, in its
+  place. Worth keeping: the display cap can drop the right answer, and a flat base confidence is
+  what makes the cut arbitrary. Neither is fixed here; surfacing `_seo_title` above a background
+  image would need a new ranking heuristic, which is inventing confidence, not escalating.
+
+**The fix escalates instead of re-scoring.** A structural default is a placement the *shape* of
+the target implies — a post has a title, so the `<title>` goes in it — and it is safe to act on
+unreviewed only while it is the sole home for the value. `DBVC_CC_V2_Mapping_Index_Service`
+declares its three defaults in `STRUCTURAL_DEFAULT_REASONS` (`page_title_to_post_title`,
+`meta_description_to_excerpt`, `meta_description_to_content`); the assignment service escalates
+one to the exception queue as `contested_structural_default` the moment the item has more than one
+candidate. The default stays pre-selected, so the reviewer confirms or redirects a choice rather
+than mapping a field from nothing. Three properties worth stating:
+
+- **No threshold moved.** `autoAcceptMinConfidence` is still 0.92 and still belongs to S3. The
+  gate adds a reason code, and `requires_review` is already true whenever reason codes are
+  present, so the escalation holds at any threshold — including the lower one §6.1b expects S3 to
+  calibrate for the model.
+- **The gate keys on the candidate's kind, not the item's.** An interpreter's answer arrives with
+  reason `model_interpretation`, so the model path cannot trip it. This is asserted, not assumed:
+  the fourth test drives the flag-on path over the same contested catalog through an injected
+  transport and shows the model-authored title still auto-accepting.
+- **Nothing was re-selected.** A before/after byte comparison of `mapping-recommendations.v2` on
+  slot 1's homepage shows 21 recommendations in both, **no `target_ref` changed anywhere**, and a
+  single recommendation moving from `requires_review: false` to `true`. Auto-accepted 2 → 1,
+  escalated 19 → 20, `unresolved_items` 23 → 24. Field accuracy is unchanged at 6.7%, because the
+  fix changes what the product *claims to be sure of*, not what it picks.
+
+G-4 therefore falls from 9.5% to **4.8%**, and that is the honest number: it was failing against
+an 80% threshold either way, and trading a wrong confident mapping for one more reviewer decision
+is the trade G-5 is written to make. Throughput on this path is recovered by turning the model on,
+not by the floor guessing more boldly.
+
+**Unverified, stated rather than assumed:** the flag-on measurement was not re-run, because no
+provider key was available in this checkout. The flag-on path is covered by the structural
+argument and the transport-injected test above, not by a fresh live run; re-run
+`DBVC_CC_CORPUS_MEASURE=1 DBVC_CC_OPENAI_API_KEY=... vendor/bin/phpunit --filter
+ContentMigrationCorpusWiredMeasurementTest` when a key is to hand.
+
+### 6.1e The ambiguity gates were scoped to one item type (2026-10-21)
+
+§6.1d's finding A, closed. The four gates in
+`DBVC_CC_V2_Mapping_Assignment_Service::evaluate_content_item()` have generic names and had
+item-type guards: `low_margin`, `low_adjusted_confidence`, `duplicate_target_pressure` and
+`competition_group_pressure` were each conditioned on `$item_type === 'section'`, so a
+`page_title` or `page_description` item could not escalate however its numbers looked.
+
+**It was an oversight, not a decision, and the evidence is that nothing records a reason for it.**
+Both files arrived whole in `577befb7 "chore: checkpoint open worktree changes"` — a squashed
+checkpoint with an empty body — so `git log -S'is_section_item'` has nothing to say. The only
+recorded design intent is Tranche B of
+`addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`,
+and it describes the problem the gates were built for rather than a scope for them: *"landed:
+ambiguous **section** selections default to `unresolved`"*, with Tranche A's exit criterion
+*"hero and similar **section-family** collisions drop materially"* and the last acceptance note
+reading *"the remaining seam is ambiguity reduction on low-margin hero/body collisions"*. The same
+document's own selection rule is item-type neutral — *"choose `unresolved` when the evidence gap is
+too small"*. The guards are narrower than the spec they implement. Two further tells: the gates'
+own `resolve_unresolved_class()` still carries a `media` branch for an item type they can never
+escalate (media runs through `build_media_recommendations()` and never reaches this function at
+all), and the head items' numbers are not degenerate — slot 1's head description carries four
+candidates whose top two are **exactly tied** on the number the margin gate reads.
+
+**That tie is the reason this matters more than the numbers do.** Measured flag-off on slot 1's
+homepage, the head description's top candidates are `acf:page_intro:body` at 0.81 raw and
+`meta:post:page:_seo_description` at 0.78 raw — and `evaluate_candidate()` gives the second a +0.03
+section-family agreement, so both land at **0.81 adjusted** and `margin_to_next` is **0.00**. The
+winner is then settled by the 0.03 raw difference the adjustment had just erased. Ground truth says
+the loser is the right field. The mapper was breaking a tie it had itself created and reporting the
+result as a selection, and its only protection was `autoAcceptMinConfidence` (0.92) sitting above
+0.81 — a threshold §6.1b expects S3
+to calibrate **downward**, because a calibrated model places its confidence lower than V2's
+keyword scorer did. An escalation that holds only while a threshold stays high is not an
+escalation. This is the same threshold-independence argument §6.1d made for its own fix.
+
+**The guard is now about which confidence scale applies, not which items deserve review.**
+
+```php
+$ambiguity_gates_apply = $is_section_item || ! $this->candidate_is_interpreter_authored($best);
+```
+
+The three numbers in these gates — 0.76, 0.05, 0.08 — are calibrated against the lexical scorer's
+own scale (slot graph 0.88, catalog pattern 0.84, pattern memory 0.96). Reading a model's
+confidence against them is the same category error §6.1c names about G-4's inherited 0.92. A
+section item short-circuits the new condition, so it keeps exactly the gates it had whoever ranked
+it; every other item type is gated whenever the lexical scorer produced the candidates — which is
+the only path a default install takes.
+
+**So a model-RANKED item is untouched by construction, which is how that much can be stated
+without a key.** `apply_interpretation_ranking()` replaces an answered item's candidate list
+wholesale, every candidate in it carries `reason => 'model_interpretation'`, and `$is_section_item`
+short-circuits ahead of the test, so neither direction of the guard can move a model-ranked item.
+Both directions are mutation-pinned: writing `true` fails the head-item test, dropping
+`$is_section_item ||` fails the section-item one. No provider key was available in this checkout
+either, and this is the shape §6.1d named for that case rather than an unmeasured guess.
+
+**It does not follow that a flag-on RUN is unchanged, and this section said so for ten days before
+a review caught it (2026-11-01).** The guard turns on the candidate's reason, and an item the
+interpreter never answers does not have a model-authored one: `apply_interpretation_ranking()`
+hands that item the lexical candidates straight back, so it is gated like the lexical item it is,
+on a flag-on run as much as a flag-off one. Demonstrated on the fixture the section-item test
+already uses, where `head:description` goes unanswered — flag **on**, the head description reads
+`reason_codes=[low_margin]` / `default_decision=unresolved` after the change and
+`reason_codes=[]` / `approve` before it. The behaviour is right: that item *was* scored by the
+lexical scorer, and the gates read a lexical confidence against lexical bars. But it is not free,
+and for the same reason the sole-default exemption below exists — an escalated item is an
+`unresolved_items` entry and `unresolved_count > 0` blocks the package — so **a page whose head
+item the model skips can now hold its own build where before it could not**, and the model path's
+G-4 moves with how often the interpreter answers the head items. Pinned by
+`test_a_head_item_the_interpreter_skipped_is_gated_as_the_lexical_item_it_is`, which fails if the
+guard is narrowed back to section items. Slot 1's published flag-on figures are unaffected: the
+model answered both head items in the §6.1c run.
+
+**And the scale argument above is applied asymmetrically, on purpose and not yet retired.** By its
+own reasoning a model-ranked **section** item is also being judged against bars calibrated on the
+lexical scorer's scale, because `$is_section_item` short-circuits first. That was the right scope
+for this slice — narrowing it would move the flag-on G-4 that no key was available to measure —
+but it leaves the category error standing for section items, and it is recorded as a known gap on
+`addon.content_migration.model_interpretation` rather than left for the next reader to notice.
+
+**One exemption went in with it.** A sole-candidate structural default is not escalated by the
+evidence floor. Its confidence is a prior about the shape of the target rather than a measurement,
+so a floor has nothing to read, and with no second candidate there is nowhere for a reviewer to
+move the value — the escalation would cost a decision with one possible answer. It would also
+*block the package*: an unresolved item is a blocking readiness issue in
+`DBVC_CC_V2_Url_QA_Report_Service`, so without this exemption every page whose target has no
+description field would hold its own build. `ContentCollectorV2Phase29Test` found that, and it is
+the same boundary §6.1d drew when it let an uncontested `core:post_title` keep auto-accepting.
+
+| path | recs | G-4 auto-resolve | G-5 wrong accepted | field accuracy | escalated | `unresolved_items` |
+|---|---|---|---|---|---|---|
+| flag off, before | 21 | 1/21 = **4.8%** fail | 0/1 = **0%** pass | 1 right / 14 wrong = **6.7%** | 20 | 24 |
+| flag off, after | 21 | 1/21 = **4.8%** fail | 0/1 = **0%** pass | 1 right / 14 wrong = **6.7%** | 20 | **25** |
+| flag on | — | *a model-ranked item is unchanged by construction; an item the interpreter skips is gated as lexical — see above* | — | — | — | — |
+
+**G-4 and G-5 do not move, and that is the finding, not a disappointment.** A byte comparison of
+`mapping-recommendations.v2` shows no `target_ref` changed and **no `requires_review` changed
+anywhere** — every item this escalates was already over the 0.92 threshold's reach. What changes
+is *why*: the head description moves from "escalated because 0.81 < 0.92" to "escalated on its
+margin", gains `low_margin` / `ambiguous_sibling_slots`, and reaches the exception queue with
+`meta:post:page:_seo_description` listed in `selection.alternatives` — so the reviewer is now shown
+the right answer instead of being told the mapper was unsure. The protection stops depending on a
+threshold that S3 is going to move.
+
+Across slot 1's seven capturable pages, each measured in its own run (pattern memory accumulates
+within a run, so a multi-page run's per-page numbers are not these):
+**135 recommendations, 1 auto-accepted and 134 escalated in both states**, `unresolved_items`
+95 → 102. The `low_margin` escalation appears on **7 of 7** pages — the same tied pair every time,
+because it is a property of the target catalog rather than of one page's words.
+
+**The other half of the finding resolves the other way.** `strict_section_family` in
+`DBVC_CC_V2_Target_Eligibility_Service` shares the shape and not the reason, and it stays scoped to
+section items: it *rejects* candidates rather than escalating them, and it filters on
+`resolve_preferred_section_family()`, which falls back to `context_tag` — which for a head item is
+the literal `title` or `description` that `build_page_title_item()` sets as a content role. No
+catalog spells a slot's `section_family` that way, so widening it would reject every field the
+catalog offers a head item and leave the structural default alone, which is the defect D-22 was
+about. The reason is now recorded at both call sites and pinned by a test rather than left to be
+re-derived.
+
+`ContentMigrationHeadItemAmbiguityEscalationTest` — 8 behaviour-named tests, no network, no API key
+and no external corpus fixture; three are red before the change, and the eighth (added 2026-11-01
+with the correction above) is red if the guard is narrowed back. Reproduce the measurement with
+`DBVC_CC_CORPUS_MEASURE=1 vendor/bin/phpunit --filter
+test_g4_and_g5_on_the_wired_path_with_the_lexical_floor` (free, no model call).
+### 6.1f The S4c net-zero measurement (2026-10-20)
+
+G-7 said "execute → rollback returns the target site byte-identical, proven on a disposable clone"
+and had never been measured. Rollback was unit-covered — 58 assertions in
+`ContentMigrationPhase4ImportExecutorTest` — but that suite asserts restored *field values*, which
+is a different claim from restored *rows*. This is the row-level claim, measured.
+
+**The target.** A disposable clone of the studio's real LocalWP site: its whole database copied into
+a throwaway MySQL database, served by WordPress 7.1.3 core copied out of the live docroot, with only
+the plugin under test active, `upload_path` and `dbvc_sync_path` redirected inside the clone, and the
+database dropped at the end. 4,292 posts, 67,707 post meta rows, 375 terms, 2,935 term relationships,
+691 existing attachments. Nothing wrote to the source site: it was read once by `mysqldump` and its
+core files were copied.
+
+**The run.** All eight of corpus slot 1's pages, through the shipping commitment path —
+`execute_dry_run` → `approve_preflight` → `execute_write_skeleton` → `rollback_run`, one run per page,
+rolled back newest first. Eight entity writes (two matched existing pages and updated them, six
+created new ones), 70 field writes, six media writes — five attachments sideloaded and one existing
+attachment reused — 84 journaled actions restored, zero rollback failures.
+
+| comparison | before → after |
+|---|---|
+| row counts (posts, attachments, post meta, terms, term taxonomy, term relationships, term meta) | **net zero** — 4292 / 691 / 67707 / 375 / 368 / 2935 / 6388 both times |
+| `wp_posts`, `wp_postmeta`, `wp_terms`, `wp_termmeta`, `wp_term_taxonomy`, `wp_term_relationships` row bytes | **net zero** apart from `post_modified` (below) |
+| post meta content — the `(post_id, meta_key, meta_value)` multiset | **net zero** |
+| media files on disk, sha256 of every file under uploads | **net zero** — the five created attachments, their generated sizes and their files are gone; the reused one was not deleted |
+| `wp_posts` strict row bytes | **4 lines differ** = `post_modified` + `post_modified_gmt` on the 2 rows the import updated, and nothing else |
+
+Reproduce with
+`addons/content-migration/tools/dbvc-cc-import-net-zero-verify.sh` (see §12.7), which owns the clone,
+the capture, the diff and the teardown, and exits non-zero on any gating difference.
+`ContentMigrationImportNetZeroTest` makes the same comparison inside the suite.
+
+**G-7 passes, with one named exclusion.** These are named rather than quietly dropped, and the
+harness reports each one with its line count on every run:
+
+| excluded | why it cannot return, and what was done about it |
+|---|---|
+| `post_modified` / `post_modified_gmt` on an **updated** row | `dbvc_cc_capture_entity_state()` records eight post columns and these are not among them, so the `wp_update_post()` that restores the row stamps it with the current time. The exclusion is kept honest by measuring both: the strict comparison is reported with its exact line count, and the gating comparison blanks only these two columns. Strict differs while gating is net zero ⟹ these are provably the only drift. A **created** row leaves no trace at all, so this does not apply to it |
+| `meta_id` on a restored **multi-value** meta key | Restoring one deletes and re-adds its rows, so they come back with the same `post_id`, key and value under a new `meta_id`. A surrogate key, in the same category as the counter below. Asserted narrowly in `ContentMigrationImportNetZeroTest`: the content multiset must match, and only the deliberately multi-valued key may be reissued. It did not arise on the clone run, where post meta was byte-identical including `meta_id` |
+| `AUTO_INCREMENT` on `wp_posts` (+11) and `wp_postmeta` (+54) | An InnoDB counter advances on insert and does not move back on delete. Reported, never gating |
+| The journal, `dbvc_cc_import_runs` + `_run_actions` (+96 rows) | It is the audit record of the run. A rollback that erased its own journal would destroy the evidence that it happened |
+| The add-on's storage root under uploads (16 files) | `.htaccess` and `index.php` hardening, the schema snapshot, and the append-only NDJSON run logs. Inputs and audit records, not target-site media. No journaled action owns them |
+| Two empty month directories, `uploads/2026/05` and `uploads/2026/10` | `wp_delete_attachment()` removes files, not the directories it created for them. Both are empty after rollback; no file remains |
+| 4 files in the plugin's own sync export | DBVC's export-on-save fired for the two updated posts and wrote their JSON. A separate subsystem with no journaled action; and because the posts' content was restored, the exported JSON describes the restored state (`_thumbnail_id` back to the clone's original attachment, not the imported one) |
+
+**One defect found, not fixed here.** `DBVC_CC_Media_Candidate_Service::normalize_media_url()` rebuilds
+a URL as scheme + host + path and drops a non-default **port**, so media on a source site served on
+one is unfetchable. The harness restores the port on the way to its fixture server and says so; the
+product behaviour is recorded as **D-23** in §5 and belongs to its own slice.
+
+**What this does not prove.** The clone carries the live site's data but not its plugin stack — only
+DBVC loads — so no ACF, Bricks or third-party `save_post` listener ran during the import or the
+rollback, and ACF target families were not exercised. The media download is a real HTTP GET from a
+local fixture server serving generated JPEGs, because the corpus deliberately does not commit a third
+party's image bytes; everything after the download — `wp_handle_sideload`, the attachment row,
+`wp_generate_attachment_metadata` and its generated sizes — is the product's own code unmodified.
+Rollback was driven by the service, not through the REST route (`ContentMigrationPhase4ImportExecutorTest`
+covers that route). And this is one site: a target whose `save_post` listeners write their own rows
+could still leave residue a journal does not own.
+
 ### 6.2 The S0 baseline
 
 `composer corpus:baseline`, 2026-10-11, against corpus slot 1. This is the number every later
@@ -396,6 +679,7 @@ slice is measured against.
 | **G-4** Auto-resolve rate | **FAIL** | deterministic floor: **0 of 45** recommendations auto-accepted = **0.0%** against an 80% threshold. Nothing clears `autoAcceptMinConfidence` (0.92) on lexical evidence |
 | **G-5** Mapping precision | no denominator | the floor auto-accepts nothing, so there is no auto-accepted set to score. That is the G-4 result restated, not a gap in the harness |
 | *diagnostic* | — | the floor finds the right **source item** 16/17 times (**94.1%**) but picks the right **target field** 1 time in 19 (**5.3%**) |
+| **G-7** Net-zero | ✅ **PASS** (measured 2026-10-20, S4c) | execute → rollback on a disposable clone of a real 4,292-post site: row counts, row bytes, post meta content and media files on disk all **net zero** after eight page imports and eight rollbacks. One named exclusion, `post_modified` on the 2 updated rows, proved to be the only drift. §6.1d |
 
 Named content the evaluator proves is missing, which is the part that matters more than the
 percentages:
@@ -523,7 +807,11 @@ product promise rests on.
   answered keeps the lexical candidates unchanged. And when the *whole* model call fails, the
   floor that answers is **V2's own 1,330-line scorer, not the boundary's compact one** — the
   boundary's floor is the 4.8% scorer of §6.2, so demoting the better floor on a model failure
-  would be a regression dressed as a fallback.
+  would be a regression dressed as a fallback. A floor that labels itself honestly also has to
+  stop short of auto-accepting what it cannot distinguish: since 2026-10-20 a **structural
+  default** — a placement implied by the shape of the target rather than by the page's content —
+  escalates to the exception queue as soon as the catalog offers a competing home for the value,
+  instead of being presented as a decision already made (D-22, §6.1d).
 - Provenance is written by whichever component produced the value. `model` absent when no model
   ran. Fixes D-3.
 - Every change is measured by an eval against the corpus (Section 8), never by eyeballing one run.
@@ -606,7 +894,7 @@ A slice does not land unless it holds across the whole corpus:
 | G-4 Auto-resolve rate | ≥80% of sections mapped with no reviewer touch (the operational meaning of "review by exception") |
 | G-5 Mapping precision | ≤2% of auto-accepted mappings wrong on review — a wrong confident mapping costs more than an escalation |
 | G-6 Determinism | byte-identical artifacts on rerun of the deterministic stages; model stages stable in *shape*, with drift reported not asserted |
-| G-7 Net-zero | execute → rollback returns the target site byte-identical, proven on a disposable clone |
+| G-7 Net-zero | execute → rollback returns the target site byte-identical, proven on a disposable clone. **Measured 2026-10-20 (S4c): PASS.** Posts, post meta, terms, term relationships and media files on disk all net zero on a clone of a real 4,292-post site; `post_modified` on an updated row is the one named exclusion and is proved to be the only drift. §6.1d records the evidence and every exclusion; `ContentMigrationImportNetZeroTest` and §12.7's recipe keep it true |
 | G-8 Budget | a 60-page run completes inside a declared credit and token ceiling, with the estimate shown before the run starts |
 
 G-4 and G-5 are the two numbers that say whether the product works. Measure them from phase one,
@@ -630,9 +918,11 @@ Deliberately ordered so the riskiest thing is proven first (guard F-1).
 | **S4** | ✅ **Delivered 2026-10-14.** D-4 scope rejects server-parsed template artifacts behind a filterable pattern, while a legacy `index.html` page stays eligible. D-9 section artifacts carry additive `parent_section_id` and `heading_path`. D-11 `.htaccess` now carries Apache 2.4 `Require all denied` beside the 2.2 syntax, upgrades an existing weaker file, and ships `dbvc_cc_storage_http_exposure_probe()`. D-12 the key resolves from a constant then the environment before the option, and the Configure page no longer echoes it. D-13 both development-only QA routes are no longer registered outside development. D-14 retention window + `wp dbvc content-migration storage prune` (dry-run default) + an opt-in `uninstall.php`. | Done, with one gap stated: **D-11 is not verified on a real nginx host.** `ContentMigrationSafetyHardeningTest` (18 tests) and `ContentMigrationSectionNestingTest` (5 tests), named for the behaviour they protect, not the slice. |
 | **S4b** | ✅ **Delivered 2026-10-14.** Q5 executed: sitemap capture declared best-effort, the admin run form gained a URL-list field so a run can start without an agent and without a sitemap, the emitter folds browser-resolved CSS backgrounds into `page-artifact.v1#images[]`, and G-2/G-3 now measure the skill's artifacts. Image and heading ground truth gained an objective `is_site_chrome` flag computed from cross-page frequency, so the gate can require page imagery without demanding the logo. | **G-1, G-2 and G-3 all pass.** The retired path's figures are still printed, labelled and not gating. |
 
+| **S7** | ✅ **Delivered 2026-10-22.** Feature-flag boundary hygiene, the tail of #165 and #188. **S7a** (D-24) decided and recorded what `OPTION_FLAG_MAPPING_WORKBENCH` gates — the operator surface, not the mapping services the import pipeline shares through `OPTION_FLAG_MAPPING_CATALOG_BRIDGE` — stated at the declaration and the call site and pinned in both directions. **S7b** (D-25) moved the mapping-rebuild cron registration out of its constructor into `register_hooks()`, closing the latent twin of the AI leak. **S7c** (D-26) documented the stranded-`queued` residue and its remedy as a troubleshooting runbook. | Done. `ContentMigrationWorkbenchFlagScopeTest`, 5 tests named for the behaviour: the handoff survives the workbench flag being off, refuses when the catalog-bridge flag is off, the rebuild handler follows the workbench flag, the constructor registers nothing, and the queueing method still has exactly one caller inside the gated surface. Mutation-checked both ways: restoring the constructor registration and re-gating the shared handoff each turn the suite red. No behaviour change for a default install — every flag involved ships on. |
 | **S2c** | ✅ **Delivered 2026-10-16.** The ingest seam (D-21). `DBVC_CC_V2_External_Artifact_Ingest_Service` stages a directory, matches each run row to a bundle by slug then by URL, and supplies `raw_artifact` + `elements` + `sections` + `ingestion_package`; `FILTER_EXTERNAL_PAGE_ARTIFACTS` on the orchestrator, `ingestDir` on `POST /runs`, `wp dbvc content-migration ingest validate\|run`. Validation runs at stage time so a malformed capture refuses the run rather than half-populating it. REST is closed by default behind `DBVC_CC_INGEST_ROOT`. | Done. 22 tests, 70 assertions; the discriminating one is that an ingest run makes **zero** HTTP requests. Found two latent defects: levelled headings crashed three consumers, and the run profile never persisted `urls`. |
 | **S1c-a** | ✅ **Delivered 2026-10-16.** The boundary is loaded by the add-on bootstrap and `DBVC_CC_V2_Interpretation_Bridge_Service` is the adapter §7.2 describes: live target field catalog → `corpus-target-schema.v1` in the same `target_ref` vocabulary the finalizer parses, captured artifacts → `interpretation-input.v1` with kinds read from `elements.v2` rather than guessed, site chrome excluded, head metadata offered. Behind `dbvc_cc_flag_model_interpretation`, off by default. | Done. 13 tests, 64 assertions, every branch with no network and no key. It did **not** close D-20: nothing called the adapter. |
 | **S1c-b** | ✅ **Delivered and measured 2026-10-20.** The caller (D-20). `DBVC_CC_V2_Mapping_Interpretation_Service` runs in the orchestrator's mapping stage when the flag is on, persists `interpretation-result.v1` beside the mapping artifacts, and `DBVC_CC_V2_Mapping_Index_Service` gained a candidate-ranking seam in `finalize_item()` — a boundary, not a rewrite of 1,330 lines — so the interpreter supplies the candidates for the items it answered. A declined item becomes a typed `declined_by_interpreter` unresolved item; an unanswered one keeps the lexical candidates; a failed call keeps V2's scorer and records a **named** reason. The `dbvc_cc_v2_interpretation_options` filter injects a transport for tests and cannot carry an `api_key`. | Done. **G-4/G-5 measured on the wired path** (§6.1c): model 100% field accuracy and **G-5 pass at 0% wrong**, against the product's own lexical scorer at 6.7% on the same run; G-4 fails at 20–33% on the un-recalibrated 0.92 threshold. Flag-off behaviour **proven** byte-identical, not asserted. 10 behaviour-named tests; the discriminating ones are the transport-injected no-network run, the validation failure that names `invalid_response_shape`, and the `model` key that exists only when a model ran. |
+| **S4c** | ✅ **Delivered and measured 2026-10-20.** G-7 proved. `dbvc-cc-import-net-zero-verify.sh` builds a disposable clone of a real 4,292-post site, captures authoritative before-state (whole rows of `wp_posts`, `wp_postmeta`, `wp_terms`, `wp_termmeta`, `wp_term_taxonomy`, `wp_term_relationships`, plus a sha256 of every file under uploads), imports all eight of slot 1's pages through `execute_dry_run` → `approve_preflight` → `execute_write_skeleton`, rolls every run back, diffs, and drops the clone. Nothing writes to the source site. `ContentMigrationImportNetZeroTest` makes the same comparison inside the suite and is named for the behaviour, not the slice. | Done. **G-7 PASSES** (§6.1d): row counts, row bytes, post meta content and media files on disk all net zero across 8 imports and 8 rollbacks, 84 journaled actions restored, 0 failures. Seven exclusions named and reported with line counts; `post_modified` on an updated row is the only content drift and the paired comparison proves it. Found **D-22** (a non-default port is dropped from a media source URL), left unfixed by design. |
 
 **S1b was the decision point, and it resolved in the product's favour.** The test was whether a
 connected model beats the §6.2 floor on G-4 and G-5 by a margin worth the cost. It does, by a
@@ -662,11 +952,35 @@ reach the model?"*, and it is now *"is the product's own pipeline wide enough to
 answers?"* — §6.1c's second finding, where two of nineteen answers had no mapping item to attach
 to and `meta:_seo_robots` has no item at all. That is **S1d** territory, not a new slice.
 
+**What a default run auto-accepts changed on 2026-10-20 (D-22, §6.1d).** `dbvc_cc_flag_model_interpretation`
+is off by default, so the lexical scorer is the shipping path, and it was auto-accepting a wrong
+mapping there — 1 of 2, against G-5's 2% ceiling. A structural default now escalates once the
+catalog offers a competing home for the value, so on slot 1's homepage a default run auto-accepts
+**1 of 21 and escalates 20**, where it previously auto-accepted 2 and escalated 19. G-5 passes on
+that path for the first time; G-4 falls from 9.5% to 4.8% and was failing against 80% either way.
+The throughput this costs is recovered by turning the model on, not by the floor guessing more
+boldly — which is what "review by exception" commits to when the exception is real.
+
+**And what it escalates changed on 2026-10-21 (§6.1e), without the auto-accept count moving.** The
+four ambiguity gates were scoped to section items, so a head item could not escalate on its margin
+or its confidence; they now judge any item the lexical scorer ranked, with section items gated
+exactly as before and interpreter-ranked items left to their own confidence scale. A default run on
+slot 1's homepage still auto-accepts **1 of 21 and escalates 20** — every item this reaches was
+already over the 0.92 threshold — so G-4 stays at 4.8% and G-5 at 0%. What grows is the exception
+queue: `unresolved_items` 24 → 25, because the head description's two tied candidates now reach the
+reviewer with `meta:_seo_description`, the ground-truth-correct field, listed as the alternative.
+The gain is that the protection no longer depends on a threshold S3 is expected to lower.
+**S4c closed the P0 the same day.** The pipeline can now produce real recommendations end to end,
+so the next thing a run does is write them — which is why proving G-7 came before the more
+interesting contract work. It is proved (§6.1f): an import and a rollback on a disposable clone of
+a real site leave posts, post meta, terms, term relationships and media files net zero. The
+sentence *"this lands before client content is written to any site anyone cares about"* is now
+satisfied, with the exclusions named rather than assumed.
+
 Priorities are what blocks what, not what is most interesting:
 
 | | Slice | Scope | Done when |
 |---|---|---|---|
-| **P0** | **S4c** | **Prove G-7.** Execute → rollback, byte-identical, on a disposable clone. Rollback is unit-covered today — 58 assertions in `ContentMigrationPhase4ImportExecutorTest` — but no test and no run has shown a real site returning to its prior bytes. Follow the Connected Environments live-verify recipe, which proved exactly this shape of claim against a real fleet. | A clone takes a full Olteanu import and a rollback, and a byte comparison of posts, meta and media shows net zero. **This lands before client content is written to any site anyone cares about.** |
 | **P1** | **S1d** | **One URL → many entities** (D-19). `mapping-recommendations.v2` carries a single `recommended_target_object`; slot 1's `/dental-team` must yield five `team_member` records and structurally cannot. Make the recommendation a list, teach entity resolution to resolve a set per source URL, and give the exception queue a way to review a set. A contract change, so it is cheaper before slots 2–5 author ground truth against the current shape. **Carry §6.1c's second finding into this slice**: the mapping index builds one headline, one body and one CTA per section and only title/description as head items, so it drops interpreter answers it has nowhere to put (counted as `interpretation.unjoined_recommendation_items`) and can never reach a field like `meta:_seo_robots`. Widening the item set is the same shape of change as widening the recommendation. | `/dental-team` produces five `team_member` entities, each with its own name, role and bio, and the package commits them as five posts, and `unjoined_recommendation_items` is zero on slot 1's homepage. |
 | **P1** | — | **The unit-economics baseline.** Time one migration by hand, then measure operator minutes per page per slice. Still unmeasured, and it is the only number that says whether any of this beats copy-paste. An afternoon's work, and it sets the bar every later slice is judged against. | A recorded per-page manual cost, and a per-slice operator-minutes figure to compare against it. |
 | **P2** | **S3** | **Corpus slots 2, 3 and 5** per §8.1, then fix what they break — and only then recalibrate G-4's threshold. The inherited 0.92 sits above where a calibrated model places its confidence, but setting it from the one page it was measured on is how you get a threshold that works on exactly that page. | G-1…G-5 hold on four profiles, with G-4's threshold justified from at least three of them. |
@@ -903,3 +1217,59 @@ an artifact. No outbound model call exists anywhere in the V2 runtime.
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md` — V2's resume anchor. Its
   branch reference is stale (see 5.1).
 - `docs/reference/import-authoring/` — the agent-facing import contract, unaffected by this guide.
+
+### 12.7 The net-zero live-verify recipe (G-7)
+
+Written down the way the Connected Environments live-verify recipe is, because the proof is only
+worth anything if someone else can run it. The harness owns the clone, the capture, the diff and the
+teardown; the operator supplies the source site and the captured artifacts.
+
+```bash
+addons/content-migration/tools/dbvc-cc-import-net-zero-verify.sh \
+  --source-docroot=/path/to/live/public \
+  --source-db=local --db-user=root --db-pass=root \
+  --db-socket='/path/to/mysqld.sock' \
+  --artifacts=/path/to/<domain>/<date>/dbvc-artifacts \
+  --domain=example.com \
+  --work=/path/to/scratch
+```
+
+Exit status is the result: `0` net zero, `4` a gating comparison differs, anything else a setup
+failure. `--keep-clone` leaves the clone and its database in place for inspection; `--paths=home`
+restricts the run to named pages; `--media-port` moves the fixture server.
+
+What it does, in order:
+
+1. `mysqldump` the source database once (read-only) and load it into a throwaway database, then copy
+   WordPress core out of the source docroot so the clone runs the same WordPress version. `themes`
+   is symlinked read-only; `plugins` holds only the checkout under test, and `active_plugins` is
+   rewritten to just that one, so no third-party `save_post` listener runs.
+2. Redirect `upload_path` and `dbvc_sync_path` inside the clone, so every file the run touches is
+   observable in the work directory and nothing reaches the source site's uploads.
+3. Generate one stand-in JPEG per image path in the captured artifacts and serve them from
+   `php -S 127.0.0.1:<port>`. The corpus deliberately does not commit a third party's image bytes,
+   so the fixtures are generated; the fetch is a real HTTP GET and everything after it is the
+   product's own sideload path.
+4. Capture before-state: `mysqldump --skip-extended-insert --complete-insert --order-by-primary
+   --hex-blob` of `wp_posts`, `wp_postmeta`, `wp_terms`, `wp_termmeta`, `wp_term_taxonomy`,
+   `wp_term_relationships`; a sha256 of every file under uploads; the uploads directory tree; the
+   journal tables; and the `AUTO_INCREMENT` values read out of the dump's own DDL, because
+   `information_schema`'s copy is approximate in MySQL 8 and would understate them.
+5. Run `dbvc-cc-import-net-zero-run.php` (`DBVC_CC_NET_ZERO_CONFIRM=1` required, or it refuses):
+   stage the captured artifacts into the storage layout, build the catalog and candidates, approve
+   the deterministic top choice per row plus one featured image per page, then per page
+   `execute_dry_run` → `approve_preflight` → `execute_write_skeleton`, then `rollback_run` for every
+   run newest first. It writes a JSON report of every run's operation counts.
+6. Capture after-state the same way and diff. Gating: row counts, content rows with `post_modified`
+   normalized, post meta content, media files. Reported with line counts: the strict content rows,
+   the journal, the counters, the add-on's storage root, the uploads directory tree, the plugin's own
+   sync export.
+7. Drop the clone's database and delete its files.
+
+The gating and reported split is in §6.1f, with every exclusion and why it cannot return. Read that
+table before trusting a green run: a harness that excluded the wrong thing would also be green.
+
+`ContentMigrationImportNetZeroTest` runs the same comparison inside PHPUnit against the test
+WordPress install, so the claim is checked on every suite run without a clone. It is not a live
+site: the test environment has no third-party plugins and its media download is stubbed at the HTTP
+transport. The live run above is what covers those.

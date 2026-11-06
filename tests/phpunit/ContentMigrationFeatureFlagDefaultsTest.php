@@ -82,7 +82,14 @@ class ContentMigrationFeatureFlagDefaultsTest extends WP_UnitTestCase
         $this->assertSame('0', $defaults[DBVC_CC_Contracts::OPTION_FLAG_EXPORT]);
     }
 
-    public function test_the_version_gate_re_asserts_shipped_flag_values_on_upgrade(): void
+    /**
+     * Replaces an earlier test that pinned the opposite behaviour. The gate used to re-assert ten
+     * flags on every version bump, so a release that moved the constant silently re-enabled a flag
+     * an administrator had switched off -- including the one that disables the AI job surface. The
+     * gate is now scoped per version and version 6's entry is empty, so a bump imposes nothing it
+     * does not explicitly name.
+     */
+    public function test_an_explicitly_disabled_flag_survives_a_version_bump(): void
     {
         DBVC_CC_Contracts::ensure_phase_zero_defaults();
 
@@ -92,11 +99,10 @@ class ContentMigrationFeatureFlagDefaultsTest extends WP_UnitTestCase
 
         DBVC_CC_Contracts::ensure_phase_zero_defaults();
 
-        // Documented, deliberate: the gate restores the shipped value and so discards an
-        // administrator's explicit off for these keys. If that override is ever narrowed, this
-        // test should change with it rather than be deleted.
-        $this->assertSame('1', (string) get_option(DBVC_CC_Contracts::OPTION_FLAG_AI_MAPPING));
-        $this->assertSame('1', (string) get_option(DBVC_CC_Contracts::OPTION_FLAG_MAPPING_WORKBENCH));
+        $this->assertSame('0', (string) get_option(DBVC_CC_Contracts::OPTION_FLAG_AI_MAPPING));
+        $this->assertSame('0', (string) get_option(DBVC_CC_Contracts::OPTION_FLAG_MAPPING_WORKBENCH));
+
+        // The version still advances, so the gate runs once per bump rather than on every request.
         $this->assertSame(
             (string) DBVC_CC_Contracts::FEATURE_FLAG_VERSION,
             (string) get_option(DBVC_CC_Contracts::OPTION_FEATURE_FLAG_VERSION)

@@ -16,7 +16,7 @@ jQuery( document ).ready( function ( $ ) {
 	const $statusWrapper = $( '#cc-status-wrapper' );
 	const $log = $( '#cc-status-log' );
 	const $progressBar = $( '#cc-progress-bar' );
-	const { ajax_url, nonce, actions } = dbvc_cc_ajax_object;
+	const { ajax_url, nonce, actions, capabilities } = dbvc_cc_ajax_object;
 
 	function getCollectOverrides() {
 		return {
@@ -308,6 +308,14 @@ jQuery( document ).ready( function ( $ ) {
 					'info'
 				);
 			}
+			return;
+		}
+
+		if ( capabilities && capabilities.ai === false ) {
+			logMessage(
+				'INFO: Domain AI refresh skipped because AI mapping is disabled by its feature flag. The crawl itself completed.',
+				'info'
+			);
 			return;
 		}
 

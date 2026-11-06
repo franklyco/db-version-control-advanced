@@ -15,15 +15,17 @@ const DBVC_AGENT_FACETS = [
     'content_migration' => ['label' => 'Content Migration add-on', 'path' => 'facets/content-migration-addon.md'],
     'non_active' => ['label' => 'Staged/planned/absent', 'path' => 'facets/staged-planned-and-absent.md'],
 ];
-// Paths that db-version-control-main (development) tracks but deliberately never copies into this
-// distribution repository; its scripts/distribution-drift.json lists each one as development_only.
-// A clean clone of this repository never has them, while a development checkout may.
+// Paths that db-version-control-main (development) tracks but deliberately never copies into its
+// distribution repository, db-version-control-advanced; scripts/distribution-drift.json in
+// db-version-control-main lists each one as development_only. A clean clone of the distribution
+// never has them, while a development checkout does. This script is shared verbatim by both
+// repositories, so the committed snapshot and manifest must validate in either.
 //   - Discovery never scans them, so the committed snapshot is the same with or without a copy.
 //   - A manifest source_ref, test_ref or doc_ref into one is checked when the file is present and
 //     reported as a warning, not an error, when it is absent.
 // Same matching as the drift config: a trailing / is a directory prefix, * ? [ make an fnmatch
 // pattern, anything else is an exact path. Add a path only when the drift config already declares
-// it development-only; a path that belongs in this repository must stay a hard failure.
+// it development-only; a path that belongs in the distribution must stay a hard failure.
 const DBVC_AGENT_DEVELOPMENT_ONLY_PATHS = [
     '_source/',
     'uninstall.php',
@@ -35,8 +37,8 @@ $repositoryRoot = dirname(__DIR__);
 $command = $argv[1] ?? '';
 
 try {
-    if (! in_array($command, ['discover', 'build', 'check', 'query'], true)) {
-        throw new RuntimeException('Usage: php scripts/agent-docs.php <discover|build|check|query> [facet terms]');
+    if (! in_array($command, ['discover', 'build', 'check', 'normalize', 'query'], true)) {
+        throw new RuntimeException('Usage: php scripts/agent-docs.php <discover|build|check|normalize|query> [facet terms]');
     }
 
     if ($command === 'discover') {
@@ -44,6 +46,21 @@ try {
         validateSnapshotSourceRefs($repositoryRoot, $snapshot);
         writeJsonFile(agentDocsPath($repositoryRoot, 'generated/discovery-snapshot.json'), $snapshot);
         printDiscoverySummary($snapshot, 'Wrote discovery snapshot');
+        exit(0);
+    }
+
+    if ($command === 'normalize') {
+        $manifestPath = agentDocsPath($repositoryRoot, 'manifest.json');
+        $decoded = json_decode(readRequiredFile($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        if (! is_array($decoded)) {
+            throw new RuntimeException('Manifest root must be an object.');
+        }
+        if (readRequiredFile($manifestPath) === canonicalJson($decoded)) {
+            print("Manifest serialization is already canonical: docs/agents/manifest.json\n");
+            exit(0);
+        }
+        writeJsonFile($manifestPath, $decoded);
+        print("Rewrote docs/agents/manifest.json in canonical serialization.\n");
         exit(0);
     }
 
@@ -74,6 +91,18 @@ try {
 
     foreach (renderIndexes($manifest, $discoveredSnapshot) as $relativePath => $contents) {
         compareGeneratedFile(agentDocsPath($repositoryRoot, $relativePath), $contents, $errors);
+    }
+
+    // manifest.json is curated, so `build` never rewrites it and nothing used to hold its
+    // serialization steady. Agents edit it with whatever JSON writer they have at hand, and a
+    // writer whose indent differs rewrites all ~9,000 lines, which conflicts with every other
+    // branch carrying a manifest edit even when no two records were touched by both. Comparing it
+    // against canonicalJson() -- the same encoder every generated file already uses -- makes that
+    // drift a check failure instead of someone else's merge conflict. Whitespace and escaping
+    // only: canonicalJson() preserves key order, so this can never reorder a curated record.
+    $manifestPath = agentDocsPath($repositoryRoot, 'manifest.json');
+    if (readRequiredFile($manifestPath) !== canonicalJson($manifest)) {
+        $errors[] = 'Manifest serialization is not canonical: docs/agents/manifest.json. Run composer agent-docs:normalize.';
     }
 
     $readmePath = agentDocsPath($repositoryRoot, 'README.md');

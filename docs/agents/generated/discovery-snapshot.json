@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 487,
-        "source_fingerprint": "sha256:c7574d858b1c256ee4377b9b34c5e9e961ec1e43b03e119009c0723317b64b32",
+        "source_file_count": 489,
+        "source_fingerprint": "sha256:ef53f19092163d32b315df228127dd0e9c8025c3cd58543747e48dd04aec6dc0",
         "live_runtime_verified": false
     },
     "counts": {
@@ -15,13 +15,13 @@
         "cli_commands": 131,
         "cli_namespaces": 13,
         "database_tables": 45,
-        "documentation": 537,
+        "documentation": 542,
         "extension_points": 203,
-        "hook_listeners": 219,
+        "hook_listeners": 222,
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "tests": 199
+        "tests": 206
     },
     "collections": {
         "admin_handlers": [
@@ -308,7 +308,7 @@
                 "hook": "wp_ajax_",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 309
+                    "line": 327
                 }
             },
             {
@@ -319,7 +319,7 @@
                 "hook": "wp_ajax_",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 310
+                    "line": 328
                 }
             },
             {
@@ -330,7 +330,7 @@
                 "hook": "wp_ajax_",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 311
+                    "line": 329
                 }
             },
             {
@@ -4644,6 +4644,7 @@
             "docs/archives/bricks-assets/BRICKS_ASSETS_DISCOVERY_REPORT.md",
             "docs/archives/bricks-assets/BRICKS_ASSETS_HANDOFF.md",
             "docs/archives/bricks-assets/README.md",
+            "docs/archives/connected-environments-build-record.md",
             "docs/archives/content-migration-workbench-handoff/CODEX_KICKOFF_PROMPT.md",
             "docs/archives/content-migration-workbench-handoff/docs/00-architecture-findings-and-recommendations.md",
             "docs/archives/content-migration-workbench-handoff/docs/01-product-overview.md",
@@ -4851,9 +4852,11 @@
             "docs/implementation/active/configuration-portability-tool-guide.md",
             "docs/implementation/active/connected-environments-admin-page.md",
             "docs/implementation/active/connected-environments-agency-control.md",
+            "docs/implementation/active/connected-environments-fleet-battletest-handoff.md",
             "docs/implementation/active/connected-environments-m9-handoff.md",
             "docs/implementation/active/connected-environments-media-capacity-design.md",
             "docs/implementation/active/connected-environments-operator-runbook.md",
+            "docs/implementation/active/content-migration-v3-s1d.md",
             "docs/implementation/active/README.md",
             "docs/implementation/active/term-entity-polish.md",
             "docs/implementation/active/wsform-reference-portability.md",
@@ -4927,6 +4930,7 @@
             "docs/reference/wordpress-application-passwords.md",
             "docs/requests.md",
             "docs/ROADMAP.md",
+            "docs/troubleshooting/content-migration-ai-jobs-stuck-queued.md",
             "docs/troubleshooting/localwp-performance-audit-runbook.md",
             "docs/troubleshooting/README.md",
             "docs/ui-mockups/dbvc-connected-environments/admin-page/README.md",
@@ -4948,6 +4952,7 @@
             "docs/ui-mockups/dbvc-visual-editor/r6-site-manager-workspace/README.md",
             "docs/ui-mockups/dbvc-visual-editor/r6-site-manager-workspace/screenshots/README.md",
             "docs/ui-mockups/dbvc-visual-editor/r6-site-manager-workspace/WIRING-SCHEMATIC.md",
+            "docs/weekly-status-2026-10-23.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/agent-entrypoints.md/original.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/reference/README.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/requests.md",
@@ -7487,6 +7492,17 @@
                 }
             },
             {
+                "discovery_id": "hook.listener.add_option_.61c886c0",
+                "kind": "listener",
+                "scope": "addon:content_migration_guard",
+                "function": "add_action",
+                "hook": "add_option_",
+                "source_ref": {
+                    "path": "addons/content-migration/ai-mapping/dbvc-cc-ai-service.php",
+                    "line": 60
+                }
+            },
+            {
                 "discovery_id": "hook.listener.add_option_.1a39a49f",
                 "kind": "listener",
                 "scope": "core",
@@ -7527,7 +7543,7 @@
                 "hook": "admin_enqueue_scripts",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 306
+                    "line": 321
                 }
             },
             {
@@ -7648,7 +7664,7 @@
                 "hook": "admin_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 299
+                    "line": 313
                 }
             },
             {
@@ -7659,7 +7675,7 @@
                 "hook": "admin_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 300
+                    "line": 314
                 }
             },
             {
@@ -7736,7 +7752,7 @@
                 "hook": "admin_menu",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 305
+                    "line": 320
                 }
             },
             {
@@ -8693,7 +8709,7 @@
                 "hook": "init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 302
+                    "line": 324
                 }
             },
             {
@@ -8851,6 +8867,17 @@
                 }
             },
             {
+                "discovery_id": "hook.listener.pre_http_request.d3733407",
+                "kind": "listener",
+                "scope": "addon:content_migration_guard",
+                "function": "add_filter",
+                "hook": "pre_http_request",
+                "source_ref": {
+                    "path": "addons/content-migration/tools/dbvc-cc-import-net-zero-run.php",
+                    "line": 191
+                }
+            },
+            {
                 "discovery_id": "hook.listener.pre_http_request.d1a48b40",
                 "kind": "listener",
                 "scope": "addon:content_migration_guard",
@@ -8946,7 +8973,7 @@
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 314
+                    "line": 334
                 }
             },
             {
@@ -8957,7 +8984,7 @@
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 320
+                    "line": 341
                 }
             },
             {
@@ -8968,7 +8995,7 @@
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 323
+                    "line": 346
                 }
             },
             {
@@ -8979,7 +9006,7 @@
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 326
+                    "line": 350
                 }
             },
             {
@@ -8990,7 +9017,7 @@
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 329
+                    "line": 353
                 }
             },
             {
@@ -9001,7 +9028,7 @@
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 332
+                    "line": 356
                 }
             },
             {
@@ -9012,7 +9039,7 @@
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 335
+                    "line": 359
                 }
             },
             {
@@ -9522,6 +9549,17 @@
                 }
             },
             {
+                "discovery_id": "hook.listener.update_option_.b7b436a3",
+                "kind": "listener",
+                "scope": "addon:content_migration_guard",
+                "function": "add_action",
+                "hook": "update_option_",
+                "source_ref": {
+                    "path": "addons/content-migration/ai-mapping/dbvc-cc-ai-service.php",
+                    "line": 59
+                }
+            },
+            {
                 "discovery_id": "hook.listener.update_option_.94c1339c",
                 "kind": "listener",
                 "scope": "core",
@@ -9606,7 +9644,7 @@
                 "hook": "wp_ajax_",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 309
+                    "line": 327
                 }
             },
             {
@@ -9617,7 +9655,7 @@
                 "hook": "wp_ajax_",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 310
+                    "line": 328
                 }
             },
             {
@@ -9628,7 +9666,7 @@
                 "hook": "wp_ajax_",
                 "source_ref": {
                     "path": "addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php",
-                    "line": 311
+                    "line": 329
                 }
             },
             {
@@ -13151,6 +13189,7 @@
             "tests/phpunit/AgencyControlEnrollmentReceiptTest.php",
             "tests/phpunit/AgencyControlFrameworkTest.php",
             "tests/phpunit/AgencyControlRoutingInboxTest.php",
+            "tests/phpunit/AgentDocsManifestSerializationTest.php",
             "tests/phpunit/AiPackageWorkflowTest.php",
             "tests/phpunit/BricksAddonIdempotencyTest.php",
             "tests/phpunit/BricksAddonPackagesTest.php",
@@ -13247,14 +13286,19 @@
             "tests/phpunit/ContentCollectorV2Phase27Test.php",
             "tests/phpunit/ContentCollectorV2Phase29Test.php",
             "tests/phpunit/ContentCollectorV2Phase32Test.php",
+            "tests/phpunit/ContentMigrationAiMappingFlagBoundaryTest.php",
             "tests/phpunit/ContentMigrationCliTest.php",
             "tests/phpunit/ContentMigrationCorpusWiredMeasurementTest.php",
             "tests/phpunit/ContentMigrationExplorerContextTest.php",
             "tests/phpunit/ContentMigrationExternalArtifactIngestTest.php",
             "tests/phpunit/ContentMigrationExternalUrlInventoryTest.php",
             "tests/phpunit/ContentMigrationFeatureFlagDefaultsTest.php",
+            "tests/phpunit/ContentMigrationFeatureFlagRolloutGateTest.php",
+            "tests/phpunit/ContentMigrationHeadItemAmbiguityEscalationTest.php",
+            "tests/phpunit/ContentMigrationImportNetZeroTest.php",
             "tests/phpunit/ContentMigrationIngestRunTest.php",
             "tests/phpunit/ContentMigrationInterpretationBridgeTest.php",
+            "tests/phpunit/ContentMigrationLexicalAutoAcceptPrecisionTest.php",
             "tests/phpunit/ContentMigrationMappingInterpretationTest.php",
             "tests/phpunit/ContentMigrationPhase4ImportExecutorTest.php",
             "tests/phpunit/ContentMigrationPhase36DeterminismTest.php",
@@ -13267,6 +13311,7 @@
             "tests/phpunit/ContentMigrationPhase37W0SettingsTest.php",
             "tests/phpunit/ContentMigrationSafetyHardeningTest.php",
             "tests/phpunit/ContentMigrationSectionNestingTest.php",
+            "tests/phpunit/ContentMigrationWorkbenchFlagScopeTest.php",
             "tests/phpunit/CoreImportUidPreservationTest.php",
             "tests/phpunit/CoreUploadZipExtractionTest.php",
             "tests/phpunit/EntityEditorCliTest.php",
