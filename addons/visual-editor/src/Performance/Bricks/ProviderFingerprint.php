@@ -25,12 +25,38 @@ final class ProviderFingerprint
     public const PROVIDER_BASE_CLASS = 'Bricks\\Integrations\\Dynamic_Data\\Providers\\Base';
 
     /**
-     * Fingerprints the vendored code was derived from, keyed by hash.
+     * Fingerprints the vendored code was derived from, keyed by hash. Every
+     * entry needs a REGISTER_TAG_VARIANTS row and a parity fixture under
+     * tests/fixtures/bricks-provider-acf/.
      *
      * @var array<string, string>
      */
     public const KNOWN = [
-        '07662227df5bdbd7219e8e8613eb4834aec30902' => 'Bricks 2.3.8',
+        '07662227df5bdbd7219e8e8613eb4834aec30902' => 'Bricks 2.3.8–2.3.9',
+        '22fd17e9486aed26d2054a9011ab8668e4170631' => 'Bricks 2.3.13',
+        '463ec9d10206cf77bf4a0c66a0af5370974f346c' => 'Bricks 2.4.5',
+    ];
+
+    /**
+     * Which vendored copy of Provider_Acf::register_tag() IndexedAcfProvider
+     * runs for each known fingerprint.
+     *
+     * @var array<string, string>
+     */
+    public const REGISTER_TAG_VARIANTS = [
+        '07662227df5bdbd7219e8e8613eb4834aec30902' => 'register_tag_bricks_2_3_8',
+        '22fd17e9486aed26d2054a9011ab8668e4170631' => 'register_tag_bricks_2_3_13',
+        '463ec9d10206cf77bf4a0c66a0af5370974f346c' => 'register_tag_bricks_2_4_5',
+    ];
+
+    /**
+     * Pins whose stock get_nested_parent_group_field_data() skips tags flagged
+     * `is_loop_outer` (added in Bricks 2.4.5 together with those tags).
+     *
+     * @var array<string, true>
+     */
+    public const NESTED_LOOKUP_SKIPS_LOOP_OUTER = [
+        '463ec9d10206cf77bf4a0c66a0af5370974f346c' => true,
     ];
 
     /**
@@ -41,7 +67,7 @@ final class ProviderFingerprint
      * @var array<string, string>
      */
     public const KNOWN_FIELDS_CACHE = [
-        '0ca8ed62f2cbc8615347573f3709025e95b7e76d' => 'Bricks 2.3.8',
+        '0ca8ed62f2cbc8615347573f3709025e95b7e76d' => 'Bricks 2.3.8–2.4.5',
     ];
 
     /**
@@ -149,6 +175,26 @@ final class ProviderFingerprint
     public static function isKnown($fingerprint)
     {
         return is_string($fingerprint) && isset(self::KNOWN[$fingerprint]);
+    }
+
+    /**
+     * Name of the vendored register_tag() method for a known fingerprint.
+     *
+     * @param string|null $fingerprint
+     * @return string|null
+     */
+    public static function registerTagVariant($fingerprint)
+    {
+        return self::isKnown($fingerprint) && isset(self::REGISTER_TAG_VARIANTS[$fingerprint]) ? self::REGISTER_TAG_VARIANTS[$fingerprint] : null;
+    }
+
+    /**
+     * @param string|null $fingerprint
+     * @return bool
+     */
+    public static function nestedLookupSkipsLoopOuter($fingerprint)
+    {
+        return is_string($fingerprint) && isset(self::NESTED_LOOKUP_SKIPS_LOOP_OUTER[$fingerprint]);
     }
 
     /**

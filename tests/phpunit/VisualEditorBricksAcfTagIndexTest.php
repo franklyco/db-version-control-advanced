@@ -95,6 +95,54 @@ class VisualEditorBricksAcfTagIndexTest extends WP_UnitTestCase
         $this->assertSame([], $mismatches);
     }
 
+    public function test_index_matches_the_bricks_245_scan_that_skips_loop_outer_tags(): void
+    {
+        mt_srand(20261112);
+        $mismatches = [];
+        $skipped_hits = 0;
+
+        for ($round = 0; $round < 25; $round++) {
+            $index = new AcfTagIndex();
+            $tags = [];
+            $keys = [];
+            for ($k = 0; $k < 30; $k++) {
+                $keys[] = 'field_' . $k;
+            }
+
+            for ($step = 0; $step < 100; $step++) {
+                $name = 'acf_name_' . mt_rand(0, 14);
+                $sub_fields = [];
+                for ($i = mt_rand(0, 4); $i > 0; $i--) {
+                    $sub_fields[] = ['key' => $keys[mt_rand(0, count($keys) - 1)]];
+                }
+                $tag = ['field' => ['sub_fields' => $sub_fields]];
+                if (mt_rand(0, 2) === 0) {
+                    $tag['is_loop_outer'] = true; // 2.4.5 mirrors outer loop fields
+                }
+
+                $tags[$name] = $tag;
+                $index->indexTag($name, $tags[$name]);
+
+                foreach ($keys as $key) {
+                    $expected = AcfTagIndex::referenceLookup($key, $tags, true);
+                    if ($expected !== $index->lookup($key, $tags, true)) {
+                        $mismatches[] = "round {$round} step {$step} key {$key}";
+                    }
+                    if ($expected !== AcfTagIndex::referenceLookup($key, $tags, false)) {
+                        $skipped_hits++;
+                    }
+                    // Without the flag the outer tags count, exactly like the 2.3.x scan.
+                    if (AcfTagIndex::referenceLookup($key, $tags) !== $index->lookup($key, $tags)) {
+                        $mismatches[] = "noskip round {$round} step {$step} key {$key}";
+                    }
+                }
+            }
+        }
+
+        $this->assertSame([], $mismatches);
+        $this->assertGreaterThan(1000, $skipped_hits, 'the skip changes the answer often enough to matter');
+    }
+
     public function test_index_honours_array_order_and_overwrites(): void
     {
         $index = new AcfTagIndex();
