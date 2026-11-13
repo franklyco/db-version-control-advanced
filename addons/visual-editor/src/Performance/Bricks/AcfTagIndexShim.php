@@ -69,6 +69,13 @@ final class AcfTagIndexShim
     private static $registered = false;
 
     /**
+     * Fingerprint the gate accepted in arm(); selects the vendored copy at swap.
+     *
+     * @var string|null
+     */
+    private static $fingerprint = null;
+
+    /**
      * @return bool
      */
     public static function isEnabled()
@@ -116,13 +123,15 @@ final class AcfTagIndexShim
             return;
         }
 
-        $gate = self::gate();
+        $fingerprint = null;
+        $gate = self::gate($fingerprint);
 
         if ($gate !== 'ok') {
             self::$state = $gate;
             return;
         }
 
+        self::$fingerprint = $fingerprint;
         self::$state = 'armed';
 
         // Mirror Bricks: Polylang moves the registration hook via this filter.
@@ -179,7 +188,7 @@ final class AcfTagIndexShim
         }
 
         $fast = (new ReflectionClass(IndexedAcfProvider::class))->newInstanceWithoutConstructor();
-        $fast->adopt('acf');
+        $fast->adopt('acf', self::$fingerprint); // throws (→ 'error:…', stock kept) if no vendored copy
 
         foreach (self::INSTANCE_FILTERS as $index => [$hook, $method, $priority]) {
             remove_filter($hook, [$stock, $method], $priority);
@@ -195,9 +204,10 @@ final class AcfTagIndexShim
     /**
      * Why the shim would (not) arm right now. 'ok' or a reason string.
      *
+     * @param string|null $fingerprint out: the installed Bricks fingerprint, when computed
      * @return string
      */
-    public static function gate()
+    public static function gate(&$fingerprint = null)
     {
         if (! ProviderFingerprint::bricksLoaded()) {
             return 'bricks_not_loaded';
@@ -271,9 +281,10 @@ final class AcfTagIndexShim
         }
 
         $fast = (new ReflectionClass(IndexedAcfProvider::class))->newInstanceWithoutConstructor();
-        $fast->adopt('acf');
 
         try {
+            $fast->adopt('acf', $fingerprint);
+
             $started = microtime(true);
             $stock->register_tags();
             $result['stockMs'] = (int) round((microtime(true) - $started) * 1000);
@@ -350,6 +361,7 @@ final class AcfTagIndexShim
     {
         self::$state = 'disabled';
         self::$registered = false;
+        self::$fingerprint = null;
         remove_action('after_setup_theme', [self::class, 'arm'], 0);
     }
 }

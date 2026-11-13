@@ -4,7 +4,7 @@
     "repository": {
         "scope": "repository_only",
         "source_file_count": 489,
-        "source_fingerprint": "sha256:ef53f19092163d32b315df228127dd0e9c8025c3cd58543747e48dd04aec6dc0",
+        "source_fingerprint": "sha256:1ef3ab837fad19668f216aa5933878ba6f9e740b13aaabf9f46f09f6c79e85d2",
         "live_runtime_verified": false
     },
     "counts": {
@@ -21,7 +21,7 @@
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "tests": 206
+        "tests": 207
     },
     "collections": {
         "admin_handlers": [
@@ -7046,7 +7046,7 @@
                 "hook": "dbvc_visual_editor_bricks_acf_tag_index_enabled",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Performance/Bricks/AcfTagIndexShim.php",
-                    "line": 83
+                    "line": 90
                 }
             },
             {
@@ -8159,7 +8159,7 @@
                 "hook": "after_setup_theme",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Performance/Bricks/AcfTagIndexShim.php",
-                    "line": 104
+                    "line": 111
                 }
             },
             {
@@ -13338,6 +13338,7 @@
             "tests/phpunit/TransferPacketWorkflowTest.php",
             "tests/phpunit/VisualEditorAcfFieldContextResolverTest.php",
             "tests/phpunit/VisualEditorBricksAcfFieldsCacheTest.php",
+            "tests/phpunit/VisualEditorBricksAcfTagIndexParityTest.php",
             "tests/phpunit/VisualEditorBricksAcfTagIndexTest.php",
             "tests/phpunit/VisualEditorControlCenterHardeningTest.php",
             "tests/phpunit/VisualEditorControlCenterNestedReferenceTest.php",

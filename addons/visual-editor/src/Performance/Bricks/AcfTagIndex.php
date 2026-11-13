@@ -60,15 +60,18 @@ final class AcfTagIndex
      *
      * @param string                              $key
      * @param array<string, array<string, mixed>> $tags live tag map
+     * @param bool                                $skipLoopOuter ignore tags flagged
+     *        `is_loop_outer` (Bricks 2.4.5+ mirrors outer loop fields into the tag
+     *        map for discovery only and skips them in this scan)
      * @return string|null
      */
-    public function lookup($key, array $tags)
+    public function lookup($key, array $tags, $skipLoopOuter = false)
     {
         $found = null;
         $best = PHP_INT_MAX;
 
         foreach ($this->byKey[$key] ?? [] as $name => $_) {
-            if ($this->position[$name] < $best && isset($tags[$name]) && self::tagHasSubFieldKey($tags[$name], $key)) {
+            if ($this->position[$name] < $best && isset($tags[$name]) && ! ($skipLoopOuter && ! empty($tags[$name]['is_loop_outer'])) && self::tagHasSubFieldKey($tags[$name], $key)) {
                 $best = $this->position[$name];
                 $found = $name;
             }
@@ -83,11 +86,16 @@ final class AcfTagIndex
      *
      * @param string                              $key
      * @param array<string, array<string, mixed>> $tags
+     * @param bool                                $skipLoopOuter Bricks 2.4.5+ scan
      * @return string|null
      */
-    public static function referenceLookup($key, array $tags)
+    public static function referenceLookup($key, array $tags, $skipLoopOuter = false)
     {
         foreach ($tags as $name => $tag) {
+            if ($skipLoopOuter && ! empty($tag['is_loop_outer'])) {
+                continue;
+            }
+
             if (self::tagHasSubFieldKey($tag, $key)) {
                 return (string) $name;
             }
