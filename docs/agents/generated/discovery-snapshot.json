@@ -4,7 +4,7 @@
     "repository": {
         "scope": "repository_only",
         "source_file_count": 489,
-        "source_fingerprint": "sha256:1ef3ab837fad19668f216aa5933878ba6f9e740b13aaabf9f46f09f6c79e85d2",
+        "source_fingerprint": "sha256:357e869aa17ac0e0374f55bf9dd25c3e90aaa023147b7c5065b7c6a30e66e11f",
         "live_runtime_verified": false
     },
     "counts": {
@@ -17,7 +17,7 @@
         "database_tables": 45,
         "documentation": 542,
         "extension_points": 203,
-        "hook_listeners": 222,
+        "hook_listeners": 223,
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
@@ -7046,7 +7046,7 @@
                 "hook": "dbvc_visual_editor_bricks_acf_tag_index_enabled",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Performance/Bricks/AcfTagIndexShim.php",
-                    "line": 90
+                    "line": 105
                 }
             },
             {
@@ -7112,7 +7112,7 @@
                 "hook": "dbvc_visual_editor_excluded_post_types",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 536
+                    "line": 542
                 }
             },
             {
@@ -7123,7 +7123,7 @@
                 "hook": "dbvc_visual_editor_excluded_taxonomies",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 558
+                    "line": 564
                 }
             },
             {
@@ -7332,7 +7332,7 @@
                 "hook": "dbvc_visual_editor_shared_global_field_names",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 514
+                    "line": 520
                 }
             },
             {
@@ -7844,6 +7844,17 @@
                 }
             },
             {
+                "discovery_id": "hook.listener.admin_notices.aa013d29",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "admin_notices",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Performance/Bricks/AcfTagIndexShim.php",
+                    "line": 128
+                }
+            },
+            {
                 "discovery_id": "hook.listener.admin_notices.b9dc5148",
                 "kind": "listener",
                 "scope": "core",
@@ -8159,7 +8170,7 @@
                 "hook": "after_setup_theme",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Performance/Bricks/AcfTagIndexShim.php",
-                    "line": 111
+                    "line": 126
                 }
             },
             {
@@ -9215,7 +9226,7 @@
                 "hook": "rest_post_dispatch",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 795
+                    "line": 801
                 }
             },
             {
@@ -9347,7 +9358,7 @@
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 391
+                    "line": 395
                 }
             },
             {

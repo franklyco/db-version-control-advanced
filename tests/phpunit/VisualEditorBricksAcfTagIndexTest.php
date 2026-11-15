@@ -24,7 +24,7 @@ class VisualEditorBricksAcfTagIndexTest extends WP_UnitTestCase
     {
         parent::set_up();
 
-        foreach ([AcfTagIndexShim::OPTION_ENABLED, AcfTagIndexShim::OPTION_VERIFIED, DBVC_Visual_Editor_Addon::OPTION_SETTINGS_VERSION] as $option) {
+        foreach ([AcfTagIndexShim::OPTION_ENABLED, AcfTagIndexShim::OPTION_VERIFIED, AcfTagIndexShim::OPTION_AUTO_VERIFY, DBVC_Visual_Editor_Addon::OPTION_SETTINGS_VERSION] as $option) {
             $this->previous_options[$option] = get_option($option, '__dbvc_missing_option__');
         }
 
@@ -42,6 +42,7 @@ class VisualEditorBricksAcfTagIndexTest extends WP_UnitTestCase
         }
 
         AcfTagIndexShim::reset();
+        AcfTagIndexShim::clearSchedule();
         remove_all_filters(AcfTagIndexShim::FILTER_ENABLED);
         parent::tear_down();
     }
@@ -275,6 +276,43 @@ class VisualEditorBricksAcfTagIndexTest extends WP_UnitTestCase
         $this->assertSame('bricks_not_loaded', $status['gate']);
         $this->assertSame('unknown', $status['bricks']);
         $this->assertNull($status['fingerprint']);
+    }
+
+    public function test_auto_verify_wiring_is_inert_without_bricks_and_clears_on_disable(): void
+    {
+        update_option(AcfTagIndexShim::OPTION_ENABLED, '1');
+        update_option(AcfTagIndexShim::OPTION_VERIFIED, '');
+        delete_option(AcfTagIndexShim::OPTION_AUTO_VERIFY);
+        AcfTagIndexShim::register();
+
+        $this->assertSame(10, has_action(AcfTagIndexShim::CRON_VERIFY, [AcfTagIndexShim::class, 'onVerifyCron']));
+        $this->assertSame(10, has_action('admin_notices', [AcfTagIndexShim::class, 'adminNotice']));
+
+        // No Bricks: nothing is scheduled, the handler writes nothing, no notice.
+        AcfTagIndexShim::arm();
+        $this->assertFalse(wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY));
+        $this->assertNull(AcfTagIndexShim::onVerifyCron());
+        $this->assertSame('', get_option(AcfTagIndexShim::OPTION_VERIFIED));
+        $this->assertFalse(get_option(AcfTagIndexShim::OPTION_AUTO_VERIFY));
+        $this->assertSame('', AcfTagIndexShim::attentionReason());
+        $this->assertFalse(AcfTagIndexShim::shouldAutoVerify(null));
+        $this->assertFalse(AcfTagIndexShim::maybeScheduleVerify('not-a-pinned-fingerprint'));
+
+        wp_set_current_user(self::factory()->user->create(['role' => 'administrator']));
+        set_current_screen('dashboard');
+        ob_start();
+        AcfTagIndexShim::adminNotice();
+        $this->assertSame('', ob_get_clean());
+
+        // Unticking the switch clears any pending verification.
+        wp_schedule_single_event(time() + 60, AcfTagIndexShim::CRON_VERIFY);
+        $this->assertNotFalse(wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY));
+        DBVC_Visual_Editor_Addon::save_settings([]);
+        $this->assertFalse(wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY));
+
+        $status = AcfTagIndexShim::status();
+        $this->assertArrayHasKey('autoVerify', $status);
+        $this->assertNull($status['nextVerify']);
     }
 
     public function test_settings_page_wiring_and_save_path(): void
