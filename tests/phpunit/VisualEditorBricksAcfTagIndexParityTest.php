@@ -229,6 +229,46 @@ class VisualEditorBricksAcfTagIndexParityTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // Automatic re-verification after a Bricks update
+    // ---------------------------------------------------------------------
+
+    public function test_a_pinned_but_unverified_bricks_verifies_itself_once_in_the_background(): void
+    {
+        foreach (self::FIXTURES as $fixture => $pin) {
+            $auto = $this->harness(self::fixtureDir() . '/' . $fixture)['auto'];
+
+            $this->assertSame('not_verified', $auto['armState'], "{$fixture}: stock Bricks until verified");
+            $this->assertTrue($auto['scheduled'], "{$fixture}: the first request schedules one background verify");
+            $this->assertSame(1, $auto['eventsAfterSecondRequest'], "{$fixture}: later requests do not add events");
+            $this->assertSame('', $auto['attentionBefore'], "{$fixture}: no admin notice while it can still verify itself");
+            $this->assertFalse($auto['scheduledDuringCron'], "{$fixture}: the cron request itself does not reschedule");
+
+            $this->assertSame([true, 'identical', 0], $auto['cronResult'], "{$fixture}: the cron handler runs verify(true)");
+            $this->assertSame($pin['perf_a'], $auto['markerAfterCron']);
+            $this->assertSame([$pin['perf_a'], true, 'identical'], $auto['record']);
+            $this->assertSame('ok', $auto['gateAfterCron']);
+            $this->assertNull($auto['secondCron'], "{$fixture}: a verified fingerprint is not verified again");
+            $this->assertSame('armed', $auto['armStateAfterCron'], "{$fixture}: the next request arms the index");
+
+            $this->assertFalse($auto['failedScheduled'], "{$fixture}: a failed fingerprint is never retried automatically");
+            $this->assertNull($auto['failedCron']);
+            $this->assertTrue($auto['failedMarkerKept']);
+            $this->assertSame('failed', $auto['failedAttention'], "{$fixture}: a failed fingerprint raises the admin notice");
+            $this->assertStringContainsString('found differences', $auto['failedNotice']);
+            $this->assertStringContainsString('notice-warning', $auto['failedNotice']);
+
+            $this->assertFalse($auto['recentAttemptScheduled'], "{$fixture}: one attempt per fingerprint per day");
+            $this->assertTrue($auto['oldAttemptScheduled']);
+            $this->assertTrue($auto['otherFingerprintAttemptScheduled'], "{$fixture}: an attempt for another fingerprint does not throttle");
+
+            $this->assertFalse($auto['disabledScheduled'], "{$fixture}: switch off schedules nothing");
+            $this->assertNull($auto['disabledCron']);
+            $this->assertSame('', $auto['disabledAttention']);
+            $this->assertSame('', $auto['disabledMarker']);
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // The comparison would catch a wrong vendored copy
     // ---------------------------------------------------------------------
 
@@ -315,6 +355,11 @@ class VisualEditorBricksAcfTagIndexParityTest extends TestCase
             $this->assertSame('fingerprint_unknown', $run['verify']['reason']);
             $this->assertSame('', $run['verifiedOption'], "{$label}: a refused verify persists nothing");
             $this->assertSame('refused', $run['adoptUnknown'], "{$label}: IndexedAcfProvider refuses an unknown fingerprint");
+            $this->assertFalse($run['unknownScheduled'], "{$label}: an unpinned Bricks is never verified automatically");
+            $this->assertNull($run['unknownCron']);
+            $this->assertSame('unpinned', $run['unknownAttention'], "{$label}: an unpinned Bricks raises the admin notice");
+            $this->assertStringContainsString('no pinned copy for the installed Bricks version', $run['unknownNotice']);
+            $this->assertSame('', $run['unknownNoticeOtherScreen'], "{$label}: the notice stays off unrelated admin screens");
         }
     }
 

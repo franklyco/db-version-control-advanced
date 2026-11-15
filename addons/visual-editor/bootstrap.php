@@ -328,9 +328,13 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             $verified = (string) $status['verified'];
             $state = $status['gate'] === 'ok' ? 'ready' : (string) $status['gate'];
 
+            if ($status['gate'] === 'not_verified' && ! empty($status['nextVerify'])) {
+                $state .= ' (automatic check scheduled)';
+            }
+
             return sprintf(
                 /* translators: 1: Bricks version label or "unknown", 2: gate state, 3: verification summary */
-                __('Speeds up every frontend and REST request on Bricks sites with large group-nested ACF schemas by giving Bricks\' ACF dynamic-data provider an indexed nested-group lookup (identical output, verified on save). Applies site-wide, regardless of the Visual Editor activation switch; default off. Only arms when the installed Bricks code matches a pinned fingerprint and that fingerprint has been verified on this site. Detected: %1$s · gate: %2$s · verification: %3$s.', 'dbvc'),
+                __('Speeds up every frontend and REST request on Bricks sites with large group-nested ACF schemas by giving Bricks\' ACF dynamic-data provider an indexed nested-group lookup (identical output, verified on save). Applies site-wide, regardless of the Visual Editor activation switch; default off. Only arms when the installed Bricks code matches a pinned fingerprint and that fingerprint has been verified on this site; after a Bricks update to another pinned version it re-verifies itself in the background. Detected: %1$s · gate: %2$s · verification: %3$s.', 'dbvc'),
                 (string) $status['bricks'],
                 $state,
                 $verified === '' ? 'never run' : (strpos($verified, 'failed:') === 0 ? 'FAILED — registries differed' : 'passed for ' . substr($verified, 0, 12))
@@ -473,6 +477,8 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                         (string) $verification['reason']
                     );
                 }
+            } else {
+                \Dbvc\VisualEditor\Performance\Bricks\AcfTagIndexShim::clearSchedule();
             }
 
             // R5.later-perf-b: enabling schedules the daily verification and an

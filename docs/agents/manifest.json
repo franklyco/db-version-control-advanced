@@ -1505,6 +1505,7 @@
                 "dbvc_visual_editor_media_manager_enabled",
                 "dbvc_visual_editor_bricks_acf_tag_index_enabled",
                 "dbvc_visual_editor_bricks_acf_tag_index_verified",
+                "dbvc_visual_editor_bricks_acf_tag_index_auto_verify",
                 "dbvc_visual_editor_bricks_acf_fields_cache_enabled",
                 "dbvc_visual_editor_bricks_acf_fields_cache_salt",
                 "dbvc_visual_editor_bricks_acf_fields_cache_verified",

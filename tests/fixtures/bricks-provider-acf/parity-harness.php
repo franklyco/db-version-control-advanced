@@ -89,6 +89,66 @@ function update_option($name, $value)
     return true;
 }
 
+$GLOBALS['dbvc_harness_cron'] = [];
+$GLOBALS['dbvc_harness_doing_cron'] = false;
+
+if (! defined('DAY_IN_SECONDS')) {
+    define('DAY_IN_SECONDS', 86400);
+}
+
+function wp_next_scheduled($hook, $args = [])
+{
+    return $GLOBALS['dbvc_harness_cron'][$hook] ?? false;
+}
+
+function wp_schedule_single_event($timestamp, $hook, $args = [])
+{
+    $GLOBALS['dbvc_harness_cron'][$hook] = $timestamp;
+    return true;
+}
+
+function wp_unschedule_event($timestamp, $hook, $args = [])
+{
+    unset($GLOBALS['dbvc_harness_cron'][$hook]);
+    return true;
+}
+
+function wp_doing_cron()
+{
+    return $GLOBALS['dbvc_harness_doing_cron'];
+}
+
+$GLOBALS['dbvc_harness_screen'] = 'dashboard';
+
+function current_user_can($capability)
+{
+    return true;
+}
+
+function get_current_screen()
+{
+    return (object) ['id' => $GLOBALS['dbvc_harness_screen']];
+}
+
+function __($text, $domain = 'default')
+{
+    return $text;
+}
+
+function esc_html($text)
+{
+    return htmlspecialchars((string) $text, ENT_QUOTES);
+}
+
+function dbvc_harness_notice($screen)
+{
+    $GLOBALS['dbvc_harness_screen'] = $screen;
+    ob_start();
+    \Dbvc\VisualEditor\Performance\Bricks\AcfTagIndexShim::adminNotice();
+
+    return (string) ob_get_clean();
+}
+
 set_error_handler(static function ($severity, $message, $file, $line) {
     $GLOBALS['dbvc_harness_warnings'][] = basename((string) $file) . ':' . $line . ' ' . $message;
     return true;
@@ -450,6 +510,11 @@ $out['swapHookedBeforeVerify'] = has_action('init', [AcfTagIndexShim::class, 'sw
 AcfTagIndexShim::reset();
 
 if (! $out['known'] && $adopt_override === null) {
+    $out['unknownScheduled'] = AcfTagIndexShim::maybeScheduleVerify($fingerprint) || wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+    $out['unknownAttention'] = AcfTagIndexShim::attentionReason();
+    $out['unknownCron'] = AcfTagIndexShim::onVerifyCron();
+    $out['unknownNotice'] = dbvc_harness_notice('dashboard');
+    $out['unknownNoticeOtherScreen'] = dbvc_harness_notice('edit-post');
     $verify = AcfTagIndexShim::verify(true);
     $out['verify'] = ['ok' => $verify['ok'], 'reason' => $verify['reason']];
     $out['verifiedOption'] = get_option(AcfTagIndexShim::OPTION_VERIFIED, '');
@@ -516,6 +581,81 @@ if ($fixture_mode && $adopt_override === null && ! $force_no_skip) {
     // A verified marker for another fingerprint does not count.
     update_option(AcfTagIndexShim::OPTION_VERIFIED, 'failed:' . $fingerprint);
     $out['gateAfterFailedMarker'] = AcfTagIndexShim::gate();
+}
+
+if ($fixture_mode && $adopt_override === null && ! $force_no_skip) {
+    // Automatic re-verification after a Bricks update (pinned, not yet verified here).
+    $auto = [];
+    $reset = static function () {
+        $GLOBALS['dbvc_harness_cron'] = [];
+        $GLOBALS['dbvc_harness_doing_cron'] = false;
+        update_option(AcfTagIndexShim::OPTION_VERIFIED, '');
+        update_option(AcfTagIndexShim::OPTION_AUTO_VERIFY, []);
+        update_option(AcfTagIndexShim::OPTION_ENABLED, '1');
+        AcfTagIndexShim::reset();
+    };
+
+    $reset();
+    AcfTagIndexShim::arm();
+    $auto['armState'] = AcfTagIndexShim::state();
+    $auto['scheduled'] = wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+    $auto['attentionBefore'] = AcfTagIndexShim::attentionReason();
+    AcfTagIndexShim::reset();
+    AcfTagIndexShim::arm();
+    $auto['eventsAfterSecondRequest'] = count($GLOBALS['dbvc_harness_cron']);
+
+    // The cron request: arm() must not schedule a second event; the handler verifies.
+    unset($GLOBALS['dbvc_harness_cron'][AcfTagIndexShim::CRON_VERIFY]);
+    $GLOBALS['dbvc_harness_doing_cron'] = true;
+    AcfTagIndexShim::reset();
+    AcfTagIndexShim::arm();
+    $auto['scheduledDuringCron'] = wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+    $cron = AcfTagIndexShim::onVerifyCron();
+    $auto['cronResult'] = $cron === null ? null : [$cron['ok'], $cron['reason'], $cron['differing']];
+    $auto['markerAfterCron'] = get_option(AcfTagIndexShim::OPTION_VERIFIED, '');
+    $record = get_option(AcfTagIndexShim::OPTION_AUTO_VERIFY, []);
+    $auto['record'] = [$record['fingerprint'] ?? null, $record['ok'] ?? null, $record['reason'] ?? null];
+    $auto['gateAfterCron'] = AcfTagIndexShim::gate();
+    $auto['secondCron'] = AcfTagIndexShim::onVerifyCron();
+    $GLOBALS['dbvc_harness_doing_cron'] = false;
+    AcfTagIndexShim::reset();
+    AcfTagIndexShim::arm();
+    $auto['armStateAfterCron'] = AcfTagIndexShim::state();
+
+    // A failed verification for this fingerprint is never retried automatically.
+    $reset();
+    update_option(AcfTagIndexShim::OPTION_VERIFIED, 'failed:' . $fingerprint);
+    AcfTagIndexShim::arm();
+    $auto['failedScheduled'] = wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+    $auto['failedCron'] = AcfTagIndexShim::onVerifyCron();
+    $auto['failedAttention'] = AcfTagIndexShim::attentionReason();
+    $auto['failedMarkerKept'] = get_option(AcfTagIndexShim::OPTION_VERIFIED, '') === 'failed:' . $fingerprint;
+    $auto['failedNotice'] = dbvc_harness_notice('toplevel_page_dbvc-visual-editor');
+
+    // A recent attempt for this fingerprint throttles; an old one does not.
+    $reset();
+    update_option(AcfTagIndexShim::OPTION_AUTO_VERIFY, ['fingerprint' => $fingerprint, 'at' => time() - 60, 'ok' => false, 'reason' => 'bricks_not_loaded']);
+    AcfTagIndexShim::arm();
+    $auto['recentAttemptScheduled'] = wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+    $reset();
+    update_option(AcfTagIndexShim::OPTION_AUTO_VERIFY, ['fingerprint' => $fingerprint, 'at' => time() - 2 * DAY_IN_SECONDS, 'ok' => false, 'reason' => 'bricks_not_loaded']);
+    AcfTagIndexShim::arm();
+    $auto['oldAttemptScheduled'] = wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+    $reset();
+    update_option(AcfTagIndexShim::OPTION_AUTO_VERIFY, ['fingerprint' => 'another-fingerprint', 'at' => time(), 'ok' => true, 'reason' => 'identical']);
+    AcfTagIndexShim::arm();
+    $auto['otherFingerprintAttemptScheduled'] = wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+
+    // Switch off: nothing scheduled, the handler does nothing, no notice.
+    $reset();
+    update_option(AcfTagIndexShim::OPTION_ENABLED, '0');
+    AcfTagIndexShim::arm();
+    $auto['disabledScheduled'] = wp_next_scheduled(AcfTagIndexShim::CRON_VERIFY) !== false;
+    $auto['disabledCron'] = AcfTagIndexShim::onVerifyCron();
+    $auto['disabledAttention'] = AcfTagIndexShim::attentionReason();
+    $auto['disabledMarker'] = get_option(AcfTagIndexShim::OPTION_VERIFIED, '');
+
+    $out['auto'] = $auto;
 }
 
 $out['warnings'] = $GLOBALS['dbvc_harness_warnings'];

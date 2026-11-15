@@ -32,14 +32,29 @@ use Throwable;
  *     not registered its tags yet, and its three constructor filters are found
  *     where expected.
  *
- * Nothing is written at runtime; verify() writes one option and is only called
- * from the settings save and explicit maintainer commands.
+ * verify() writes one option. It runs from the settings save, from explicit
+ * maintainer commands, and from a one-off WP-Cron event: when the switch is on
+ * and a request sees a pinned fingerprint that is not verified yet (Bricks was
+ * updated to another pinned release), arm() schedules that event once, so the
+ * index comes back after a Bricks update without anyone re-saving the settings.
+ * A failed verification is never retried automatically, and an unpinned or
+ * failed Bricks raises an admin notice for administrators instead.
  */
 final class AcfTagIndexShim
 {
     public const OPTION_ENABLED = 'dbvc_visual_editor_bricks_acf_tag_index_enabled';
     public const OPTION_VERIFIED = 'dbvc_visual_editor_bricks_acf_tag_index_verified';
     public const FILTER_ENABLED = 'dbvc_visual_editor_bricks_acf_tag_index_enabled';
+    public const OPTION_AUTO_VERIFY = 'dbvc_visual_editor_bricks_acf_tag_index_auto_verify';
+    public const CRON_VERIFY = 'dbvc_ve_bricks_acf_tag_index_verify';
+
+    /**
+     * Minimum time between two automatic verifications of the same fingerprint.
+     * Only matters when a scheduled verification could not compare (e.g. it
+     * ran in a context without Bricks); a completed one is final until the
+     * fingerprint changes.
+     */
+    public const AUTO_VERIFY_RETRY = DAY_IN_SECONDS;
 
     /**
      * Filters Bricks' provider Base::__construct() registers on the instance.
@@ -109,6 +124,8 @@ final class AcfTagIndexShim
         // Priority 0: registered after Bricks wired its own init callbacks
         // (theme load), before other after_setup_theme listeners add theirs.
         add_action('after_setup_theme', [self::class, 'arm'], 0);
+        add_action(self::CRON_VERIFY, [self::class, 'onVerifyCron']);
+        add_action('admin_notices', [self::class, 'adminNotice']);
     }
 
     /**
@@ -128,6 +145,11 @@ final class AcfTagIndexShim
 
         if ($gate !== 'ok') {
             self::$state = $gate;
+
+            if ($gate === 'not_verified') {
+                self::maybeScheduleVerify($fingerprint);
+            }
+
             return;
         }
 
@@ -326,6 +348,154 @@ final class AcfTagIndexShim
     }
 
     /**
+     * Schedule one background verify(true) for a pinned fingerprint that is not
+     * verified on this site yet. Writes the cron option once per fingerprint;
+     * every later request finds the event (or the result) and does nothing.
+     *
+     * @param string|null $fingerprint
+     * @return bool whether an event was scheduled
+     */
+    public static function maybeScheduleVerify($fingerprint)
+    {
+        if (! self::shouldAutoVerify($fingerprint) || (function_exists('wp_doing_cron') && wp_doing_cron())) {
+            return false;
+        }
+
+        if (wp_next_scheduled(self::CRON_VERIFY)) {
+            return false;
+        }
+
+        return (bool) wp_schedule_single_event(time(), self::CRON_VERIFY);
+    }
+
+    /**
+     * Whether $fingerprint may be verified automatically: pinned, not verified
+     * here, not already failed here, and not attempted in the last day.
+     *
+     * @param string|null $fingerprint
+     * @return bool
+     */
+    public static function shouldAutoVerify($fingerprint)
+    {
+        if (! ProviderFingerprint::isKnown($fingerprint)) {
+            return false;
+        }
+
+        $marker = (string) get_option(self::OPTION_VERIFIED, '');
+
+        if ($marker === $fingerprint || $marker === 'failed:' . $fingerprint) {
+            return false;
+        }
+
+        $last = get_option(self::OPTION_AUTO_VERIFY, []);
+
+        return ! (is_array($last)
+            && ($last['fingerprint'] ?? null) === $fingerprint
+            && (int) ($last['at'] ?? 0) > time() - self::AUTO_VERIFY_RETRY);
+    }
+
+    /**
+     * WP-Cron handler: verify the installed Bricks once, if still needed.
+     *
+     * @return array<string, mixed>|null the verify() result, or null when skipped
+     */
+    public static function onVerifyCron()
+    {
+        if (! self::isEnabled()) {
+            return null;
+        }
+
+        $fingerprint = null;
+
+        if (self::gate($fingerprint) !== 'not_verified' || ! self::shouldAutoVerify($fingerprint)) {
+            return null;
+        }
+
+        $result = self::verify(true);
+
+        update_option(self::OPTION_AUTO_VERIFY, [
+            'fingerprint' => $fingerprint,
+            'at' => time(),
+            'ok' => (bool) $result['ok'],
+            'reason' => (string) $result['reason'],
+        ], false);
+
+        return $result;
+    }
+
+    /**
+     * Why the index is off in a way only a person can fix, or '' when it is
+     * on, off by choice, or about to verify itself.
+     *
+     * @return string 'unpinned' | 'failed' | ''
+     */
+    public static function attentionReason()
+    {
+        if (! self::isEnabled()) {
+            return '';
+        }
+
+        $fingerprint = null;
+        $gate = self::gate($fingerprint);
+
+        if ($gate === 'fingerprint_unknown') {
+            return 'unpinned';
+        }
+
+        if ($gate === 'not_verified' && (string) get_option(self::OPTION_VERIFIED, '') === 'failed:' . $fingerprint) {
+            return 'failed';
+        }
+
+        return '';
+    }
+
+    /**
+     * Admin notice for administrators when the switch is on but the index
+     * cannot run, shown on the dashboard, the plugin, theme and update screens
+     * and the Visual Editor settings page.
+     *
+     * @return void
+     */
+    public static function adminNotice()
+    {
+        if (! current_user_can('manage_options')) {
+            return;
+        }
+
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $screen_id = $screen ? (string) $screen->id : '';
+
+        if (! in_array($screen_id, ['dashboard', 'plugins', 'themes', 'update-core'], true) && strpos($screen_id, 'dbvc') === false) {
+            return;
+        }
+
+        $reason = self::attentionReason();
+
+        if ($reason === '') {
+            return;
+        }
+
+        $message = $reason === 'unpinned'
+            ? __('DBVC: the Bricks ACF tag index is switched on but not running. This DBVC version has no pinned copy for the installed Bricks version, so Bricks\' own (slower) lookup is in use. Pages are unaffected; update DBVC to a release that pins this Bricks version.', 'dbvc')
+            : __('DBVC: the Bricks ACF tag index is switched on but not running. Its check found differences between the index and stock Bricks for the installed Bricks version, so Bricks\' own (slower) lookup is in use. Pages are unaffected; please report this.', 'dbvc');
+
+        printf('<div class="notice notice-warning"><p>%s</p></div>', esc_html($message));
+    }
+
+    /**
+     * @return void
+     */
+    public static function clearSchedule()
+    {
+        $timestamp = wp_next_scheduled(self::CRON_VERIFY);
+
+        while ($timestamp) {
+            wp_unschedule_event($timestamp, self::CRON_VERIFY);
+            $timestamp = wp_next_scheduled(self::CRON_VERIFY);
+        }
+    }
+
+    /**
      * Human-readable state for the settings page and `wp eval`.
      *
      * @return array<string, mixed>
@@ -341,6 +511,8 @@ final class AcfTagIndexShim
             'fingerprint' => $fingerprint,
             'bricks' => ProviderFingerprint::label($fingerprint),
             'verified' => (string) get_option(self::OPTION_VERIFIED, ''),
+            'autoVerify' => get_option(self::OPTION_AUTO_VERIFY, []),
+            'nextVerify' => wp_next_scheduled(self::CRON_VERIFY) ?: null,
         ];
     }
 
@@ -363,5 +535,7 @@ final class AcfTagIndexShim
         self::$registered = false;
         self::$fingerprint = null;
         remove_action('after_setup_theme', [self::class, 'arm'], 0);
+        remove_action(self::CRON_VERIFY, [self::class, 'onVerifyCron']);
+        remove_action('admin_notices', [self::class, 'adminNotice']);
     }
 }
