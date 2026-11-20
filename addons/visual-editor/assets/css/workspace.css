@@ -24,7 +24,8 @@
   /* component-local sizing (mirrors control-center.css naming) */
   --dbvc-ve-workspace-width: 480px;
   --dbvc-ve-workspace-admin-bar: 32px;
-  --dbvc-ve-workspace-toolbar-strip: 76px;
+  /* UT6.1a: 76px without a host toolbar. */
+  --dbvc-ve-workspace-toolbar-strip: var(--dbvc-ve-bottom-clearance);
   --dbvc-ve-workspace-header-padding-y: 14px;
   --dbvc-ve-workspace-section-padding-x: 18px;
   --dbvc-ve-workspace-row-padding-y: 10px;

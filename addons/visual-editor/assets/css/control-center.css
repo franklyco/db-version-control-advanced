@@ -19,7 +19,8 @@
 .dbvc-ve-control-center {
   --dbvc-ve-control-center-width: 480px;
   --dbvc-ve-control-center-admin-bar: 32px;
-  --dbvc-ve-control-center-toolbar-strip: 76px;
+  /* UT6.1a: 76px without a host toolbar. */
+  --dbvc-ve-control-center-toolbar-strip: var(--dbvc-ve-bottom-clearance);
   --dbvc-ve-control-center-header-padding-y: 14px;
   --dbvc-ve-control-center-section-padding-x: 18px;
   --dbvc-ve-control-center-row-padding-y: 10px;

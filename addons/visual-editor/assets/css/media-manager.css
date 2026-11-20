@@ -7,15 +7,17 @@
 
 .dbvc-ve-media-manager {
   --dbvc-ve-media-manager-width: min(1120px, calc(100vw - 32px));
-  --dbvc-ve-media-manager-max-height: min(900px, calc(100dvh - 124px));
+  /* UT6.1a: offsets ride the bottom clearance; without a host toolbar they
+     are the old 124px and 88px. */
+  --dbvc-ve-media-manager-max-height: min(900px, calc(100dvh - var(--dbvc-ve-bottom-clearance) - 48px));
   position: fixed;
   left: 50%;
-  bottom: 88px;
+  bottom: calc(var(--dbvc-ve-bottom-clearance) + 12px);
   z-index: var(--dbvc-ve-z-panel);
   display: flex;
   flex-direction: column;
   width: var(--dbvc-ve-media-manager-width);
-  max-height: min(900px, calc(100vh - 124px));
+  max-height: min(900px, calc(100vh - var(--dbvc-ve-bottom-clearance) - 48px));
   max-height: var(--dbvc-ve-media-manager-max-height);
   border: var(--dbvc-ve-border--surface-s);
   border-radius: var(--dbvc-ve-border-radius--m);
@@ -809,8 +811,9 @@
 @media (max-width: 640px) {
   .dbvc-ve-media-manager {
     --dbvc-ve-media-manager-width: calc(100vw - 12px);
-    --dbvc-ve-media-manager-max-height: calc(100dvh - 104px);
-    bottom: 84px;
+    /* 104px and 84px without a host toolbar. */
+    --dbvc-ve-media-manager-max-height: calc(100dvh - var(--dbvc-ve-bottom-clearance) - 28px);
+    bottom: calc(var(--dbvc-ve-bottom-clearance) + 8px);
     border-radius: var(--dbvc-ve-border-radius--s);
   }
 
