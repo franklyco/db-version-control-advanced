@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.4.0 — 2026-11-20
+- Visual Editor: docks its controls in the Vertical theme's universal toolbar. With that toolbar on the page, the Visual Editor's controls (status, Site Manager, Review fields, Go to object, Media Manager, Shared globals, Global Brand Controls, Edit object, preferences, Exit) become items in the theme's dock and the Visual Editor's own toolbar hides; popovers, drawers and the Media Manager open from the dock item and return focus to it. While edit mode is off, the dock shows one "Open Visual Editor" link. Items are for staff with the Visual Editor's base capability and appear on the site and in Design Review mode, never on design boards. If the theme's toolbar does not report ready within 4 seconds, or is absent, the Visual Editor keeps its own toolbar as before. Requires Vertical theme 2.17.1 or later on the site first: older themes lack the dock icons, the review-mode staff-tool rule and the focus fix. The new filter `dbvc_visual_editor_host_toolbar_enabled` (default true) turns docking off. Details in the Visual Editor changelog.
+- Visual Editor: dynamic background images are editable. Bricks renders them as stylesheet rules rather than inline styles, so the Visual Editor could not see them, and backgrounds set through a global class were never inspected. Both are found now; inside query loops each item's background is checked against its own rule, and a background Bricks renders no per-item value for is not offered.
+- Visual Editor Media Manager: fixed rebuilds losing rows on sites whose media index table predates schema v2. On those sites, schema v3 replaces the table's key in place when the plugin first loads after the update, and starts a fresh rebuild, abandoning any rebuild already running. Also fixed two fatal errors during plugin load (`wp_salt()` when restoring the index from its JSON mirror, `wp_rand()` in the key repair).
+
 ## 2.3.1 — 2026-11-19
 - Visual Editor: makes room for a toolbar the site's theme docks at the bottom of the page. With the Vertical theme's universal toolbar, the Visual Editor's toolbar, popover, editor panel, drawers and Media Manager now sit above its dock instead of under it, on layers just below it, and an editor panel that grows after opening stays on screen. On a site without such a theme nothing moves. Details in the Visual Editor changelog.
 
