@@ -33,6 +33,11 @@ final class ElementInstrumentationService
     private $inspector;
 
     /**
+     * @var DynamicBackgroundCssReader
+     */
+    private $background_css;
+
+    /**
      * @var LoopContextResolver
      */
     private $loops;
@@ -78,7 +83,8 @@ final class ElementInstrumentationService
         $this->page_context = $page_context;
         $this->resolvers = $resolvers;
         $this->profiler = $profiler;
-        $this->inspector = new DynamicDataInspector();
+        $this->background_css = new DynamicBackgroundCssReader();
+        $this->inspector = new DynamicDataInspector(null, $this->background_css);
         $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver(null, $profiler);
     }
 
@@ -124,6 +130,12 @@ final class ElementInstrumentationService
         $collection_inspection = $this->inspectCollectionLoopRoot($attributes, $key, $element);
         if (! empty($collection_inspection['supported'])) {
             return $this->instrumentInspection($attributes, $key, $element, $collection_inspection);
+        }
+
+        if ($key === 'trail') {
+            // Bricks renders a query loop's trail marker after the loop has ended, so the loop
+            // element's own dynamic settings would be classified against the page, not a loop item.
+            return $attributes;
         }
 
         $inspection = $this->inspector->inspectForAttribute($element, $key);
@@ -564,6 +576,11 @@ final class ElementInstrumentationService
         $text_projection_descriptor = $this->buildTextProjectionDescriptor($inspection);
         if (! empty($text_projection_descriptor)) {
             $render_descriptor = array_merge($render_descriptor, $text_projection_descriptor);
+        }
+        if (($inspection['background_source'] ?? '') === 'global_class') {
+            $render_descriptor['background_source'] = 'global_class';
+            $render_descriptor['global_class_id'] = sanitize_text_field((string) ($inspection['global_class_id'] ?? ''));
+            $render_descriptor['global_class_name'] = sanitize_text_field((string) ($inspection['global_class_name'] ?? ''));
         }
 
         $descriptor = new EditableDescriptor(
@@ -2114,10 +2131,116 @@ final class ElementInstrumentationService
         }
 
         if ($context === 'background_image') {
-            return $this->extractComparableBackgroundImage($value);
+            $background = $this->resolveRenderedBackgroundImage($value, $descriptor);
+
+            return $background === null ? '' : $background;
         }
 
         return $this->extractComparableText($value);
+    }
+
+    /**
+     * The background image the element actually renders: its inline style, else the
+     * stylesheet rule Bricks emitted for it.
+     *
+     * @param string             $value      The element's opening tag.
+     * @param EditableDescriptor $descriptor
+     * @return string|null Null when nothing rendered a background for this element.
+     */
+    private function resolveRenderedBackgroundImage($value, EditableDescriptor $descriptor)
+    {
+        $inline_background = $this->extractComparableBackgroundImage($value);
+        if ($inline_background !== '') {
+            return $inline_background;
+        }
+
+        return $this->extractEmittedBackgroundImage($descriptor, (string) $value);
+    }
+
+    /**
+     * Loop-owned background descriptors bind the loop item's field, so they are only verifiable
+     * against a rule Bricks scoped to that loop item. Without one, whatever renders (if anything)
+     * is not the loop item's value and the descriptor must fail closed.
+     *
+     * @param string             $value
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function isUnverifiableLoopBackground($value, EditableDescriptor $descriptor)
+    {
+        return ($descriptor->render['context'] ?? '') === 'background_image'
+            && (string) ($descriptor->render['loop_signature'] ?? '') !== ''
+            && $this->resolveRenderedBackgroundImage($value, $descriptor) === null;
+    }
+
+    /**
+     * Bricks renders dynamic backgrounds as CSS rules, not inline styles. Read the rule it
+     * emitted for this element (element setting) or for its bound global class.
+     *
+     * Inside a query loop Bricks scopes each item's rule with the item's loop identifier,
+     * e.g. `.brxe-abc.brxe-block[data-query-loop-index="2"]` (or `.brxe-loop .brxe-abc...` for a
+     * descendant of the loop element), and stamps the same `data-query-loop-index` on the
+     * element. Loop descriptors only match that per-item rule; the unscoped rule is resolved
+     * against the page, not the loop item.
+     *
+     * @param EditableDescriptor $descriptor
+     * @param string             $tag The element's rendered opening tag.
+     * @return string|null Null when no matching rule exists; '' when Bricks emitted `none`.
+     */
+    private function extractEmittedBackgroundImage(EditableDescriptor $descriptor, $tag = '')
+    {
+        $element_id = isset($descriptor->render['element_id']) ? sanitize_html_class((string) $descriptor->render['element_id']) : '';
+        $element_name = isset($descriptor->render['element_name']) ? sanitize_key((string) $descriptor->render['element_name']) : '';
+        $is_class_background = ($descriptor->render['background_source'] ?? '') === 'global_class';
+        $class_name = $is_class_background && isset($descriptor->render['global_class_name']) ? trim((string) $descriptor->render['global_class_name']) : '';
+
+        if ($is_class_background ? ($class_name === '' || $element_name === '') : $element_id === '') {
+            return null;
+        }
+
+        if ((string) ($descriptor->render['loop_signature'] ?? '') !== '') {
+            $loop_index = self::extractQueryLoopIndex($tag);
+            if ($loop_index === '' || $element_name === '') {
+                return null;
+            }
+
+            $loop_index_selector = '[data-query-loop-index="' . $loop_index . '"]';
+            if ($is_class_background) {
+                $selectors = [DynamicDataInspector::globalClassBackgroundSelector($class_name, $element_name) . $loop_index_selector];
+            } else {
+                $selector = '.brxe-' . $element_id . '.brxe-' . $element_name . $loop_index_selector;
+                $query_element_id = isset($descriptor->loop['query_element_id']) ? sanitize_html_class((string) $descriptor->loop['query_element_id']) : '';
+                $selectors = $query_element_id !== '' && $query_element_id !== $element_id
+                    ? ['.brxe-' . $query_element_id . ' ' . $selector]
+                    : [$selector];
+            }
+        } elseif ($is_class_background) {
+            $selectors = [DynamicDataInspector::globalClassBackgroundSelector($class_name, $element_name)];
+        } else {
+            $selectors = ['#brxe-' . $element_id, '.brxe-' . $element_id];
+        }
+
+        $rule = $this->background_css->findBackgroundImage($selectors);
+
+        return is_array($rule) ? $this->normalizeComparableValue($rule['url']) : null;
+    }
+
+    /**
+     * The `data-query-loop-index` Bricks stamped on a loop item that has per-item dynamic CSS.
+     *
+     * @param string $tag
+     * @return string
+     */
+    private static function extractQueryLoopIndex($tag)
+    {
+        if (! preg_match('/\sdata-query-loop-index=(["\'])(.*?)\1/i', (string) $tag, $matches)) {
+            return '';
+        }
+
+        $loop_index = html_entity_decode((string) $matches[2], ENT_QUOTES, 'UTF-8');
+
+        // Bricks identifiers are element ids and integers joined by ':'; anything else cannot be a selector we emitted.
+        return preg_match('/^[A-Za-z0-9_:-]+$/', $loop_index) ? $loop_index : '';
     }
 
     /**
@@ -2367,7 +2490,7 @@ final class ElementInstrumentationService
 
         $raw_value = $resolver->getValue($descriptor);
         $rendered_fragment = $this->resolveRenderedFragment($element_html, $descriptor);
-        if ($rendered_fragment === '') {
+        if ($rendered_fragment === '' || $this->isUnverifiableLoopBackground($rendered_fragment, $descriptor)) {
             $this->dropDescriptorByToken($descriptor->token);
 
             return $this->stripMarkerAttributesForToken($element_html, $descriptor->token);

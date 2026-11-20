@@ -15,9 +15,17 @@ final class CapabilityManager
             return false;
         }
 
-        $capability = (string) apply_filters('dbvc_visual_editor_base_capability', 'edit_others_posts');
+        return current_user_can($this->baseCapability());
+    }
 
-        return current_user_can($capability);
+    /**
+     * The capability that lets a user run the Visual Editor at all.
+     *
+     * @return string
+     */
+    public function baseCapability()
+    {
+        return (string) apply_filters('dbvc_visual_editor_base_capability', 'edit_others_posts');
     }
 
     /**

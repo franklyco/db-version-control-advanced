@@ -1992,10 +1992,35 @@
 	// Open / close
 	// ------------------------------------------------------------------
 
-	function findToolbarTrigger() {
-		return document.querySelector(
-			'[data-dbvc-ve-toolbar-action="workspace"]'
+	/**
+	 * UT6.2a: the toolbar control for this surface. The overlay answers
+	 * `dbvc:visual-editor:toolbar:trigger` (it knows where the control lives,
+	 * including a host toolbar once the controls dock there); without an
+	 * answer, fall back to the Visual Editor's own toolbar button.
+	 *
+	 * @param {string} action A `data-dbvc-ve-toolbar-action` value.
+	 * @return {HTMLElement|null} The control, or null.
+	 */
+	function lookupToolbarTrigger( action ) {
+		const detail = { action, trigger: null, answered: false };
+
+		document.dispatchEvent(
+			new window.CustomEvent( 'dbvc:visual-editor:toolbar:trigger', {
+				detail,
+			} )
 		);
+
+		if ( detail.answered ) {
+			return detail.trigger || null;
+		}
+
+		return document.querySelector(
+			'[data-dbvc-ve-toolbar-action="' + action + '"]'
+		);
+	}
+
+	function findToolbarTrigger() {
+		return lookupToolbarTrigger( 'workspace' );
 	}
 
 	function setTriggerExpanded( expanded ) {

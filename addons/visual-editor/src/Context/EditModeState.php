@@ -148,15 +148,32 @@ final class EditModeState
      */
     public function buildToggleUrl()
     {
+        return esc_url($this->toggleUrl());
+    }
+
+    /**
+     * The toggle URL unescaped for HTML, for a consumer that escapes it
+     * itself (the host toolbar's registry, UT6.2b).
+     *
+     * @return string
+     */
+    public function buildToggleUrlRaw()
+    {
+        return esc_url_raw($this->toggleUrl());
+    }
+
+    /**
+     * @return string
+     */
+    private function toggleUrl()
+    {
         $toggle = $this->isActive() ? '0' : '1';
 
-        return esc_url(
-            add_query_arg(
-                [
-                    self::TOGGLE_QUERY_ARG => $toggle,
-                    self::NONCE_QUERY_ARG => wp_create_nonce(self::NONCE_ACTION),
-                ]
-            )
+        return add_query_arg(
+            [
+                self::TOGGLE_QUERY_ARG => $toggle,
+                self::NONCE_QUERY_ARG => wp_create_nonce(self::NONCE_ACTION),
+            ]
         );
     }
 

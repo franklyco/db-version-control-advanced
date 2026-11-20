@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/support/MediaManagerEarlyBootShims.php';
+
 /**
  * R2-H Phase 1 Slice 5 — derived JSON mirror of the durable Media Index.
  *
@@ -189,6 +191,50 @@ final class VisualEditorMediaIndexJsonExportTest extends WP_UnitTestCase
             $this->assertSame($before[$i]['label'], $after[$i]['label']);
             $this->assertSame($before[$i]['entity_ref'], $after[$i]['entity_ref']);
         }
+    }
+
+    /**
+     * The add-on calls importIfEmpty() from Addon::register() while its plugin file is
+     * still loading, before pluggable.php. Restoring derives each entity_ref with
+     * wp_salt(), so the restore must wait for plugins_loaded instead of running then.
+     */
+    public function test_import_called_during_plugin_load_waits_for_plugins_loaded(): void
+    {
+        global $wp_actions;
+
+        $serving = $this->store->currentGeneration();
+        $this->seedRow('post', 81, 'dbvc_svc', 1, $serving);
+        $this->seedRow('post', 82, 'dbvc_svc', 2, $serving);
+        $expected_ref = $this->store->getEntity('post', 81, 'dbvc_svc')['entity_ref'];
+
+        $exporter = $this->makeExporter(true);
+        $this->assertFileExists($exporter->exportAll());
+
+        $this->store->deleteAll();
+        delete_option('dbvc_visual_editor_media_index_generation');
+        delete_option('dbvc_visual_editor_media_index_build');
+
+        $plugins_loaded = $wp_actions['plugins_loaded'] ?? null;
+        unset($wp_actions['plugins_loaded']);
+        $GLOBALS['dbvc_test_before_pluggables'] = true;
+        try {
+            $imported = $exporter->importIfEmpty();
+        } finally {
+            unset($GLOBALS['dbvc_test_before_pluggables']);
+            if ($plugins_loaded !== null) {
+                $wp_actions['plugins_loaded'] = $plugins_loaded;
+            }
+        }
+
+        $this->assertSame(0, $imported, 'Nothing may be restored before pluggable.php loads.');
+        $this->assertSame(0, $this->store->countEntities());
+        $this->assertSame(10, has_action('plugins_loaded', [$exporter, 'importIfEmpty']));
+
+        // plugins_loaded runs the deferred restore once pluggable functions exist.
+        $this->assertSame(2, $exporter->importIfEmpty());
+        $this->assertSame($serving, $this->store->currentGeneration());
+        $this->assertSame(2, $this->store->countEntities(['generation' => $serving]));
+        $this->assertSame($expected_ref, $this->store->getEntity('post', 81, 'dbvc_svc')['entity_ref']);
     }
 
     public function test_export_no_ops_when_sync_base_is_absent(): void

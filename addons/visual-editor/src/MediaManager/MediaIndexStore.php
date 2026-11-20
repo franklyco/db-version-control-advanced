@@ -26,7 +26,7 @@ namespace Dbvc\VisualEditor\MediaManager;
  */
 final class MediaIndexStore
 {
-    private const SCHEMA_VERSION = 2;
+    private const SCHEMA_VERSION = 3;
     private const OPTION_SCHEMA_VERSION = 'dbvc_visual_editor_media_index_schema_version';
     private const OPTION_GENERATION = 'dbvc_visual_editor_media_index_generation';
 
@@ -91,10 +91,22 @@ final class MediaIndexStore
      */
     public function rotateGeneration()
     {
-        $generation = 'vmig_' . substr(hash('sha256', uniqid('dbvc_media_index', true) . wp_rand()), 0, 20);
+        $generation = $this->newGeneration();
         update_option(self::OPTION_GENERATION, $generation);
 
         return $generation;
+    }
+
+    /**
+     * A fresh `vmig_` generation id. Uses PHP's own randomness, not wp_rand(): the
+     * add-on can reach this while its plugin file is still loading, before WordPress
+     * includes pluggable.php.
+     *
+     * @return string
+     */
+    private function newGeneration()
+    {
+        return 'vmig_' . substr(hash('sha256', uniqid('dbvc_media_index', true) . random_bytes(16)), 0, 20);
     }
 
     /**
@@ -152,7 +164,7 @@ final class MediaIndexStore
             $this->deleteGeneration($previous_building);
         }
 
-        $generation = 'vmig_' . substr(hash('sha256', uniqid('dbvc_media_rebuild', true) . wp_rand()), 0, 20);
+        $generation = $this->newGeneration();
         update_option(self::OPTION_BUILDING_GENERATION, $generation, false);
 
         return $generation;
@@ -678,10 +690,13 @@ final class MediaIndexStore
         $charset_collate = $wpdb->get_charset_collate();
         $table = $this->tableName();
 
+        // Before dbDelta, which would try to add the key a second time and fail.
+        $identity_key_repaired = $this->repairEntityIdentityKey();
+
         // Slice 4b-2 (schema v2): the unique key includes index_generation so a
         // building-gen row can coexist with the serving-gen row for the same entity
-        // during an atomic rebuild. Prior schema had a per-entity unique key which
-        // would have caused a partial build to clobber the serving row.
+        // during an atomic rebuild. Prior schema had a per-entity unique key, which
+        // {@see repairEntityIdentityKey()} replaces on tables that still carry it.
         dbDelta("CREATE TABLE {$table} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             entity_type varchar(32) NOT NULL DEFAULT '',
@@ -704,7 +719,57 @@ final class MediaIndexStore
             KEY missing (missing_count)
         ) {$charset_collate};");
 
+        // Never stamp a schema the table does not have: a v2 stamp over the old key is
+        // what left upgraded sites rejecting every rebuild write.
+        if (! in_array('index_generation', $this->entityIdentityKeyColumns(), true)) {
+            return;
+        }
+
         update_option(self::OPTION_SCHEMA_VERSION, (string) self::SCHEMA_VERSION);
+
+        // Schema v3: the old key rejected a rebuild's write for every indexed entity,
+        // so the last swap pruned those rows and any running rebuild has already
+        // skipped them. Start over; the builder restarts when the generation changes.
+        if ($identity_key_repaired) {
+            $this->beginRebuild();
+        }
+    }
+
+    /**
+     * Replace a pre-v2 `entity_identity` key that lacks `index_generation`. dbDelta
+     * cannot do this: it never alters an existing index. Every old key value is unique
+     * under the wider key, so the swap cannot fail on existing rows.
+     *
+     * @return bool True if the key was replaced.
+     */
+    private function repairEntityIdentityKey()
+    {
+        global $wpdb;
+
+        $columns = $this->entityIdentityKeyColumns();
+        if ($columns === [] || in_array('index_generation', $columns, true)) {
+            return false;
+        }
+
+        return $wpdb->query(
+            "ALTER TABLE {$this->tableName()} DROP INDEX entity_identity, ADD UNIQUE KEY entity_identity (entity_type, entity_id, entity_subtype, index_generation)"
+        ) !== false;
+    }
+
+    /**
+     * @return array<int, string> The key's columns, or an empty array if the table or
+     *                            key does not exist yet.
+     */
+    private function entityIdentityKeyColumns()
+    {
+        global $wpdb;
+
+        // The table is legitimately absent on first install.
+        $suppressed = $wpdb->suppress_errors(true);
+        $rows = $wpdb->get_results("SHOW INDEX FROM {$this->tableName()} WHERE Key_name = 'entity_identity'", ARRAY_A);
+        $wpdb->suppress_errors($suppressed);
+
+        return array_column(is_array($rows) ? $rows : [], 'Column_name');
     }
 
     /**

@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 489,
-        "source_fingerprint": "sha256:57edaf8740dda9acdf58b06c52d0dab582d1ae5fc2755cb31d5ebb3407dfdb38",
+        "source_file_count": 492,
+        "source_fingerprint": "sha256:adcfe8b89d480b0fc9e5d14063409a51ad2f691c2fadf2c69279d4a32bb476e3",
         "live_runtime_verified": false
     },
     "counts": {
@@ -16,12 +16,12 @@
         "cli_namespaces": 13,
         "database_tables": 45,
         "documentation": 542,
-        "extension_points": 203,
-        "hook_listeners": 223,
+        "extension_points": 204,
+        "hook_listeners": 225,
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "tests": 207
+        "tests": 209
     },
     "collections": {
         "admin_handlers": [
@@ -4536,7 +4536,7 @@
                 "name": "dbvc_ve_media_field_index",
                 "source_ref": {
                     "path": "addons/visual-editor/src/MediaManager/MediaIndexStore.php",
-                    "line": 720
+                    "line": 785
                 }
             },
             {
@@ -6969,7 +6969,7 @@
                 "hook": "dbvc_visual_editor_base_capability",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Permissions/CapabilityManager.php",
-                    "line": 18
+                    "line": 28
                 }
             },
             {
@@ -7024,7 +7024,7 @@
                 "hook": "dbvc_visual_editor_bricks_acf_fields_cache_trigger_post_types",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Performance/Bricks/AcfFieldsCacheTriggers.php",
-                    "line": 78
+                    "line": 80
                 }
             },
             {
@@ -7068,7 +7068,7 @@
                 "hook": "dbvc_visual_editor_control_center_providers",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 350
+                    "line": 360
                 }
             },
             {
@@ -7127,6 +7127,17 @@
                 }
             },
             {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_host_toolbar_enabled.b0f8b213",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "apply_filters",
+                "hook": "dbvc_visual_editor_host_toolbar_enabled",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/HostToolbar/HostToolbarRegistrar.php",
+                    "line": 94
+                }
+            },
+            {
                 "discovery_id": "hook.extension_point.dbvc_visual_editor_invalidate_cache.31b82f2c",
                 "kind": "extension_point",
                 "scope": "core",
@@ -7167,7 +7178,7 @@
                 "hook": "dbvc_visual_editor_media_index_imported",
                 "source_ref": {
                     "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
-                    "line": 204
+                    "line": 217
                 }
             },
             {
@@ -7178,7 +7189,7 @@
                 "hook": "dbvc_visual_editor_media_index_list_enabled",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Assets/AssetLoader.php",
-                    "line": 224
+                    "line": 238
                 }
             },
             {
@@ -7233,7 +7244,7 @@
                 "hook": "dbvc_visual_editor_option_capability",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Permissions/CapabilityManager.php",
-                    "line": 81
+                    "line": 89
                 }
             },
             {
@@ -8148,7 +8159,7 @@
                 "hook": "after_setup_theme",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 369
+                    "line": 379
                 }
             },
             {
@@ -8467,7 +8478,7 @@
                 "hook": "dbvc_visual_editor_media_index_build_completed",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 272
+                    "line": 282
                 }
             },
             {
@@ -8478,7 +8489,7 @@
                 "hook": "dbvc_visual_editor_media_index_reconciled",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 273
+                    "line": 283
                 }
             },
             {
@@ -8489,7 +8500,7 @@
                 "hook": "dbvc_visual_editor_media_scan_completed",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 263
+                    "line": 272
                 }
             },
             {
@@ -8798,6 +8809,17 @@
                 "source_ref": {
                     "path": "addons/visual-editor/src/Journal/ChangeJournalStore.php",
                     "line": 15
+                }
+            },
+            {
+                "discovery_id": "hook.listener.plugins_loaded.dbb8f313",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "plugins_loaded",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
+                    "line": 142
                 }
             },
             {
@@ -9369,7 +9391,7 @@
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 372
+                    "line": 382
                 }
             },
             {
@@ -9380,7 +9402,7 @@
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 373
+                    "line": 383
                 }
             },
             {
@@ -9637,6 +9659,17 @@
                 }
             },
             {
+                "discovery_id": "hook.listener.vf_toolbar_register.72b5baa1",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "vf_toolbar_register",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/HostToolbar/HostToolbarRegistrar.php",
+                    "line": 69
+                }
+            },
+            {
                 "discovery_id": "hook.listener.wp.16e73a9b",
                 "kind": "listener",
                 "scope": "core",
@@ -9776,7 +9809,7 @@
                 "hook": "wp_enqueue_scripts",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Assets/AssetLoader.php",
-                    "line": 44
+                    "line": 51
                 }
             },
             {
@@ -9787,7 +9820,7 @@
                 "hook": "wp_footer",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 371
+                    "line": 381
                 }
             },
             {
@@ -11693,7 +11726,7 @@
                 "source_refs": [
                     {
                         "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
-                        "line": 167
+                        "line": 180
                     }
                 ]
             },
@@ -11709,7 +11742,7 @@
                 "source_refs": [
                     {
                         "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
-                        "line": 186
+                        "line": 199
                     }
                 ]
             },
@@ -13370,6 +13403,8 @@
             "tests/phpunit/VisualEditorCurationRecommenderTest.php",
             "tests/phpunit/VisualEditorCurationStoreTest.php",
             "tests/phpunit/VisualEditorElementInstrumentationTest.php",
+            "tests/phpunit/VisualEditorGlobalClassBackgroundTest.php",
+            "tests/phpunit/VisualEditorHostToolbarTest.php",
             "tests/phpunit/VisualEditorMediaIndexBuilderTest.php",
             "tests/phpunit/VisualEditorMediaIndexControllerTest.php",
             "tests/phpunit/VisualEditorMediaIndexInvalidatorTest.php",

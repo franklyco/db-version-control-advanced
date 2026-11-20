@@ -11,6 +11,7 @@ use Dbvc\VisualEditor\Cache\CacheInvalidator;
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Context\FrontendRuntimeGuard;
 use Dbvc\VisualEditor\Context\PageContextResolver;
+use Dbvc\VisualEditor\HostToolbar\HostToolbarRegistrar;
 use Dbvc\VisualEditor\Journal\ChangeJournalRecorder;
 use Dbvc\VisualEditor\Journal\ChangeJournalStore;
 use Dbvc\VisualEditor\MediaManager\AcfMediaFieldCatalog;
@@ -70,6 +71,11 @@ final class Addon
      * @var CapabilityManager
      */
     private $capabilities;
+
+    /**
+     * @var HostToolbarRegistrar
+     */
+    private $host_toolbar;
 
     /**
      * @var ToggleNode
@@ -219,7 +225,9 @@ final class Addon
         $media_index_read_model = new MediaIndexReadModel($media_index_store, $media_policy);
 
         $this->toggle_node = new ToggleNode($this->edit_mode, $capabilities);
-        $this->asset_loader = new AssetLoader($this->bootstrap_file, $this->edit_mode, $this->registry, $page_context);
+        // UT6.2b: the Visual Editor's controls as items in a host toolbar.
+        $this->host_toolbar = new HostToolbarRegistrar($this->edit_mode, $capabilities);
+        $this->asset_loader = new AssetLoader($this->bootstrap_file, $this->edit_mode, $this->registry, $page_context, $this->host_toolbar);
         $this->hook_registrar = new HookRegistrar($this->edit_mode, $this->registry, $page_context, $resolvers, $loops, $active_profiler);
         $this->routes = new Routes(
             $this->registry,
@@ -248,6 +256,7 @@ final class Addon
     {
         $this->edit_mode->register();
         $this->toggle_node->register();
+        $this->host_toolbar->register();
         $this->asset_loader->register();
         $this->hook_registrar->register();
         $this->routes->register();
@@ -267,7 +276,8 @@ final class Addon
             $this->media_index_rebuild_controller->register();
             // Slice 5: guarded restore + refresh the JSON mirror at completion
             // boundaries so the sync folder always reflects the current serving
-            // generation without per-invalidator churn.
+            // generation without per-invalidator churn. During plugin load the
+            // restore defers itself to plugins_loaded (it needs pluggable wp_salt()).
             $this->media_index_json_exporter->importIfEmpty();
             add_action('dbvc_visual_editor_media_index_build_completed', [$this->media_index_json_exporter, 'exportAll']);
             add_action('dbvc_visual_editor_media_index_reconciled', [$this->media_index_json_exporter, 'exportAll']);
@@ -392,10 +402,12 @@ final class Addon
     {
         $this->edit_mode->unregister();
         $this->toggle_node->unregister();
+        $this->host_toolbar->unregister();
         $this->asset_loader->unregister();
         $this->hook_registrar->unregister();
         $this->routes->unregister();
         $this->journal->unregister();
+        remove_action('plugins_loaded', [$this->media_index_json_exporter, 'importIfEmpty']);
         remove_action('wp_footer', [$this->registry, 'persistRequestSession'], 19);
         remove_action('shutdown', [$this->registry, 'persistRequestSession'], 20);
         remove_action('shutdown', [$this->profiler, 'flush'], 999);

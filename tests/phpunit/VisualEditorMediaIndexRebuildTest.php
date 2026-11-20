@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/support/MediaManagerEarlyBootShims.php';
+
 // Guarded ACF shims (shared with the other Media Index / scanner tests).
 if (! function_exists('acf_get_field_groups')) {
     function acf_get_field_groups()
@@ -48,6 +50,16 @@ final class VisualEditorMediaIndexRebuildTest extends WP_UnitTestCase
     private $previous_options = [];
 
     /**
+     * @var bool
+     */
+    private $implicitly_committed = false;
+
+    /**
+     * @var array<int, int>
+     */
+    private $committed_post_ids = [];
+
+    /**
      * @var \Dbvc\VisualEditor\MediaManager\MediaIndexStore
      */
     private $store;
@@ -64,6 +76,8 @@ final class VisualEditorMediaIndexRebuildTest extends WP_UnitTestCase
             'dbvc_visual_editor_media_index_build',
             'dbvc_visual_editor_media_index_topology_fingerprint',
             'dbvc_visual_editor_media_index_building_generation',
+            'dbvc_visual_editor_media_index_schema_version',
+            'dbvc_visual_editor_media_index_generation',
         ] as $option_name) {
             $this->previous_options[$option_name] = get_option($option_name, '__dbvc_missing_option__');
         }
@@ -95,6 +109,7 @@ final class VisualEditorMediaIndexRebuildTest extends WP_UnitTestCase
     {
         $this->store->deleteAll();
         $this->store->abortRebuild();
+        $this->restoreIdentityKey();
         unset(
             $GLOBALS['dbvc_test_acf_groups'],
             $GLOBALS['dbvc_test_acf_fields'],
@@ -115,6 +130,7 @@ final class VisualEditorMediaIndexRebuildTest extends WP_UnitTestCase
         }
 
         parent::tear_down();
+        $this->undoImplicitCommits();
     }
 
     public function test_rebuild_keeps_serving_old_generation_until_completion(): void
@@ -306,6 +322,220 @@ final class VisualEditorMediaIndexRebuildTest extends WP_UnitTestCase
         $this->drainBuilder($builder);
         $this->assertSame($building, $this->store->currentGeneration());
         $this->assertIsArray($this->store->getEntity('post', $ids[0], 'dbvc_rbld'));
+    }
+
+    /**
+     * Sites built on the pre-generation key kept it after the v2 stamp: dbDelta cannot
+     * alter an existing index, so every building-gen insert for an already-indexed
+     * entity was rejected. The upgrade must replace the key, and rebuild the index
+     * because the last swap on that key pruned the rows it had rejected.
+     */
+    public function test_legacy_identity_key_is_repaired_and_index_rebuilt(): void
+    {
+        $this->committed_post_ids = $this->createPosts(4);
+        $builder = $this->makeBuilder();
+        $this->drainBuilder($builder);
+        $serving_before = $this->store->currentGeneration();
+        $this->assertSame(4, $this->store->countEntities(['generation' => $serving_before]));
+
+        $this->installLegacyIdentityKey();
+        $this->resetDatabaseErrors();
+
+        $this->store->maybeUpgrade();
+
+        $this->assertSame(
+            ['entity_type', 'entity_id', 'entity_subtype', 'index_generation'],
+            $this->identityKeyColumns()
+        );
+        $this->assertTrue($this->store->hasActiveRebuild(), 'A repaired key must rebuild the index.');
+        $this->assertTrue($builder->needsBuild());
+        $this->assertSame(4, $this->store->countEntities(['generation' => $serving_before]));
+
+        $this->drainBuilder($builder);
+
+        $this->assertFalse($this->store->hasActiveRebuild());
+        $this->assertNotSame($serving_before, $this->store->currentGeneration());
+        $this->assertSame(4, $this->store->countEntities(['generation' => $this->store->currentGeneration()]));
+        $this->assertSame(4, $this->store->countEntities());
+        $this->assertSame([], $this->duplicateDatabaseErrors());
+    }
+
+    /**
+     * The live failure: a rebuild already part-way through on the legacy key has
+     * dropped the rows in its first chunks, and its cursor is past them. Finishing it
+     * would swap in a partial generation and prune the serving rows, so the repair
+     * has to restart it from the top.
+     */
+    public function test_in_flight_rebuild_on_legacy_key_restarts_instead_of_losing_rows(): void
+    {
+        $this->committed_post_ids = $this->createPosts(4);
+        $builder = $this->makeBuilder();
+        $this->drainBuilder($builder);
+        $serving_before = $this->store->currentGeneration();
+
+        // Run a chunk the way the old release did: upgrade skipped, legacy key live.
+        $this->installLegacyIdentityKey();
+        update_option('dbvc_visual_editor_media_index_schema_version', '99');
+        $abandoned = $this->store->beginRebuild();
+        $builder->reset();
+        $this->resetDatabaseErrors();
+        $partial = $builder->runChunk(2);
+        $this->assertSame(0, $partial['indexed'], 'The legacy key must reject the building-gen rows.');
+        $this->assertCount(2, $this->duplicateDatabaseErrors());
+        $this->assertSame(0, $this->store->countEntities(['generation' => $abandoned]));
+
+        update_option('dbvc_visual_editor_media_index_schema_version', '2');
+        $this->resetDatabaseErrors();
+        $this->drainBuilder($builder);
+
+        $serving_after = $this->store->currentGeneration();
+        $this->assertNotSame($serving_before, $serving_after);
+        $this->assertNotSame($abandoned, $serving_after);
+        $this->assertSame(4, $this->store->countEntities(['generation' => $serving_after]));
+        $this->assertSame(4, $this->store->countEntities());
+        $this->assertSame([], $this->duplicateDatabaseErrors());
+    }
+
+    /**
+     * The add-on reaches maybeUpgrade() while its plugin file is still loading, so
+     * the repair, including the rebuild it starts, must not need pluggable functions.
+     */
+    public function test_legacy_key_repair_runs_before_pluggable_functions_load(): void
+    {
+        $this->committed_post_ids = $this->createPosts(2);
+        $builder = $this->makeBuilder();
+        $this->drainBuilder($builder);
+        $serving_before = $this->store->currentGeneration();
+
+        $this->installLegacyIdentityKey();
+        $GLOBALS['dbvc_test_before_pluggables'] = true;
+        try {
+            $this->store->maybeUpgrade();
+        } finally {
+            unset($GLOBALS['dbvc_test_before_pluggables']);
+        }
+
+        $this->assertContains('index_generation', $this->identityKeyColumns());
+        $this->assertTrue($this->store->hasActiveRebuild(), 'The repair must still start the rebuild.');
+
+        $this->drainBuilder($builder);
+
+        $this->assertNotSame($serving_before, $this->store->currentGeneration());
+        $this->assertSame(2, $this->store->countEntities(['generation' => $this->store->currentGeneration()]));
+    }
+
+    public function test_upgrade_leaves_a_current_identity_key_and_index_alone(): void
+    {
+        $this->createPosts(2);
+        $builder = $this->makeBuilder();
+        $this->drainBuilder($builder);
+        update_option('dbvc_visual_editor_media_index_schema_version', '2');
+
+        $this->store->maybeUpgrade();
+
+        $this->assertFalse($this->store->hasActiveRebuild());
+        $this->assertFalse($builder->needsBuild());
+        $this->assertGreaterThan(2, (int) get_option('dbvc_visual_editor_media_index_schema_version'));
+    }
+
+    /**
+     * Put the table back in the shape a pre-generation install still has, stamped v2.
+     *
+     * @return void
+     */
+    private function installLegacyIdentityKey()
+    {
+        global $wpdb;
+
+        $this->implicitly_committed = true;
+        $table = $wpdb->prefix . 'dbvc_ve_media_field_index';
+        $wpdb->query("ALTER TABLE {$table} DROP INDEX entity_identity, ADD UNIQUE KEY entity_identity (entity_type, entity_id, entity_subtype)");
+        update_option('dbvc_visual_editor_media_index_schema_version', '2');
+    }
+
+    /**
+     * ALTER TABLE commits implicitly, even on the suite's temporary tables, so what a
+     * legacy-key test wrote before it survives the rollback and must be removed here.
+     *
+     * @return void
+     */
+    private function undoImplicitCommits()
+    {
+        global $wpdb;
+
+        if (! $this->implicitly_committed) {
+            return;
+        }
+
+        // The cache still holds the values tear_down set before the rollback, and
+        // update_option() would skip a write that appears to change nothing.
+        wp_cache_flush();
+        foreach ($this->committed_post_ids as $post_id) {
+            wp_delete_post($post_id, true);
+        }
+        $this->store->deleteAll();
+        foreach ($this->previous_options as $option_name => $value) {
+            if ($value === '__dbvc_missing_option__') {
+                delete_option($option_name);
+            } else {
+                update_option($option_name, $value);
+            }
+        }
+        $wpdb->query('COMMIT');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function identityKeyColumns()
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'dbvc_ve_media_field_index';
+        $rows = $wpdb->get_results("SHOW INDEX FROM {$table} WHERE Key_name = 'entity_identity'", ARRAY_A);
+
+        return array_column(is_array($rows) ? $rows : [], 'Column_name');
+    }
+
+    /**
+     * The table outlives a test, so a failed assertion must not leave the legacy key
+     * behind for the rest of the suite.
+     *
+     * @return void
+     */
+    private function restoreIdentityKey()
+    {
+        global $wpdb;
+
+        if (in_array('index_generation', $this->identityKeyColumns(), true)) {
+            return;
+        }
+
+        $table = $wpdb->prefix . 'dbvc_ve_media_field_index';
+        $wpdb->query("ALTER TABLE {$table} DROP INDEX entity_identity, ADD UNIQUE KEY entity_identity (entity_type, entity_id, entity_subtype, index_generation)");
+    }
+
+    /**
+     * @return void
+     */
+    private function resetDatabaseErrors()
+    {
+        $GLOBALS['EZSQL_ERROR'] = [];
+    }
+
+    /**
+     * Every "Duplicate entry" or "Duplicate key name" wpdb reported since the reset,
+     * read from the list wpdb keeps even while errors are suppressed.
+     *
+     * @return array<int, string>
+     */
+    private function duplicateDatabaseErrors()
+    {
+        $messages = array_column((array) ($GLOBALS['EZSQL_ERROR'] ?? []), 'error_str');
+
+        return array_values(array_filter($messages, static function ($message) {
+            return stripos((string) $message, 'duplicate') !== false;
+        }));
     }
 
     /**
