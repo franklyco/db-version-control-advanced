@@ -127,6 +127,7 @@ Namespace follows the two existing apps.
 | `dbvc:visual-editor:control-center:opened` / `:closed` | BCC → workspace | `{}` | workspace sets/clears `state.overlay` (already emitted by BCC — no BCC change) |
 | `dbvc:visual-editor:media-manager:opened` / `:closed` | MM → workspace | `{}` | same (already emitted by MM) |
 | `dbvc:visual-editor:review-fields:open` | workspace → overlay-app | `{ trigger }` | **new listener in overlay-app** (R6-D-3) → `openStatusBarToolbarPopover({trigger, expandIndex:true})`; overlay-app exposes no global object (only `DBVCVisualEditorApi`), so the bridge is event-based like `absorb-descriptor` / `open-palette-bulk` |
+| `dbvc:visual-editor:toolbar:trigger` | workspace, BCC, MM → overlay-app | `{ action, trigger: null, answered: false }`, filled in place | UT6.2a: the overlay sets `trigger` (the control for `action`, or null) and `answered: true`. The drawers and the Media Manager use it to find their toolbar control instead of `document.querySelector('[data-dbvc-ve-toolbar-action=…]')`, and fall back to that query only when nothing answers. |
 
 ### 3.3 Public API
 

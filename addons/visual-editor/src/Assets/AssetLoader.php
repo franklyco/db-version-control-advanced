@@ -4,6 +4,7 @@ namespace Dbvc\VisualEditor\Assets;
 
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Context\PageContextResolver;
+use Dbvc\VisualEditor\HostToolbar\HostToolbarRegistrar;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
 
 final class AssetLoader
@@ -28,12 +29,18 @@ final class AssetLoader
      */
     private $page_context;
 
-    public function __construct($bootstrap_file, EditModeState $edit_mode, EditableRegistry $registry, PageContextResolver $page_context)
+    /**
+     * @var HostToolbarRegistrar|null
+     */
+    private $host_toolbar;
+
+    public function __construct($bootstrap_file, EditModeState $edit_mode, EditableRegistry $registry, PageContextResolver $page_context, ?HostToolbarRegistrar $host_toolbar = null)
     {
         $this->bootstrap_file = (string) $bootstrap_file;
         $this->edit_mode = $edit_mode;
         $this->registry = $registry;
         $this->page_context = $page_context;
+        $this->host_toolbar = $host_toolbar;
     }
 
     /**
@@ -211,6 +218,13 @@ final class AssetLoader
                 'pageContext' => $page_context,
                 'currentEditLink' => $this->buildCurrentEditLink($page_context),
                 'toggleUrl' => $this->edit_mode->buildToggleUrl(),
+                // UT6.2b: whether a host toolbar (the Vertical theme's
+                // universal toolbar) shows the Visual Editor's controls for
+                // this viewer. The overlay docks only when `docked` is true
+                // and the host reports ready within `readyTimeoutMs` (UT6.2d).
+                'host' => $this->host_toolbar instanceof HostToolbarRegistrar
+                    ? $this->host_toolbar->hostBootstrap()
+                    : HostToolbarRegistrar::detachedBootstrap(),
                 'supportsWpEditor' => function_exists('wp_enqueue_editor') && (wp_script_is('wp-editor', 'enqueued') || wp_script_is('wp-editor', 'done') || wp_script_is('wp-editor', 'to_do')),
                 'supportsWpMedia' => function_exists('wp_enqueue_media') && wp_script_is('media-editor', 'enqueued'),
                 'canUpload' => current_user_can('upload_files'),
@@ -470,6 +484,9 @@ final class AssetLoader
                     'badgeSharedGeneric' => __('Shared Item', 'dbvc'),
                     'toolbarLabel' => __('Visual Editor toolbar', 'dbvc'),
                     'toolbarStatus' => __('Visual Editor status', 'dbvc'),
+                    // UT6.2d: the docked status item's label in the empty and error states.
+                    'toolbarStatusEmpty' => __('No editable fields on this page', 'dbvc'),
+                    'toolbarStatusError' => __('Visual Editor needs attention', 'dbvc'),
                     'toolbarReviewFields' => __('Review fields', 'dbvc'),
                     'toolbarGoToObject' => __('Go to object', 'dbvc'),
                     'toolbarMediaManager' => __('Media Manager', 'dbvc'),

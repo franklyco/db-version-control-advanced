@@ -5,6 +5,22 @@ namespace Dbvc\VisualEditor\Bricks;
 final class DynamicDataInspector
 {
     /**
+     * @var GlobalClassBackgroundIndex
+     */
+    private $class_backgrounds;
+
+    /**
+     * @var DynamicBackgroundCssReader
+     */
+    private $background_css;
+
+    public function __construct(?GlobalClassBackgroundIndex $class_backgrounds = null, ?DynamicBackgroundCssReader $background_css = null)
+    {
+        $this->class_backgrounds = $class_backgrounds ?: new GlobalClassBackgroundIndex();
+        $this->background_css = $background_css ?: new DynamicBackgroundCssReader();
+    }
+
+    /**
      * @param object $element
      * @param string $attribute_key
      * @return array<string, mixed>
@@ -78,9 +94,89 @@ final class DynamicDataInspector
             return $image_candidate;
         }
 
+        $class_background_candidate = $this->inspectGlobalClassBackground($settings, $element);
+        if (! empty($class_background_candidate['supported'])) {
+            return $class_background_candidate;
+        }
+
         return [
             'supported' => false,
         ];
+    }
+
+    /**
+     * Bricks global classes can bind a dynamic background image that the element itself
+     * does not carry. Bricks renders it as class-scoped CSS, so pick the class whose emitted
+     * rule wins the cascade (last base rule), falling back to the element's last bound class
+     * when Bricks has not emitted the CSS yet.
+     *
+     * @param array<string, mixed> $settings
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectGlobalClassBackground(array $settings, $element)
+    {
+        $unsupported = [
+            'supported' => false,
+        ];
+
+        // An element-level background image (static or dynamic) has higher specificity
+        // than any class rule, so the class binding is not what renders.
+        $element_background = isset($settings['_background']) && is_array($settings['_background']) ? $settings['_background'] : [];
+        $element_image = isset($element_background['image']) && is_array($element_background['image']) ? $element_background['image'] : [];
+        if (! empty($element_image['useDynamicData']) || ! empty($element_image['url']) || ! empty($element_image['id'])) {
+            return $unsupported;
+        }
+
+        $element_name = isset($element->name) && is_scalar($element->name) ? sanitize_key((string) $element->name) : '';
+        if ($element_name === '' || empty($settings['_cssGlobalClasses'])) {
+            return $unsupported;
+        }
+
+        $candidates = $this->class_backgrounds->candidatesFor($settings['_cssGlobalClasses']);
+        if (empty($candidates)) {
+            return $unsupported;
+        }
+
+        $winner = null;
+        $winner_offset = -1;
+        foreach ($candidates as $class_candidate) {
+            $rule = $this->background_css->findBackgroundImage([self::globalClassBackgroundSelector($class_candidate['name'], $element_name)]);
+            if (is_array($rule) && $rule['offset'] > $winner_offset) {
+                $winner = $class_candidate;
+                $winner_offset = $rule['offset'];
+            }
+        }
+
+        if (! is_array($winner)) {
+            $winner = $candidates[count($candidates) - 1];
+        }
+
+        $candidate = $this->inspectExpression($winner['expression'], '_background.image');
+        if (! $this->supportsDirectImageSource($candidate)) {
+            return $unsupported;
+        }
+
+        $candidate['render_context'] = 'background_image';
+        $candidate['render_attribute'] = 'style';
+        $candidate['media_size'] = $winner['size'];
+        $candidate['background_source'] = 'global_class';
+        $candidate['global_class_id'] = $winner['id'];
+        $candidate['global_class_name'] = $winner['name'];
+
+        return $candidate;
+    }
+
+    /**
+     * Selector Bricks uses for a global class rule on a given element type.
+     *
+     * @param string $class_name
+     * @param string $element_name
+     * @return string
+     */
+    public static function globalClassBackgroundSelector($class_name, $element_name)
+    {
+        return '.' . trim((string) $class_name) . '.brxe-' . sanitize_key((string) $element_name);
     }
 
     /**

@@ -1405,6 +1405,7 @@
                         "hook.extension_point.dbvc_visual_editor_curation_export_path.57569c3f",
                         "hook.extension_point.dbvc_visual_editor_excluded_post_types.acd5edaf",
                         "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.3fcbdfb0",
+                        "hook.extension_point.dbvc_visual_editor_host_toolbar_enabled.b0f8b213",
                         "hook.extension_point.dbvc_visual_editor_invalidate_cache.31b82f2c",
                         "hook.extension_point.dbvc_visual_editor_control_registry_invalid.4ede4948",
                         "hook.extension_point.dbvc_visual_editor_media_index_build_completed.8ca58612",
@@ -1517,6 +1518,7 @@
                 "dbvc_visual_editor_descriptor_batch_limit",
                 "dbvc_visual_editor_excluded_post_types",
                 "dbvc_visual_editor_excluded_taxonomies",
+                "dbvc_visual_editor_host_toolbar_enabled",
                 "dbvc_visual_editor_invalidate_cache",
                 "dbvc_visual_editor_option_capability",
                 "dbvc_visual_editor_performance_profile_enabled",
@@ -1725,6 +1727,10 @@
                 {
                     "path": "addons/visual-editor/src/Performance/Bricks/AcfFieldsCacheTriggers.php",
                     "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/HostToolbar/HostToolbarRegistrar.php",
+                    "line": 94
                 }
             ],
             "test_refs": [
@@ -1737,7 +1743,8 @@
                 "tests/visual-editor-media-manager-state.test.cjs",
                 "tests/playwright/visual-editor-media-manager-table.spec.js",
                 "tests/phpunit/VisualEditorBricksAcfTagIndexTest.php",
-                "tests/phpunit/VisualEditorBricksAcfFieldsCacheTest.php"
+                "tests/phpunit/VisualEditorBricksAcfFieldsCacheTest.php",
+                "tests/phpunit/VisualEditorHostToolbarTest.php"
             ],
             "doc_refs": [
                 "addons/visual-editor/docs/README.md"

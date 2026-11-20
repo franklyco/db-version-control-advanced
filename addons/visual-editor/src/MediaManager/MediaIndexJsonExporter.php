@@ -128,10 +128,23 @@ final class MediaIndexJsonExporter
      * A no-op when the table already carries rows (the normal runtime state) or
      * when the mirror file is missing/unreadable/malformed.
      *
-     * @return int Rows imported (0 on any no-op / failure).
+     * Called before `plugins_loaded` (the add-on registers while its plugin file is
+     * still being included), it defers itself to that action and returns 0: each
+     * restored row's entity_ref is derived with wp_salt(), which lives in
+     * pluggable.php and is not defined until after plugins load.
+     *
+     * @return int Rows imported (0 on any no-op / failure / deferral).
      */
     public function importIfEmpty()
     {
+        if (! did_action('plugins_loaded')) {
+            if (! has_action('plugins_loaded', [$this, 'importIfEmpty'])) {
+                add_action('plugins_loaded', [$this, 'importIfEmpty']);
+            }
+
+            return 0;
+        }
+
         if ($this->store->countEntities() > 0) {
             return 0;
         }

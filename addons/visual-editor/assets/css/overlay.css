@@ -256,6 +256,17 @@
   color-scheme: dark;
 }
 
+/* UT6.2d: docked in a host toolbar, the own toolbar is hidden and the
+   shared popover sits 14px above the host's dock (the clearance less 4px),
+   with the panel, drawers and Media Manager following the same token. */
+:root.dbvc-ve-docked {
+  --dbvc-ve-toolbar-strip: 18px;
+}
+
+.dbvc-ve-toolbar[hidden] {
+  display: none !important;
+}
+
 .dbvc-ve-toolbar {
   position: fixed;
   left: 50%;
@@ -398,9 +409,15 @@
 }
 
 .dbvc-ve-toolbar-popover {
-  position: absolute;
+  /* UT6.2a: its own host on <body>, no longer inside the toolbar, so it
+     survives the toolbar being hidden when a host toolbar docks the
+     controls (UT6.2d). Same place as before: 14px above the 42px toolbar
+     that sits 16px up, which is the 76px strip less 4px. Same layer as
+     the toolbar, later in the DOM, so it still paints over it. */
+  position: fixed;
   left: 50%;
-  bottom: calc(100% + 14px);
+  bottom: calc(var(--dbvc-ve-bottom-clearance) - 4px);
+  z-index: var(--dbvc-ve-z-toolbar);
   width: min(520px, calc(100vw - 24px));
   /* 110px without a host toolbar. */
   max-height: calc(100vh - var(--dbvc-ve-bottom-clearance) - 34px);

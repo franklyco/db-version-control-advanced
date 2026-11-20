@@ -34,6 +34,8 @@
 		preferences: { colorScheme: 'system' },
 		workspaceBridgeBound: false,
 		toolbarEventsBound: false,
+		// UT6.2d: the host toolbar bridge, once the overlay tries to dock.
+		hostToolbar: null,
 		toolbarObjectSearchRequestId: 0,
 		toolbarObjectSearchTimer: 0,
 		toolbarObjectSearchType: 'all',
@@ -2968,6 +2970,12 @@
 	}
 
 	function announceToolbar( message ) {
+		// UT6.2d: the own toolbar's live region is hidden with it once docked.
+		if ( isHostToolbarDocked() ) {
+			state.hostToolbar.api.announce( String( message || '' ) );
+			return;
+		}
+
 		const toolbar = state.toolbarNode;
 		const region = toolbar
 			? toolbar.querySelector( '[data-dbvc-ve-toolbar-announcer]' )
@@ -3089,11 +3097,8 @@
 	}
 
 	function openPreferencesToolbarPopover( options ) {
-		const toolbar = ensureToolbar();
-		const popover =
-			state.toolbarPopoverNode ||
-			toolbar.querySelector( '.dbvc-ve-toolbar-popover' );
-		const title = toolbar.querySelector( '.dbvc-ve-toolbar-popover__title' );
+		const popover = ensureToolbarPopover();
+		const title = getToolbarPopoverPart( 'title' );
 		const body = getToolbarPopoverBody();
 
 		state.toolbarOpenPanel = 'settings';
@@ -3203,11 +3208,7 @@
 					// Keep the toolbar entry's expanded state authoritative here
 					// as well (E-152): the drawer may open before the toolbar
 					// exists (persisted restore) or from a non-toolbar trigger.
-					const button = state.toolbarNode
-						? state.toolbarNode.querySelector(
-								'[data-dbvc-ve-toolbar-action="workspace"]'
-						  )
-						: null;
+					const button = getToolbarTrigger( 'workspace' );
 					if ( button ) {
 						button.setAttribute(
 							'aria-expanded',
@@ -3385,6 +3386,10 @@
 				true
 			);
 			document.addEventListener( 'keydown', handleToolbarKeydown, true );
+			document.addEventListener(
+				'dbvc:visual-editor:toolbar:trigger',
+				handleToolbarTriggerLookup
+			);
 		}
 	}
 
@@ -3484,7 +3489,8 @@
 					'search',
 					goObjectLabel,
 					'dbvc-ve-toolbar__button--dock',
-					false
+					false,
+					{ expanded: false }
 				),
 				isMediaManagerEnabled()
 					? createToolbarButtonMarkup(
@@ -3505,7 +3511,8 @@
 					'globe',
 					sharedGlobalsLabel,
 					'dbvc-ve-toolbar__button--dock',
-					false
+					false,
+					{ expanded: false }
 				),
 				isControlCenterEnabled()
 					? createToolbarButtonMarkup(
@@ -3565,15 +3572,6 @@
 					  ),
 				'<div class="dbvc-ve-toolbar__message" hidden></div>',
 				'<p class="dbvc-ve-toolbar__sr-only" role="status" aria-live="polite" aria-atomic="true" data-dbvc-ve-toolbar-announcer="1"></p>',
-				'<div class="dbvc-ve-toolbar-popover" role="dialog" aria-modal="false" hidden>',
-				'  <div class="dbvc-ve-toolbar-popover__header">',
-				'    <div class="dbvc-ve-toolbar-popover__title" id="dbvc-ve-toolbar-popover-title"></div>',
-				`    <button type="button" class="dbvc-ve-toolbar-popover__close" data-dbvc-ve-toolbar-action="close-popover" aria-label="${ escapeHtml(
-					strings().panelCancel || 'Close'
-				) }">×</button>`,
-				'  </div>',
-				'  <div class="dbvc-ve-toolbar-popover__body"></div>',
-				'</div>',
 				'<div class="dbvc-ve-toolbar__statusbar-parking" hidden></div>',
 			].join( '' );
 
@@ -3581,30 +3579,79 @@
 		}
 
 		state.toolbarNode = toolbar;
-		state.toolbarPopoverNode = toolbar.querySelector(
-			'.dbvc-ve-toolbar-popover'
-		);
 		state.toolbarStatusbarParkingNode = toolbar.querySelector(
 			'.dbvc-ve-toolbar__statusbar-parking'
 		);
 		bindToolbarEvents( toolbar );
+		ensureToolbarPopover();
 		syncToolbarState( state.statusBarState || {} );
 
 		return toolbar;
 	}
 
-	function getToolbarPopoverBody() {
-		const toolbar = ensureToolbar();
+	/**
+	 * UT6.2a: the shared popover lives in its own host, a sibling of the
+	 * toolbar on <body>, so it stays usable when a host toolbar docks the
+	 * controls and the Visual Editor's own toolbar is hidden (UT6.2d). It
+	 * sits where it always did, just above the toolbar (overlay.css), and
+	 * routes its clicks through the same handler.
+	 *
+	 * @return {HTMLElement} The `.dbvc-ve-toolbar-popover` element.
+	 */
+	function ensureToolbarPopover() {
+		if (
+			state.toolbarPopoverNode &&
+			state.toolbarPopoverNode.isConnected
+		) {
+			return state.toolbarPopoverNode;
+		}
 
-		return toolbar.querySelector( '.dbvc-ve-toolbar-popover__body' );
+		let popover = document.querySelector( '.dbvc-ve-toolbar-popover' );
+
+		if ( ! popover ) {
+			popover = document.createElement( 'div' );
+			popover.className = 'dbvc-ve-toolbar-popover';
+			popover.setAttribute( 'role', 'dialog' );
+			popover.setAttribute( 'aria-modal', 'false' );
+			popover.hidden = true;
+			popover.innerHTML = [
+				'<div class="dbvc-ve-toolbar-popover__header">',
+				'  <div class="dbvc-ve-toolbar-popover__title" id="dbvc-ve-toolbar-popover-title"></div>',
+				`  <button type="button" class="dbvc-ve-toolbar-popover__close" data-dbvc-ve-toolbar-action="close-popover" aria-label="${ escapeHtml(
+					strings().panelCancel || 'Close'
+				) }">×</button>`,
+				'</div>',
+				'<div class="dbvc-ve-toolbar-popover__body"></div>',
+			].join( '' );
+			document.body.appendChild( popover );
+		}
+
+		if ( popover.dataset.toolbarBound !== '1' ) {
+			popover.dataset.toolbarBound = '1';
+			popover.addEventListener( 'click', handleToolbarClick );
+		}
+
+		state.toolbarPopoverNode = popover;
+
+		return popover;
+	}
+
+	function getToolbarPopoverPart( part ) {
+		ensureToolbar();
+
+		return ensureToolbarPopover().querySelector(
+			`.dbvc-ve-toolbar-popover__${ part }`
+		);
+	}
+
+	function getToolbarPopoverBody() {
+		return getToolbarPopoverPart( 'body' );
 	}
 
 	function getStatusBarMountNode() {
 		const toolbar = ensureToolbar();
-		const popover =
-			state.toolbarPopoverNode ||
-			toolbar.querySelector( '.dbvc-ve-toolbar-popover' );
-		const body = toolbar.querySelector( '.dbvc-ve-toolbar-popover__body' );
+		const popover = ensureToolbarPopover();
+		const body = getToolbarPopoverBody();
 
 		if (
 			popover &&
@@ -3636,13 +3683,8 @@
 	}
 
 	function openStatusBarToolbarPopover( options ) {
-		const toolbar = ensureToolbar();
-		const popover =
-			state.toolbarPopoverNode ||
-			toolbar.querySelector( '.dbvc-ve-toolbar-popover' );
-		const title = toolbar.querySelector(
-			'.dbvc-ve-toolbar-popover__title'
-		);
+		const popover = ensureToolbarPopover();
+		const title = getToolbarPopoverPart( 'title' );
 		const body = getToolbarPopoverBody();
 		const expandIndex = Boolean( options && options.expandIndex );
 		const wasReviewOpen = state.toolbarOpenPanel === 'review-fields';
@@ -3897,13 +3939,8 @@
 	}
 
 	function openObjectSearchToolbarPopover( options ) {
-		const toolbar = ensureToolbar();
-		const popover =
-			state.toolbarPopoverNode ||
-			toolbar.querySelector( '.dbvc-ve-toolbar-popover' );
-		const title = toolbar.querySelector(
-			'.dbvc-ve-toolbar-popover__title'
-		);
+		const popover = ensureToolbarPopover();
+		const title = getToolbarPopoverPart( 'title' );
 		const body = getToolbarPopoverBody();
 		const filters = getToolbarObjectSearchFilterOptions();
 
@@ -4376,13 +4413,8 @@
 	}
 
 	function openSharedGlobalsToolbarPopover( options ) {
-		const toolbar = ensureToolbar();
-		const popover =
-			state.toolbarPopoverNode ||
-			toolbar.querySelector( '.dbvc-ve-toolbar-popover' );
-		const title = toolbar.querySelector(
-			'.dbvc-ve-toolbar-popover__title'
-		);
+		const popover = ensureToolbarPopover();
+		const title = getToolbarPopoverPart( 'title' );
 		const body = getToolbarPopoverBody();
 
 		state.toolbarOpenPanel = 'shared-globals';
@@ -4545,6 +4577,15 @@
 		updateToolbarExpandedState();
 	}
 
+	// UT6.2a: the controls whose aria-expanded follows the shared popover.
+	const TOOLBAR_POPOVER_ACTIONS = [
+		'status',
+		'review-fields',
+		'settings',
+		'go-object',
+		'shared-globals',
+	];
+
 	function updateToolbarExpandedState() {
 		const toolbar = state.toolbarNode;
 
@@ -4552,6 +4593,61 @@
 			return;
 		}
 
+		renderToolbarExpandedState( toolbar, getToolbarState( {} ).expanded );
+		mirrorHostToolbar();
+	}
+
+	/**
+	 * UT6.2a: everything the toolbar shows, computed from the status bar's
+	 * state and the open popover, with no DOM. The Visual Editor's own
+	 * toolbar renders it (renderOwnToolbar); a host toolbar's bridge
+	 * (UT6.2d) will mirror the same object into its items.
+	 *
+	 * @param {Object} nextState The status bar state (kind, count, message,
+	 *                           editLink), as updateStatusBar() passes it.
+	 * @return {Object} kind, count, countText, statusText, message,
+	 *                  editLink ({ url, label }), openPanel, expanded.
+	 */
+	function getToolbarState( nextState ) {
+		const source =
+			nextState && typeof nextState === 'object' ? nextState : {};
+		const count = typeof source.count === 'number' ? source.count : null;
+		const link = normalizeStatusBarLink( source.editLink || null );
+		const expanded = {};
+
+		TOOLBAR_POPOVER_ACTIONS.forEach( function ( action ) {
+			expanded[ action ] = action === state.toolbarOpenPanel;
+		} );
+
+		return {
+			kind: source.kind || 'active',
+			count,
+			countText: count !== null ? String( count ) : '',
+			statusText: source.message
+				? String( source.message )
+				: [
+						strings().modeActive || 'Visual Editor active',
+						getStatusBarCountText( count ),
+				  ]
+						.filter( Boolean )
+						.join( ' / ' ),
+			message: source.message || '',
+			editLink: {
+				url: link && link.url ? link.url : '',
+				label:
+					link && link.label
+						? link.label
+						: getToolbarString(
+								'toolbarEditObject',
+								'Edit object'
+						  ),
+			},
+			openPanel: state.toolbarOpenPanel || '',
+			expanded,
+		};
+	}
+
+	function renderToolbarExpandedState( toolbar, expanded ) {
 		toolbar.classList.toggle(
 			'is-popover-open',
 			Boolean( state.toolbarOpenPanel )
@@ -4561,19 +4657,76 @@
 			.forEach( function ( node ) {
 				const action =
 					node.getAttribute( 'data-dbvc-ve-toolbar-action' ) || '';
-				const expanded = action === state.toolbarOpenPanel;
 
 				if (
-					action === 'status' ||
-					action === 'review-fields' ||
-					action === 'settings'
+					Object.prototype.hasOwnProperty.call( expanded, action )
 				) {
 					node.setAttribute(
 						'aria-expanded',
-						expanded ? 'true' : 'false'
+						expanded[ action ] ? 'true' : 'false'
 					);
 				}
 			} );
+	}
+
+	/**
+	 * UT6.2a: draw a toolbar state onto the Visual Editor's own toolbar.
+	 *
+	 * @param {HTMLElement} toolbar      The `.dbvc-ve-toolbar` root.
+	 * @param {Object}      toolbarState From getToolbarState().
+	 */
+	function renderOwnToolbar( toolbar, toolbarState ) {
+		const statusButton = toolbar.querySelector(
+			'[data-dbvc-ve-toolbar-action="status"]'
+		);
+		const reviewButton = toolbar.querySelector(
+			'[data-dbvc-ve-toolbar-action="review-fields"]'
+		);
+		const editLink = toolbar.querySelector(
+			'[data-dbvc-ve-toolbar-action="edit-object"]'
+		);
+		const message = toolbar.querySelector( '.dbvc-ve-toolbar__message' );
+
+		toolbar.dataset.state = toolbarState.kind;
+
+		[ statusButton, reviewButton ].forEach( function ( button ) {
+			if ( ! button ) {
+				return;
+			}
+
+			button.dataset.state = toolbarState.kind;
+			button.title =
+				toolbarState.statusText ||
+				button.getAttribute( 'aria-label' ) ||
+				'';
+			const countNode = button.querySelector( '.dbvc-ve-toolbar__count' );
+			if ( countNode ) {
+				countNode.textContent = toolbarState.countText;
+				countNode.hidden = toolbarState.count === null;
+			}
+		} );
+
+		if ( editLink ) {
+			editLink.setAttribute( 'aria-label', toolbarState.editLink.label );
+			editLink.title = toolbarState.editLink.label;
+
+			if ( toolbarState.editLink.url ) {
+				editLink.href = toolbarState.editLink.url;
+				editLink.classList.remove( 'is-disabled' );
+				editLink.setAttribute( 'aria-disabled', 'false' );
+			} else {
+				editLink.removeAttribute( 'href' );
+				editLink.classList.add( 'is-disabled' );
+				editLink.setAttribute( 'aria-disabled', 'true' );
+			}
+		}
+
+		if ( message ) {
+			message.textContent = toolbarState.message;
+			message.hidden = ! toolbarState.message;
+		}
+
+		renderToolbarExpandedState( toolbar, toolbarState.expanded );
 	}
 
 	function syncToolbarState( nextState ) {
@@ -4586,72 +4739,8 @@
 			return;
 		}
 
-		const statusButton = toolbar.querySelector(
-			'[data-dbvc-ve-toolbar-action="status"]'
-		);
-		const reviewButton = toolbar.querySelector(
-			'[data-dbvc-ve-toolbar-action="review-fields"]'
-		);
-		const editLink = toolbar.querySelector(
-			'[data-dbvc-ve-toolbar-action="edit-object"]'
-		);
-		const message = toolbar.querySelector( '.dbvc-ve-toolbar__message' );
-		const count =
-			typeof nextState.count === 'number' ? nextState.count : null;
-		const countText = count !== null ? String( count ) : '';
-		const statusText = nextState.message
-			? String( nextState.message )
-			: [
-					strings().modeActive || 'Visual Editor active',
-					getStatusBarCountText( count ),
-			  ]
-					.filter( Boolean )
-					.join( ' / ' );
-
-		toolbar.dataset.state = nextState.kind || 'active';
-
-		[ statusButton, reviewButton ].forEach( function ( button ) {
-			if ( ! button ) {
-				return;
-			}
-
-			button.dataset.state = nextState.kind || 'active';
-			button.title =
-				statusText || button.getAttribute( 'aria-label' ) || '';
-			const countNode = button.querySelector( '.dbvc-ve-toolbar__count' );
-			if ( countNode ) {
-				countNode.textContent = countText;
-				countNode.hidden = count === null;
-			}
-		} );
-
-		if ( editLink ) {
-			const link = normalizeStatusBarLink( nextState.editLink || null );
-			const label =
-				link && link.label
-					? link.label
-					: getToolbarString( 'toolbarEditObject', 'Edit object' );
-
-			editLink.setAttribute( 'aria-label', label );
-			editLink.title = label;
-
-			if ( link && link.url ) {
-				editLink.href = link.url;
-				editLink.classList.remove( 'is-disabled' );
-				editLink.setAttribute( 'aria-disabled', 'false' );
-			} else {
-				editLink.removeAttribute( 'href' );
-				editLink.classList.add( 'is-disabled' );
-				editLink.setAttribute( 'aria-disabled', 'true' );
-			}
-		}
-
-		if ( message ) {
-			message.textContent = nextState.message || '';
-			message.hidden = ! nextState.message;
-		}
-
-		updateToolbarExpandedState();
+		renderOwnToolbar( toolbar, getToolbarState( nextState ) );
+		mirrorHostToolbar();
 	}
 
 	function handleToolbarClick( event ) {
@@ -4686,13 +4775,32 @@
 			return;
 		}
 
-		if ( action === 'media-manager' ) {
+		// Links (edit object, exit) keep their default navigation.
+		if ( runToolbarAction( action, actionNode ) !== 'navigate' ) {
 			event.preventDefault();
 			event.stopPropagation();
+		}
+	}
+
+	/**
+	 * UT6.2a: the one place a toolbar action runs, whichever control
+	 * triggered it. The Visual Editor's own toolbar calls it from its click
+	 * handler; a host toolbar's bridge (UT6.2d) will call it with its own
+	 * control as the trigger, so popovers and drawers return focus there.
+	 *
+	 * @param {string}           action  A `data-dbvc-ve-toolbar-action` value.
+	 * @param {HTMLElement|null} trigger The control that asked for it.
+	 * @return {string} 'navigate' when a link should follow its href,
+	 *                  otherwise 'handled'.
+	 */
+	function runToolbarAction( action, trigger ) {
+		const control = trigger || getToolbarTrigger( action );
+
+		if ( action === 'media-manager' ) {
 			closeToolbarPopover();
-			dispatchMediaManagerEvent( 'toggle', { trigger: actionNode } );
+			dispatchMediaManagerEvent( 'toggle', { trigger: control } );
 			dispatchControlCenterEvent( 'close', { restoreFocus: false } );
-			return;
+			return 'handled';
 		}
 		if ( action === 'workspace' ) {
 			// R6-D-1: toggling the workspace from the toolbar closes any
@@ -4700,22 +4808,18 @@
 			// so the drawer is actually visible; opening the BCC / Media
 			// Manager FROM the workspace leaves it open underneath instead
 			// (contract §5.2–5.3, handled in workspace-app.js).
-			event.preventDefault();
-			event.stopPropagation();
 			closeToolbarPopover();
 			dispatchMediaManagerEvent( 'close', { restoreFocus: false } );
 			dispatchControlCenterEvent( 'close', { restoreFocus: false } );
-			dispatchWorkspaceEvent( 'toggle', { trigger: actionNode } );
-			return;
+			dispatchWorkspaceEvent( 'toggle', { trigger: control } );
+			return 'handled';
 		}
 
 		if ( action === 'control-center' ) {
-			event.preventDefault();
-			event.stopPropagation();
 			closeToolbarPopover();
 			dispatchMediaManagerEvent( 'close', { restoreFocus: false } );
-			dispatchControlCenterEvent( 'toggle', { trigger: actionNode } );
-			return;
+			dispatchControlCenterEvent( 'toggle', { trigger: control } );
+			return 'handled';
 		}
 
 		dispatchMediaManagerEvent( 'close', { restoreFocus: false } );
@@ -4723,69 +4827,474 @@
 
 		if ( action === 'edit-object' || action === 'toggle-mode' ) {
 			closeToolbarPopover();
-			return;
+			return 'navigate';
 		}
-
-		event.preventDefault();
-		event.stopPropagation();
 
 		if ( action === 'close-popover' ) {
-			const trigger = state.toolbarTriggerNode;
+			const previous = state.toolbarTriggerNode;
 			closeToolbarPopover();
-			if ( trigger && typeof trigger.focus === 'function' ) {
-				trigger.focus();
+			if ( previous && typeof previous.focus === 'function' ) {
+				previous.focus();
 			}
-			return;
+			return 'handled';
 		}
 
-		if ( action === 'status' ) {
-			if ( state.toolbarOpenPanel === 'status' ) {
-				closeToolbarPopover();
-			} else {
+		const openers = {
+			status() {
 				openStatusBarToolbarPopover( {
-					trigger: actionNode,
+					trigger: control,
 					expandIndex: false,
 				} );
-			}
-			return;
-		}
-		if ( action === 'settings' ) {
-			if ( state.toolbarOpenPanel === 'settings' ) {
-				closeToolbarPopover();
-			} else {
-				openPreferencesToolbarPopover( { trigger: actionNode } );
-			}
-			return;
-		}
-
-		if ( action === 'review-fields' ) {
-			if ( state.toolbarOpenPanel === 'review-fields' ) {
-				closeToolbarPopover();
-			} else {
+			},
+			settings() {
+				openPreferencesToolbarPopover( { trigger: control } );
+			},
+			'review-fields'() {
 				openStatusBarToolbarPopover( {
-					trigger: actionNode,
+					trigger: control,
 					expandIndex: true,
 				} );
+			},
+			'go-object'() {
+				openObjectSearchToolbarPopover( { trigger: control } );
+			},
+			'shared-globals'() {
+				openSharedGlobalsToolbarPopover( { trigger: control } );
+			},
+		};
+
+		if ( Object.prototype.hasOwnProperty.call( openers, action ) ) {
+			if ( state.toolbarOpenPanel === action ) {
+				closeToolbarPopover();
+			} else {
+				openers[ action ]();
 			}
+		}
+
+		return 'handled';
+	}
+
+	/**
+	 * UT6.2a: the control a sibling surface should treat as its toolbar
+	 * entry (to mirror aria-expanded on, or return focus to). Today that is
+	 * the Visual Editor's own toolbar button; once a host toolbar docks the
+	 * controls (UT6.2d) the answer changes here and nowhere else.
+	 *
+	 * @param {string} action A `data-dbvc-ve-toolbar-action` value.
+	 * @return {HTMLElement|null} The control, or null.
+	 */
+	function getToolbarTrigger( action ) {
+		if (
+			isHostToolbarDocked() &&
+			HOST_TOOLBAR_ACTIONS.indexOf( action ) !== -1
+		) {
+			return getHostToolbarTrigger( action );
+		}
+
+		const toolbar =
+			state.toolbarNode && state.toolbarNode.isConnected
+				? state.toolbarNode
+				: null;
+
+		if ( ! toolbar || ! action ) {
+			return null;
+		}
+
+		return (
+			Array.from(
+				toolbar.querySelectorAll( '[data-dbvc-ve-toolbar-action]' )
+			).find( function ( node ) {
+				return (
+					node.getAttribute( 'data-dbvc-ve-toolbar-action' ) ===
+					action
+				);
+			} ) || null
+		);
+	}
+
+	/**
+	 * UT6.2a: answer `dbvc:visual-editor:toolbar:trigger`, which the drawers
+	 * and the Media Manager dispatch instead of querying the toolbar's DOM.
+	 * The event's `detail.action` names the control; the overlay fills
+	 * `detail.trigger` (null when the control is absent) and sets
+	 * `detail.answered`.
+	 *
+	 * @param {CustomEvent} event Lookup event.
+	 */
+	function handleToolbarTriggerLookup( event ) {
+		const detail = event && event.detail;
+
+		if ( ! detail || typeof detail !== 'object' || detail.answered ) {
 			return;
 		}
 
-		if ( action === 'go-object' ) {
-			if ( state.toolbarOpenPanel === 'go-object' ) {
-				closeToolbarPopover();
-			} else {
-				openObjectSearchToolbarPopover( { trigger: actionNode } );
-			}
+		detail.trigger = getToolbarTrigger( String( detail.action || '' ) );
+		detail.answered = true;
+	}
+
+	// -----------------------------------------------------------------
+	// UT6.2d: host toolbar bridge.
+	//
+	// When the server says a host toolbar (the Vertical theme's universal
+	// toolbar) shows this viewer's Visual Editor items
+	// (`DBVCVisualEditorBootstrap.host.docked`), wait for it to be ready,
+	// bind each item's select to runToolbarAction(), mirror the toolbar
+	// state into the items, and only then hide the Visual Editor's own
+	// toolbar. Without a ready host within `readyTimeoutMs` the own toolbar
+	// stays, and a late ready is ignored. Popovers, drawers and panels stay
+	// DBVC surfaces; the popover host sits above the dock.
+	// -----------------------------------------------------------------
+
+	const HOST_TOOLBAR_MODULE = 'dbvc-visual-editor';
+
+	// Docked items bound to actions. The exit link navigates by itself.
+	const HOST_TOOLBAR_ACTIONS = [
+		'status',
+		'workspace',
+		'review-fields',
+		'go-object',
+		'media-manager',
+		'shared-globals',
+		'control-center',
+		'edit-object',
+		'settings',
+	];
+
+	const HOST_TOOLBAR_DRAWER_RESERVATION = HOST_TOOLBAR_MODULE + '/drawer';
+	const HOST_TOOLBAR_DRAWER_WIDTH = 480;
+
+	function getHostToolbarBootstrap() {
+		const host =
+			window.DBVCVisualEditorBootstrap &&
+			window.DBVCVisualEditorBootstrap.host;
+
+		return host && typeof host === 'object' ? host : null;
+	}
+
+	function isHostToolbarDocked() {
+		return Boolean(
+			state.hostToolbar &&
+				state.hostToolbar.bound &&
+				state.hostToolbar.api
+		);
+	}
+
+	function hostToolbarItemId( action ) {
+		return HOST_TOOLBAR_MODULE + '/' + action;
+	}
+
+	/**
+	 * Start docking when the server reported a host showing our items.
+	 */
+	function bindHostToolbar() {
+		const host = getHostToolbarBootstrap();
+
+		if ( ! host || host.docked !== true || state.hostToolbar ) {
 			return;
 		}
 
-		if ( action === 'shared-globals' ) {
-			if ( state.toolbarOpenPanel === 'shared-globals' ) {
-				closeToolbarPopover();
-			} else {
-				openSharedGlobalsToolbarPopover( { trigger: actionNode } );
+		const timeoutMs =
+			Number( host.readyTimeoutMs ) > 0
+				? Number( host.readyTimeoutMs )
+				: 4000;
+
+		state.hostToolbar = {
+			api: null,
+			bound: false,
+			expired: false,
+			timer: 0,
+			triggers: {},
+			drawers: {},
+			reservation: null,
+		};
+
+		const attach = function () {
+			const api = window.VFToolbar;
+
+			if (
+				state.hostToolbar.bound ||
+				state.hostToolbar.expired ||
+				! api ||
+				typeof api.ready !== 'function'
+			) {
+				return;
 			}
+
+			api.ready( function ( ready ) {
+				dockInHostToolbar( ready || api );
+			} );
+		};
+
+		document.addEventListener( 'vf-toolbar:ready', attach );
+		attach();
+
+		if ( ! state.hostToolbar.bound ) {
+			state.hostToolbar.timer = window.setTimeout( function () {
+				if ( ! state.hostToolbar.bound ) {
+					state.hostToolbar.expired = true;
+					document.removeEventListener( 'vf-toolbar:ready', attach );
+				}
+			}, timeoutMs );
 		}
+	}
+
+	/**
+	 * Bind, mirror, then hide the own toolbar (in that order, so a failure
+	 * part-way leaves the own toolbar usable).
+	 *
+	 * @param {Object} api The host toolbar's public API (VFToolbar).
+	 */
+	function dockInHostToolbar( api ) {
+		if (
+			! state.hostToolbar ||
+			state.hostToolbar.bound ||
+			state.hostToolbar.expired ||
+			! api ||
+			typeof api.on !== 'function' ||
+			typeof api.update !== 'function'
+		) {
+			return;
+		}
+
+		window.clearTimeout( state.hostToolbar.timer );
+		state.hostToolbar.api = api;
+
+		HOST_TOOLBAR_ACTIONS.forEach( function ( action ) {
+			api.on( hostToolbarItemId( action ), 'select', function () {
+				runHostToolbarAction( action );
+			} );
+		} );
+
+		state.hostToolbar.bound = true;
+		mirrorHostToolbar();
+
+		[ 'workspace', 'control-center' ].forEach( function ( drawer ) {
+			[ 'opened', 'closed' ].forEach( function ( name ) {
+				document.addEventListener(
+					`dbvc:visual-editor:${ drawer }:${ name }`,
+					function () {
+						setHostToolbarDrawer( drawer, name === 'opened' );
+					}
+				);
+			} );
+		} );
+		setHostToolbarDrawer(
+			'workspace',
+			isGlobalSurfaceOpen( 'DBVCVisualEditorWorkspace' )
+		);
+		setHostToolbarDrawer(
+			'control-center',
+			isGlobalSurfaceOpen( 'DBVCVisualEditorBrandControlCenter' )
+		);
+
+		document.documentElement.classList.add( 'dbvc-ve-docked' );
+		if ( state.toolbarNode ) {
+			state.toolbarNode.hidden = true;
+		}
+	}
+
+	function isGlobalSurfaceOpen( name ) {
+		const surface = window[ name ];
+
+		return Boolean(
+			surface && typeof surface.isOpen === 'function' && surface.isOpen()
+		);
+	}
+
+	/**
+	 * Run a docked item's action with its dock control as the trigger, so
+	 * popovers and drawers return focus there.
+	 *
+	 * @param {string} action A HOST_TOOLBAR_ACTIONS entry.
+	 */
+	function runHostToolbarAction( action ) {
+		const trigger = getHostToolbarTrigger( action );
+
+		if ( action === 'edit-object' ) {
+			// An item's href can't change after the server sends it, so the
+			// current edit link opens from here.
+			const url = getToolbarState( state.statusBarState || {} ).editLink
+				.url;
+
+			runToolbarAction( action, trigger );
+			if ( url ) {
+				window.open( url, '_blank', 'noopener,noreferrer' );
+			}
+			mirrorHostToolbar();
+			return;
+		}
+
+		runToolbarAction( action, trigger );
+		mirrorHostToolbar();
+	}
+
+	/**
+	 * A stand-in for a dock control, which lives in the host's shadow root.
+	 * Popovers, drawers and the Media Manager use only isConnected,
+	 * focus() and setAttribute( 'aria-expanded' ) on a trigger.
+	 *
+	 * @param {string} action A HOST_TOOLBAR_ACTIONS entry.
+	 * @return {Object} The trigger.
+	 */
+	function getHostToolbarTrigger( action ) {
+		const triggers = state.hostToolbar.triggers;
+
+		if ( ! triggers[ action ] ) {
+			const id = hostToolbarItemId( action );
+
+			triggers[ action ] = {
+				isConnected: true,
+				dbvcHostToolbarItem: id,
+				focus() {
+					const api = state.hostToolbar.api;
+
+					if ( api && typeof api.focus === 'function' ) {
+						api.focus( id );
+					}
+				},
+				setAttribute( name, value ) {
+					if ( name === 'aria-expanded' ) {
+						const open = String( value ) === 'true';
+
+						updateHostToolbarItem( id, {
+							expanded: open,
+							pressed: open,
+						} );
+					}
+				},
+				getAttribute() {
+					return null;
+				},
+				removeAttribute() {},
+			};
+		}
+
+		return triggers[ action ];
+	}
+
+	function updateHostToolbarItem( id, itemState ) {
+		if ( isHostToolbarDocked() ) {
+			state.hostToolbar.api.update( id, itemState );
+		}
+	}
+
+	/**
+	 * Mirror getToolbarState() into the docked items.
+	 */
+	function mirrorHostToolbar() {
+		if ( ! isHostToolbarDocked() ) {
+			return;
+		}
+
+		const toolbarState = getToolbarState( state.statusBarState || {} );
+		const badge = toolbarState.count || 0;
+		const tones = { empty: 'warning', error: 'danger' };
+		const labels = {
+			empty: getToolbarString(
+				'toolbarStatusEmpty',
+				'No editable fields on this page'
+			),
+			error: getToolbarString(
+				'toolbarStatusError',
+				'Visual Editor needs attention'
+			),
+		};
+
+		updateHostToolbarItem( hostToolbarItemId( 'status' ), {
+			badge,
+			tone: tones[ toolbarState.kind ] || 'neutral',
+			label:
+				labels[ toolbarState.kind ] ||
+				getToolbarString( 'toolbarStatus', 'Visual Editor status' ),
+			expanded: toolbarState.expanded.status,
+			pressed: toolbarState.expanded.status,
+		} );
+		updateHostToolbarItem( hostToolbarItemId( 'review-fields' ), {
+			badge,
+			expanded: toolbarState.expanded[ 'review-fields' ],
+			pressed: toolbarState.expanded[ 'review-fields' ],
+		} );
+		[ 'go-object', 'shared-globals', 'settings' ].forEach(
+			function ( action ) {
+				updateHostToolbarItem( hostToolbarItemId( action ), {
+					expanded: toolbarState.expanded[ action ],
+					pressed: toolbarState.expanded[ action ],
+				} );
+			}
+		);
+		updateHostToolbarItem( hostToolbarItemId( 'edit-object' ), {
+			disabled: ! toolbarState.editLink.url,
+		} );
+	}
+
+	/**
+	 * Keep the dock clear of an open drawer: both drawers sit on the left,
+	 * 480px wide, so one reservation covers either.
+	 *
+	 * @param {string}  drawer workspace or control-center.
+	 * @param {boolean} open   Whether it is open now.
+	 */
+	function setHostToolbarDrawer( drawer, open ) {
+		if ( ! isHostToolbarDocked() ) {
+			return;
+		}
+
+		const host = state.hostToolbar;
+
+		host.drawers[ drawer ] = Boolean( open );
+
+		const anyOpen = Object.keys( host.drawers ).some( function ( key ) {
+			return host.drawers[ key ];
+		} );
+
+		if (
+			anyOpen &&
+			! host.reservation &&
+			typeof host.api.reserve === 'function'
+		) {
+			host.reservation = host.api.reserve(
+				HOST_TOOLBAR_DRAWER_RESERVATION,
+				{
+					edge: 'left',
+					size: HOST_TOOLBAR_DRAWER_WIDTH,
+				}
+			);
+		} else if ( ! anyOpen && host.reservation ) {
+			if ( typeof host.reservation.release === 'function' ) {
+				host.reservation.release();
+			}
+			host.reservation = null;
+		}
+	}
+
+	function isHostToolbarHost( target ) {
+		return Boolean(
+			target &&
+				target.tagName &&
+				String( target.tagName ).toLowerCase() === 'vf-toolbar'
+		);
+	}
+
+	/**
+	 * Whether a press inside the host landed on one of our docked items.
+	 *
+	 * @param {Event} event Pointer event.
+	 * @return {boolean} True for a Visual Editor item.
+	 */
+	function eventHitsHostToolbarItem( event ) {
+		const path =
+			event && typeof event.composedPath === 'function'
+				? event.composedPath()
+				: [];
+
+		return path.some( function ( node ) {
+			const id =
+				node && typeof node.getAttribute === 'function'
+					? node.getAttribute( 'data-id' ) || ''
+					: '';
+
+			return id.indexOf( HOST_TOOLBAR_MODULE + '/' ) === 0;
+		} );
 	}
 
 	function handleToolbarOutsidePointerDown( event ) {
@@ -4799,7 +5308,16 @@
 			return;
 		}
 
-		if ( target.closest && target.closest( '.dbvc-ve-toolbar' ) ) {
+		// UT6.2d: pressing the dock control that opened the popover toggles it
+		// through select; any other dock control is an outside press.
+		if ( isHostToolbarHost( target ) ) {
+			if ( ! eventHitsHostToolbarItem( event ) ) {
+				closeToolbarPopover();
+			}
+			return;
+		}
+
+		if ( isToolbarElement( target ) ) {
 			return;
 		}
 
@@ -7362,7 +7880,10 @@
 	}
 
 	function handleBadgeKeydown( event ) {
-		if ( event.key !== 'Escape' ) {
+		// UT6.2a: an Escape another surface already handled (the toolbar
+		// popover, a drawer) is spent; closing the panel too made one key
+		// close two surfaces.
+		if ( event.key !== 'Escape' || event.defaultPrevented ) {
 			return;
 		}
 
@@ -8038,10 +8559,15 @@
 	}
 
 	function isToolbarElement( target ) {
+		// UT6.2a: the shared popover is a sibling of the toolbar, not a child.
+		// UT6.2d: docked, the host toolbar stands in for the toolbar.
 		return Boolean(
 			target &&
 				typeof target.closest === 'function' &&
-				target.closest( '.dbvc-ve-toolbar' )
+				( target.closest(
+					'.dbvc-ve-toolbar, .dbvc-ve-toolbar-popover'
+				) ||
+					( isHostToolbarDocked() && isHostToolbarHost( target ) ) )
 		);
 	}
 
@@ -13927,9 +14453,17 @@
 				! nextBackground &&
 				isEmptyMediaReferenceRenderData( renderData );
 
-			node.style.backgroundImage = nextBackground
-				? `url("${ nextBackground.replace( /"/g, '\\"' ) }")`
-				: '';
+			// Bricks emits dynamic backgrounds as stylesheet rules (element or
+			// global class), so an empty inline value would fall back to the
+			// stale rendered image. A cleared field must override it with `none`.
+			if ( nextBackground ) {
+				node.style.backgroundImage = `url("${ nextBackground.replace(
+					/"/g,
+					'\\"'
+				) }")`;
+			} else {
+				node.style.backgroundImage = shouldClearMedia ? 'none' : '';
+			}
 			node.classList.toggle( 'dbvc-ve-media-cleared', shouldClearMedia );
 			node.dataset.dbvcVeDisplayValue = normalizeValue( nextBackground );
 			scheduleBadgeLayout();
@@ -14691,6 +15225,7 @@
 			bindBadgeEvents();
 			bindControlCenterBridge();
 			bindWorkspaceBridge();
+			bindHostToolbar();
 
 			const markers = findMarkers();
 			if ( ! markers.length ) {

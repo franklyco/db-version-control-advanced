@@ -63,8 +63,10 @@ final class AcfFieldsCacheTriggers
 
     /**
      * Post types whose saves invalidate the cache. Defaults to the ACF schema
-     * post types; sites add the ones their `acf/load_field` filters read from
-     * (e.g. `wsf_form` when WS Form choices are populated into fields).
+     * post types; sites add the ones their `acf/load_field` filters read from.
+     * Only real WordPress post types fire `save_post`: sources kept in custom
+     * tables (WS Form's `wsf_form`, for example) never reach this trigger and
+     * must bridge their own events to ACTION_FLUSH instead.
      *
      * @return array<int, string>
      */
