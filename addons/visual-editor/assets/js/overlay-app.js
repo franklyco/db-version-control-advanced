@@ -51,6 +51,7 @@
 		panelOpen: false,
 		panelPosition: null,
 		panelDrag: null,
+		panelResizeObserver: null,
 		sessionKeepaliveTimer: 0,
 		sessionKeepaliveInFlight: null,
 		sessionKeepaliveBound: false,
@@ -6927,6 +6928,10 @@
 			} );
 		}
 		window.addEventListener( 'scroll', scheduleBadgeLayout, true );
+		// UT6.1a: a host toolbar's dock grew, shrank, or went away.
+		document.addEventListener( 'vf-toolbar:insets', function () {
+			schedulePanelViewportClamp();
+		} );
 		document.addEventListener( 'mouseover', handleMarkerMouseOver, true );
 		document.addEventListener( 'mouseout', handleMarkerMouseOut, true );
 		document.addEventListener( 'focusin', handleMarkerFocusIn, true );
@@ -7810,6 +7815,30 @@
 		return Number.isFinite( height ) && height > 0 ? height : 0;
 	}
 
+	/**
+	 * UT6.1a: space a host toolbar takes at the bottom of the viewport. The
+	 * Vertical theme's universal toolbar publishes `--vf-toolbar-inset-bottom`
+	 * on <html> (viewport bottom to the top of its dock) and announces changes
+	 * with `vf-toolbar:insets`. Zero on any site without such a host, so the
+	 * clamp there is exactly what it was.
+	 *
+	 * @return {number} Inset in CSS pixels.
+	 */
+	function getHostBottomInset() {
+		const root = document.documentElement;
+		let raw = root.style.getPropertyValue( '--vf-toolbar-inset-bottom' );
+
+		if ( ! raw && typeof window.getComputedStyle === 'function' ) {
+			raw = window
+				.getComputedStyle( root )
+				.getPropertyValue( '--vf-toolbar-inset-bottom' );
+		}
+
+		const value = parseFloat( String( raw || '' ).trim() );
+
+		return Number.isFinite( value ) && value > 0 ? value : 0;
+	}
+
 	function getPanelViewportBounds() {
 		const visualViewport = window.visualViewport;
 		const width =
@@ -7840,12 +7869,17 @@
 		const inset = Math.min( getWorkspaceInset(), Math.max( 0, width - 1 ) );
 		// E-154: and below the fixed admin bar.
 		const topInset = Math.min( getAdminBarInset(), Math.max( 0, height - 1 ) );
+		// UT6.1a: and above a host toolbar docked at the bottom edge.
+		const bottomInset = Math.min(
+			getHostBottomInset(),
+			Math.max( 0, height - topInset - 1 )
+		);
 
 		return {
 			left: left + inset,
 			top: top + topInset,
 			width: Math.max( 1, width - inset ),
-			height: Math.max( 1, height - topInset ),
+			height: Math.max( 1, height - topInset - bottomInset ),
 		};
 	}
 
@@ -7872,6 +7906,8 @@
 		const panelWidth = rect && rect.width ? rect.width : 380;
 		const panelHeight = rect && rect.height ? rect.height : 320;
 
+		// 108px clears this editor's own toolbar strip (76px) plus a 32px
+		// gap. The bounds already stop above a host toolbar (UT6.1a).
 		state.panelPosition = {
 			left: bounds.left + bounds.width - panelWidth - 16,
 			top: bounds.top + bounds.height - panelHeight - 108,
@@ -8179,10 +8215,33 @@
 
 		document.body.appendChild( panel );
 
+		observePanelSize( panel );
 		applyPanelPosition( panel );
 		renderIdlePanel();
 
 		return panel;
+	}
+
+	/**
+	 * UT6.1a: the panel is placed before a rich editor inside it has grown,
+	 * so a tall field could run off the bottom of the screen. Re-clamp
+	 * whenever the panel's own size changes. Browsers without
+	 * ResizeObserver keep the resize/viewport triggers they had before.
+	 *
+	 * @param {HTMLElement} panel Editor panel.
+	 */
+	function observePanelSize( panel ) {
+		if (
+			state.panelResizeObserver ||
+			typeof window.ResizeObserver !== 'function'
+		) {
+			return;
+		}
+
+		state.panelResizeObserver = new window.ResizeObserver( function () {
+			schedulePanelViewportClamp();
+		} );
+		state.panelResizeObserver.observe( panel );
 	}
 
 	function getPanelNodes() {

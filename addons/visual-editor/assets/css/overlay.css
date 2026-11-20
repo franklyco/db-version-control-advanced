@@ -116,6 +116,15 @@
   --dbvc-ve-filter-backdrop--blur: blur(8px);
   --dbvc-ve-transparent--l: transparent 20%;
   --dbvc-ve-notice-dot--color-bg: var(--dbvc-ve-color-primary);
+  /* UT6.1a — space at the bottom of the viewport. A host toolbar (the
+     Vertical theme's universal toolbar dock) publishes
+     --vf-toolbar-inset-bottom on <html>; without one it is 0, so every
+     surface below lands exactly where it did before. The strip is the room
+     this editor's own floating toolbar has always reserved. */
+  --dbvc-ve-toolbar-strip: 76px;
+  --dbvc-ve-bottom-clearance: calc(var(--vf-toolbar-inset-bottom, 0px) + var(--dbvc-ve-toolbar-strip));
+  /* Page-level layers: element badges and the parked status bar stay under
+     any host toolbar's surfaces. */
   --dbvc-ve-z-statusbar: 119970;
   --dbvc-ve-z-section-badge: 119980;
   --dbvc-ve-z-badge-layer: 119990;
@@ -123,13 +132,18 @@
      Media Manager (120010) and the BCC drawer (120015) so every existing
      surface keeps painting over it unchanged (D-072). Consumed by
      workspace.css only. */
-  --dbvc-ve-z-workspace: 120005;
-  --dbvc-ve-z-panel: 120010;
-  --dbvc-ve-z-drawer: 120015;
-  --dbvc-ve-z-toolbar: 120020;
+  /* UT6.1a (decision D6): with a host toolbar's layer scale present,
+     the workspace, panel, drawers, Media Manager and this toolbar sit on
+     its panel layer (below its dock, so the dock stays reachable) with
+     their existing internal order; the fallbacks are the old values. */
+  --dbvc-ve-z-workspace: calc(var(--vf-tb-layer-panel, 120000) + 5);
+  --dbvc-ve-z-panel: calc(var(--vf-tb-layer-panel, 120000) + 10);
+  --dbvc-ve-z-drawer: calc(var(--vf-tb-layer-panel, 120000) + 15);
+  --dbvc-ve-z-toolbar: calc(var(--vf-tb-layer-panel, 120000) + 20);
   /* Modal popups opened FROM a drawer / the toolbar (palette bulk editor).
-     Above the toolbar, below the WordPress media modal (560000). */
-  --dbvc-ve-z-modal: 120030;
+     Above the toolbar (and a host toolbar's menus), below the WordPress
+     media modal. Without a host: 120030. */
+  --dbvc-ve-z-modal: calc(var(--vf-tb-layer-menu, 120000) + 30);
 }
 
 /* R5.later-darkmode.a (2026-09-08) — system dark-mode support for the
@@ -245,7 +259,8 @@
 .dbvc-ve-toolbar {
   position: fixed;
   left: 50%;
-  bottom: 16px;
+  /* UT6.1a: stacks above a host toolbar's dock when both show. */
+  bottom: calc(var(--vf-toolbar-inset-bottom, 0px) + 16px);
   z-index: var(--dbvc-ve-z-toolbar);
   display: flex;
   align-items: center;
@@ -387,7 +402,8 @@
   left: 50%;
   bottom: calc(100% + 14px);
   width: min(520px, calc(100vw - 24px));
-  max-height: calc(100vh - 110px);
+  /* 110px without a host toolbar. */
+  max-height: calc(100vh - var(--dbvc-ve-bottom-clearance) - 34px);
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--m);
   background: var(--dbvc-ve-color-surface-glass);
@@ -447,7 +463,8 @@
 }
 
 .dbvc-ve-toolbar-popover__body {
-  max-height: calc(100vh - 168px);
+  /* 168px without a host toolbar. */
+  max-height: calc(100vh - var(--dbvc-ve-bottom-clearance) - 92px);
   padding: 14px;
   overflow: auto;
   overscroll-behavior: contain;
@@ -770,7 +787,7 @@
 .dbvc-ve-statusbar {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  bottom: calc(var(--vf-toolbar-inset-bottom, 0px) + 16px);
   z-index: var(--dbvc-ve-z-statusbar);
   width: min(320px, calc(100vw - 32px));
   padding: 12px 14px;
@@ -1126,13 +1143,15 @@
   box-sizing: border-box;
   position: fixed;
   right: 16px;
-  bottom: 108px;
+  /* 108px without a host toolbar: the strip plus a 32px gap. The script
+     positions the open panel; this is its place before that. */
+  bottom: calc(var(--dbvc-ve-bottom-clearance) + 32px);
   z-index: var(--dbvc-ve-z-panel);
   display: flex;
   flex-direction: column;
   width: min(380px, calc(100vw - 32px));
-  max-height: calc(100vh - 16px);
-  max-height: calc(100dvh - 16px);
+  max-height: calc(100vh - 16px - var(--vf-toolbar-inset-bottom, 0px));
+  max-height: calc(100dvh - 16px - var(--vf-toolbar-inset-bottom, 0px));
   padding: 16px;
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--m);
@@ -2164,6 +2183,17 @@ textarea.dbvc-ve-panel__input--textlike {
   box-sizing: border-box;
   animation: dbvc-ve-palette-bulk-fade-in 140ms ease-out;
 }
+/* UT6.1a (decision D6): the WordPress media modal the Visual Editor opens
+   stays above every Visual Editor layer once those sit on a host toolbar's
+   scale. Without a host the values are core's own (159900 and 160000). */
+body.dbvc-ve-active .media-modal-backdrop {
+  z-index: calc(var(--vf-tb-layer-menu, 159860) + 40);
+}
+
+body.dbvc-ve-active .media-modal {
+  z-index: calc(var(--vf-tb-layer-menu, 159950) + 50);
+}
+
 @keyframes dbvc-ve-palette-bulk-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
