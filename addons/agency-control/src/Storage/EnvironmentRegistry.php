@@ -196,7 +196,88 @@ final class EnvironmentRegistry
         $row['received_events'] = (int) $row['received_events'];
         $decoded = isset($row['tags']) ? json_decode((string) $row['tags'], true) : [];
         $row['tags'] = is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
+        $row['last_seen_at'] = self::last_seen_at($row);
 
         return $row;
+    }
+
+    /**
+     * When the connector was last heard from at all: the later of its last
+     * observation receipt (`last_contact_at`) and its last authenticated poll
+     * (`last_inbox_poll_at`, touched by every machine route). A quiet site that
+     * has nothing to report still polls, so liveness — not the last observation —
+     * is what freshness is judged on (CR-4d).
+     *
+     * @param array<string, mixed> $row
+     * @return string|null MySQL UTC datetime, or null when never heard from.
+     */
+    public static function last_seen_at(array $row)
+    {
+        $best = null;
+        foreach (['last_contact_at', 'last_inbox_poll_at'] as $key) {
+            $value = isset($row[$key]) ? trim((string) $row[$key]) : '';
+            if ($value === '' || $value === '0000-00-00 00:00:00') {
+                continue;
+            }
+            if ($best === null || strcmp($value, $best) > 0) {
+                $best = $value;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Enabled and heard from inside the window (seconds). The single freshness
+     * rule for comparisons, framework status, the hub panel and the fleet.
+     *
+     * @param array<string, mixed> $environment
+     * @param int                  $window
+     * @return bool
+     */
+    public static function is_live(array $environment, $window)
+    {
+        if (($environment['status'] ?? '') !== self::STATUS_ENABLED) {
+            return false;
+        }
+        $seen = array_key_exists('last_seen_at', $environment) ? $environment['last_seen_at'] : self::last_seen_at($environment);
+        if ($seen === null || $seen === '') {
+            return false;
+        }
+
+        return (time() - (int) strtotime((string) $seen . ' UTC')) <= (int) $window;
+    }
+
+    /**
+     * Live AND has delivered at least one observation: the projections exist and
+     * the connector that keeps them current is still around. A just-enrolled site
+     * that only polls is live but not yet fresh (nothing to compare).
+     *
+     * @param array<string, mixed> $environment
+     * @param int                  $window
+     * @return bool
+     */
+    public static function is_fresh(array $environment, $window)
+    {
+        return self::is_live($environment, $window) && ! empty($environment['last_contact_at']) && (string) $environment['last_contact_at'] !== '0000-00-00 00:00:00';
+    }
+
+    /**
+     * Record that the connector polled (any authenticated machine route). Cheap
+     * and throttled: nothing is written while the stored poll time is younger
+     * than $min_interval seconds, so a chatty connector costs one UPDATE a minute.
+     *
+     * @param array<string, mixed> $environment The resolved row.
+     * @param int                  $min_interval
+     * @return bool Whether a write happened.
+     */
+    public function touch_poll(array $environment, $min_interval = 60)
+    {
+        $last = isset($environment['last_inbox_poll_at']) ? trim((string) $environment['last_inbox_poll_at']) : '';
+        if ($last !== '' && $last !== '0000-00-00 00:00:00' && (time() - (int) strtotime($last . ' UTC')) < (int) $min_interval) {
+            return false;
+        }
+
+        return $this->update((string) $environment['environment_id'], ['last_inbox_poll_at' => current_time('mysql', true)]);
     }
 }

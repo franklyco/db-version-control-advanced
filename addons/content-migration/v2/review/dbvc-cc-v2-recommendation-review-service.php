@@ -71,6 +71,20 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 ? $recommendations['recommendations']
                 : []
         );
+        // On a page read as a set, each value names its record by label so a reviewer reads the
+        // set as people rather than as entity refs.
+        if (DBVC_CC_V2_Contracts::has_entity_set($recommendations)) {
+            $labels = [];
+            foreach (DBVC_CC_V2_Contracts::get_target_entities($recommendations) as $entity) {
+                $labels[(string) $entity['entity_ref']] = isset($entity['label']) ? (string) $entity['label'] : '';
+            }
+            foreach ($field_recommendations as $index => $field_recommendation) {
+                $entity_ref = isset($field_recommendation['entity_ref']) ? (string) $field_recommendation['entity_ref'] : '';
+                if ($entity_ref !== '' && isset($labels[$entity_ref])) {
+                    $field_recommendations[$index]['entity_label'] = $labels[$entity_ref];
+                }
+            }
+        }
         $unresolved_items = $this->decorate_unresolved_items(
             $domain,
             isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
@@ -164,9 +178,14 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'candidateTargetObjects' => $candidate_target_objects,
                 'fieldRecommendations' => $field_recommendations,
                 'mediaRecommendations' => $media_recommendations,
-                'unresolvedItems' => $unresolved_items,
+                'unresolvedItems' => $this->mark_left_unmapped($unresolved_items, $mapping_decisions),
                 'conflicts' => $conflicts,
                 'review' => isset($recommendations['review']) ? $recommendations['review'] : [],
+                // D-19: the records this URL becomes, each with the reviewer's include/exclude
+                // decision. Empty for a single-record page.
+                'targetEntities' => DBVC_CC_V2_Contracts::has_entity_set($recommendations)
+                    ? DBVC_CC_V2_Package_Selection_Service::get_instance()->resolve_selected_target_entities($recommendations, $mapping_decisions, $domain)
+                    : [],
             ],
             'decisions' => [
                 'mapping' => $this->decorate_mapping_decision_payload(
@@ -291,6 +310,28 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 $media_index
             ),
         ];
+
+        // An unresolved item a reviewer has looked at and decided to leave out: a page heading on
+        // a team page, a footer phone number the interpreter declined as site chrome. Until a
+        // reviewer can say so, any unresolved item holds the page's package forever. Written only
+        // when the reviewer says it, so a decision without it is the artifact it always was.
+        $left_unmapped = $this->sanitize_left_unmapped(
+            isset($payload['leftUnmappedItemIds']) ? $payload['leftUnmappedItemIds'] : [],
+            isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items']) ? $recommendations['unresolved_items'] : []
+        );
+        if ($left_unmapped !== []) {
+            $mapping_decisions['left_unmapped'] = $left_unmapped;
+        }
+
+        // Per-record decisions on a page read as a set (D-19): include or exclude a record, or
+        // move it to another object. Accepted only for records the recommendations name.
+        $target_entity_decisions = $this->sanitize_target_entity_decisions(
+            isset($payload['targetEntities']) && is_array($payload['targetEntities']) ? $payload['targetEntities'] : [],
+            $recommendations
+        );
+        if ($target_entity_decisions !== []) {
+            $mapping_decisions['target_entity_decisions'] = $target_entity_decisions;
+        }
 
         $manual_override_count = $this->count_overrides($mapping_decisions, $media_decisions);
         if ($manual_override_count > 0) {
@@ -1238,6 +1279,97 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         }
 
         return $index;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $unresolved_items
+     * @param array<string, mixed>|null        $mapping_decisions
+     * @return array<int, array<string, mixed>>
+     */
+    private function mark_left_unmapped(array $unresolved_items, $mapping_decisions)
+    {
+        $left = [];
+        foreach (is_array($mapping_decisions) && isset($mapping_decisions['left_unmapped']) && is_array($mapping_decisions['left_unmapped']) ? $mapping_decisions['left_unmapped'] : [] as $entry) {
+            if (is_array($entry) && ! empty($entry['item_id'])) {
+                $left[(string) $entry['item_id']] = true;
+            }
+        }
+
+        foreach ($unresolved_items as $index => $item) {
+            if (is_array($item)) {
+                $unresolved_items[$index]['leftUnmapped'] = isset($left[(string) ($item['item_id'] ?? '')]);
+            }
+        }
+
+        return $unresolved_items;
+    }
+
+    /**
+     * @param mixed                            $selection Unresolved item ids.
+     * @param array<int, array<string, mixed>> $unresolved_items
+     * @return array<int, array<string, mixed>>
+     */
+    private function sanitize_left_unmapped($selection, array $unresolved_items)
+    {
+        if (! is_array($selection) || $selection === []) {
+            return [];
+        }
+
+        $known = [];
+        foreach ($unresolved_items as $item) {
+            if (is_array($item) && ! empty($item['item_id'])) {
+                $known[(string) $item['item_id']] = $item;
+            }
+        }
+
+        $items = [];
+        foreach ($selection as $item_id) {
+            $item_id = sanitize_text_field((string) $item_id);
+            if ($item_id === '' || ! isset($known[$item_id])) {
+                continue;
+            }
+            $items[$item_id] = [
+                'item_id' => $item_id,
+                'reason' => isset($known[$item_id]['reason']) ? sanitize_key((string) $known[$item_id]['reason']) : '',
+            ];
+        }
+
+        return array_values($items);
+    }
+
+    /**
+     * @param array<string, mixed> $decisions       Keyed by entity_ref: {include: bool, targetObjectKey?: string}.
+     * @param array<string, mixed> $recommendations
+     * @return array<string, array<string, string>>
+     */
+    private function sanitize_target_entity_decisions(array $decisions, array $recommendations)
+    {
+        if ($decisions === [] || ! DBVC_CC_V2_Contracts::has_entity_set($recommendations)) {
+            return [];
+        }
+
+        $known = [];
+        foreach (DBVC_CC_V2_Contracts::get_target_entities($recommendations) as $entity) {
+            $known[(string) $entity['entity_ref']] = true;
+        }
+
+        $sanitized = [];
+        foreach ($decisions as $entity_ref => $decision) {
+            $entity_ref = sanitize_key((string) $entity_ref);
+            if (! isset($known[$entity_ref]) || ! is_array($decision)) {
+                continue;
+            }
+            $entry = [
+                'decision' => array_key_exists('include', $decision) && ! $decision['include'] ? 'exclude' : 'include',
+            ];
+            if (! empty($decision['targetObjectKey'])) {
+                $entry['selected_target_family'] = 'post_type';
+                $entry['selected_target_object_key'] = sanitize_key((string) $decision['targetObjectKey']);
+            }
+            $sanitized[$entity_ref] = $entry;
+        }
+
+        return $sanitized;
     }
 
     /**

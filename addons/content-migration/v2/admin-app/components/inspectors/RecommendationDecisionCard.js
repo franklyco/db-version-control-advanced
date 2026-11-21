@@ -274,6 +274,14 @@ export default function RecommendationDecisionCard( {
 					) : null }
 				</div>
 				<div className="dbvc-cc-v2-decision-card__badges">
+					{ recommendation?.entity_label ? (
+						<span
+							className="dbvc-cc-v2-chip"
+							data-testid={ `${ testIdPrefix }-record-${ recommendationId }` }
+						>
+							{ recommendation.entity_label }
+						</span>
+					) : null }
 					{ item.isConflicted ? (
 						<span className="dbvc-cc-v2-chip dbvc-cc-v2-chip--muted">
 							Conflict

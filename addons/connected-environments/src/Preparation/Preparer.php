@@ -7,6 +7,7 @@ use Dbvc\Connected\Adapters\BricksOptionSingletonObserver;
 use Dbvc\Connected\Adapters\DomainRegistry;
 use Dbvc\Connected\Adapters\PostTypeObserver;
 use Dbvc\Connected\Identity\InstanceIdentity;
+use Dbvc\ConnectedProtocol\BodyDiff;
 use Dbvc\ConnectedProtocol\Canonicalizer;
 use Dbvc\ConnectedProtocol\ObservationEvent;
 use Dbvc\ConnectedProtocol\Protocol;
@@ -17,9 +18,12 @@ use Dbvc\ConnectedProtocol\Protocol;
  * Bricks members, `vf_object_uid` for service posts; never name, slug or
  * position), reads the current persisted state through the read-only
  * observer, and reports either an exact whole-object patch (before/after
- * hashes, container, storage fingerprint, changed top-level paths) or an
- * explicit blocker. It never writes, never assigns identity, and the
- * receipt it returns expires; it is not permission to apply.
+ * hashes, container, storage fingerprint, changed paths) or an explicit
+ * blocker. Since CR-1 the changed paths are nested leaves ({@see BodyDiff})
+ * and, when this site opts in ({@see ReceiptRedactor}), carry the rendered
+ * before (this site) and after (release) value of each leaf. It never
+ * writes, never assigns identity, and the receipt it returns expires; it is
+ * not permission to apply.
  */
 final class Preparer
 {
@@ -31,6 +35,13 @@ final class Preparer
      * @var InstanceIdentity
      */
     private $identity;
+
+    /**
+     * Whether the receipt being built carries rendered values (decided once per prepare()).
+     *
+     * @var bool
+     */
+    private $include_values = false;
 
     public function __construct(?InstanceIdentity $identity = null)
     {
@@ -47,6 +58,7 @@ final class Preparer
         $release = is_array($request['release'] ?? null) ? $request['release'] : [];
         $ttl = max(60, (int) ($request['receipt_ttl_seconds'] ?? Protocol::PREPARE_RECEIPT_TTL_SECONDS));
         $now = time();
+        $this->include_values = ReceiptRedactor::enabled();
         $items = [];
         $counts = ['ready' => 0, 'noop' => 0, 'blocked' => 0];
         $manifest_items = array_values(array_filter((array) ($release['items'] ?? []), 'is_array'));
@@ -61,7 +73,7 @@ final class Preparer
             $outcome = $counts['ready'] > 0 ? 'ready' : 'noop';
         }
 
-        return [
+        return ReceiptRedactor::finalize([
             'operation_id' => (string) ($request['operation_id'] ?? ''),
             'release_uid' => (string) ($release['release_uid'] ?? ''),
             'release_digest' => (string) ($release['digest'] ?? ''),
@@ -78,7 +90,7 @@ final class Preparer
             'prepared_at' => gmdate('c', $now),
             'expires_at' => gmdate('c', $now + $ttl),
             'note' => 'Dry run over current persisted state; nothing was written. A receipt expires and is not permission to apply.',
-        ];
+        ], $this->include_values);
     }
 
     /**
@@ -241,6 +253,9 @@ final class Preparer
             return $result;
         }
         $result['patch'] = self::patch($before, $after);
+        if ($this->include_values) {
+            $result['patch'] = ReceiptRedactor::attach_values($result['patch'], $before, $after);
+        }
         // Content hashes the release carries bytes for (M7): a referenced attachment the
         // target lacks is still resolvable at apply because these bytes will be sideloaded.
         $carried_media_hashes = [];
@@ -293,6 +308,9 @@ final class Preparer
         }
         $patch = self::patch([], $after);
         $patch['strategy'] = 'add_object';
+        if ($this->include_values) {
+            $patch = ReceiptRedactor::attach_values($patch, [], $after);
+        }
         $result['patch'] = $patch;
         $ledger = DependencyLedger::build($domain, $after, $manifest_items, $observer, []);
         $result['dependencies'] = $ledger;
@@ -381,8 +399,11 @@ final class Preparer
     }
 
     /**
-     * Whole-object replacement described at the top level: which keys would
-     * be added, removed or changed, with per-key before/after hashes.
+     * Whole-object replacement described leaf by leaf: every nested path that
+     * would be added, removed or changed, with per-leaf before/after hashes
+     * ({@see BodyDiff}; dot-paths, list indexes as integers, sorted by path).
+     * The strategy stays `replace_object`: apply still writes the whole body;
+     * the paths describe the change for review and for the change report.
      *
      * @param array<string, mixed> $before
      * @param array<string, mixed> $after
@@ -390,24 +411,13 @@ final class Preparer
      */
     public static function patch(array $before, array $after)
     {
-        $paths = [];
-        foreach (array_unique(array_merge(array_keys($before), array_keys($after))) as $key) {
-            $in_before = array_key_exists($key, $before);
-            $in_after = array_key_exists($key, $after);
-            if ($in_before && $in_after && $before[$key] === $after[$key]) {
-                continue;
-            }
-            $paths[] = [
-                'path' => (string) $key,
-                'operation' => $in_before ? ($in_after ? 'replace' : 'remove') : 'add',
-                'before_hash' => $in_before ? Canonicalizer::hash(Canonicalizer::encode($before[$key])) : null,
-                'after_hash' => $in_after ? Canonicalizer::hash(Canonicalizer::encode($after[$key])) : null,
-            ];
-        }
-        usort($paths, static function ($a, $b) {
-            return strcmp($a['path'], $b['path']);
-        });
+        $diff = BodyDiff::paths($before, $after);
 
-        return ['strategy' => 'replace_object', 'changed_paths' => $paths, 'preserves' => 'unrelated collection entries and environment-specific fields'];
+        return [
+            'strategy' => 'replace_object',
+            'changed_paths' => $diff['changed_paths'],
+            'truncated' => $diff['truncated'],
+            'preserves' => 'unrelated collection entries and environment-specific fields',
+        ];
     }
 }

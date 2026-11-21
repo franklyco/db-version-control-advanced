@@ -114,6 +114,7 @@ Recommended behavior:
 - `POST /runs/{run_id}/visibility` may manage operator-specific run cleanup state such as hide or restore without changing canonical journey artifacts
 - `GET /runs/{run_id}/overview` should remain the selected-run monitoring source for `latest`, `inventory`, `stageSummary`, and bounded `recentActivity` before introducing richer activity-specific routes
 - `GET /runs/{run_id}/exceptions` may add transport-only queue metadata such as queue-state counts, row-level `queueState`, and quick-action hints so the operator UI can be conflict-first without mutating persisted decision artifacts
+- for a URL that becomes several records (D-19), `GET /runs/{run_id}/exceptions` rows add `records[]` (`entityRef`, `label`, `objectKey`, `included`) and `recordCount`; `GET /runs/{run_id}/urls/{page_id}` adds `recommendations.targetEntities[]` (each record with its `included` decision), `entity_label` on each field recommendation, and `leftUnmapped` on each unresolved item; `POST .../decision` accepts `targetEntities` (`{<entity_ref>: {include, targetObjectKey?}}`) and `leftUnmappedItemIds[]`. A single-record URL's payloads are unchanged apart from an empty `targetEntities` and `leftUnmapped: false`
 - low-risk bulk review should continue to reuse `POST /runs/{run_id}/urls/{page_id}/decision` per selected URL so reviewer audit artifacts and journey events stay page-scoped instead of introducing a second bulk-write artifact contract
 - package dry-run, preflight approval, and execute routes should consume the selected package as their preferred upstream input
 - the package surface should expose selected-package workflow state and recent import execution history once package observability is available
@@ -561,6 +562,14 @@ Recommended additive fields when model interpretation ran (absent entirely when 
   `not_offered_to_interpreter`), `item_ids`, `decline_reasons`
 - per-`target_candidates[]` entry `provenance` and `rationale`, present only on a candidate an
   interpreter produced
+- top-level `interpretation.entities[]` (`entity_id`, `object_key`, `label`, `item_count`) and a
+  per-content-item `entity_ref`, present only when a **model** read the page as a set of records
+  (D-19); an item whose joined answers span two records carries `entity_ref: ""` and
+  `interpretation.entity_conflict`
+- content items with `item_type` `page_head_meta` (`robots`, `canonical`) or a section item noted
+  "Element the interpreter answered that no section unit carried": built for every model answer the
+  section units had no room for, so `unjoined_recommendation_items` is zero unless an answer is an
+  image (whose home is the media channel)
 
 Presence rule: these keys are written by the component that did the work and are **absent**, not
 defaulted, when no interpreter ran. That is the D-3 rule from the V3 guide and it is what makes a
@@ -585,6 +594,14 @@ Required top-level fields:
 - `recommendations[]`
 - `declined[]`
 - `stats`
+
+Optional `entities[]` (`entity_id`, `object_key`, `label`, `item_ids[]`), present only when the
+page was read as a set of records. Then every recommendation carries `entity_id` and its
+`target_object_key` is its record's object. A model may declare a set only of an object it was
+offered as a collection (`collection_objects` in the prompt payload: the classifier's other
+post-type candidates, declared `one_or_many_per_source_url`); the floor groups only when an object
+positively declares a per-entity cardinality, which the live catalog never does. A set of one
+record of the page's own object is written as no set.
 
 `model_attempt` always carries `used` and, when a call was made, `attempted` and a named `reason`
 from `no_api_key` | `over_budget` | `transport_error` | `invalid_response_shape` |
@@ -651,10 +668,16 @@ Required top-level fields:
 
 Recommended additive top-level fields:
 - `field_context_provider`
+- `target_entities[]` — **present only when one source URL becomes several records (D-19)**. Each
+  entry is shaped like `recommended_target_object` plus `entity_ref`, `label`, `slug` and
+  `recommendation_count`. Absent for a single-record page, which is therefore byte-identical to the
+  artifact V2 always wrote. Read it through `DBVC_CC_V2_Contracts::get_target_entities()`, which
+  returns `recommended_target_object` as a list of one (with `entity_ref: ""`) when it is absent.
 
 Recommended additive `unresolved_items[]` fields:
 - `unresolved_class`
 - `reason_codes[]`
+- `entity_ref` (set pages only)
 
 Per-recommendation fields:
 - `recommendation_id`
@@ -676,6 +699,13 @@ Recommended additive per-recommendation fields:
 - `transform_warnings`
 - `value_contract`
 - `value_contract_validation`
+- `entity_ref` (set pages only): the record the value belongs to
+
+On a set page `conflicts[]` are computed per record: five records each with a title are not a
+conflict, and several paragraphs for one `rich_text` field of one record are that field's value
+(merged in source order at packaging). Two values for any other field of one record are a
+conflict, and both carry `requires_review: true` with `selection.reason_codes` including
+`contested_field_in_record` — escalated, not re-scored.
 
 ### 12. `*.mapping-decisions.v2.json`
 
@@ -698,6 +728,14 @@ Required top-level fields:
 - `unresolved[]`
 - `reruns[]`
 - `reviewer_meta`
+
+Recommended additive fields, written only when the reviewer supplies them:
+- `left_unmapped[]` (`item_id`, `reason`): unresolved items the reviewer decided to leave out
+  (REST `leftUnmappedItemIds`). They stop counting toward `unresolved_items` in readiness and the
+  exception queue while the decision is not stale.
+- `target_entity_decisions{<entity_ref>}` (`decision` = `include` | `exclude`, optional
+  `selected_target_family` / `selected_target_object_key`): per-record decisions on a set page
+  (REST `targetEntities`).
 
 Required `target_object_decision` fields:
 - `decision_mode`
@@ -778,6 +816,14 @@ Recommended additive top-level fields:
 - `stats.fieldContextProviderDriftCount`
 - `stats.transformBlockedCount`
 - `stats.transformWarningCount`
+
+On a set page, additive `selectedTargetEntities[]` and `packagePreview.entities[]`: one preview
+per included record carrying only that record's `field_values` / `media_refs`, under its own
+identity from `DBVC_CC_V2_Contracts::entity_identity()` — `source_url#dbvc-record-<slug>` and
+`<path>/<slug>` — so the importer's match order (source URL, source path, source hash, page path,
+slug, then create) runs per record. `package-records.v1` then holds one record per entity with
+`entity_ref`, `entity_label` and `page_source_url`. Warnings `values_without_record` and
+`records_without_values` name what a set page leaves out.
 
 Recommended `readiness_status` values:
 - `ready_for_import`

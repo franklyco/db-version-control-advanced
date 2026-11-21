@@ -62,6 +62,9 @@ const TONES = {
 		'published',
 		'succeeded',
 		'completed',
+		'created',
+		'complete',
+		'verified',
 	],
 	directional: [
 		'outgoing',
@@ -75,6 +78,8 @@ const TONES = {
 		'running',
 		'pending',
 		'preparing',
+		'changed',
+		'updated',
 	],
 	neutral: [
 		'converged',
@@ -100,9 +105,13 @@ const TONES = {
 		'expiring',
 		'migration_required',
 		'paused',
+		'expired',
+		'still_differs',
+		'changed_again',
 	],
 	negative: [
 		'conflict',
+		'removed',
 		'override_changed',
 		'failed',
 		'compensated',
@@ -141,6 +150,18 @@ function Badge( { state, children } ) {
 	);
 }
 
+/**
+ * When an environment was last heard from at all (CR-4d): its last poll or its
+ * last observation, whichever is later. Falls back to last_contact_at for hubs
+ * that predate the field.
+ *
+ * @param {Object} env Environment or fleet-site row.
+ * @return {string} MySQL UTC datetime or ''.
+ */
+function seenAt( env ) {
+	return ( env && ( env.last_seen_at || env.last_contact_at ) ) || '';
+}
+
 function relative( iso ) {
 	if ( ! iso ) {
 		return __( 'never', 'dbvc' );
@@ -169,10 +190,11 @@ function relative( iso ) {
 			Math.round( seconds / 3600 )
 		);
 	}
+	const days = Math.round( seconds / 86400 );
 	return sprintf(
-		/* translators: placeholders are counts, identifiers or relative times shown in the Connected Environments page */
-		__( '%d days ago', 'dbvc' ),
-		Math.round( seconds / 86400 )
+		/* translators: %d: number of days */
+		_n( '%d day ago', '%d days ago', days, 'dbvc' ),
+		days
 	);
 }
 
@@ -475,11 +497,11 @@ function Environments( { hub, notify, onChanged, onCompare } ) {
 	};
 
 	const fresh = ( env ) => {
-		if ( ! env.last_contact_at ) {
+		if ( ! seenAt( env ) ) {
 			return null;
 		}
 		const then = new Date(
-			env.last_contact_at.replace( ' ', 'T' ) + 'Z'
+			seenAt( env ).replace( ' ', 'T' ) + 'Z'
 		).getTime();
 		return Date.now() - then <= freshness * 1000;
 	};
@@ -832,12 +854,10 @@ function Environments( { hub, notify, onChanged, onCompare } ) {
 										<td>
 											<span
 												title={ absoluteTime(
-													env.last_contact_at
+													seenAt( env )
 												) }
 											>
-												{ relative(
-													env.last_contact_at
-												) }
+												{ relative( seenAt( env ) ) }
 											</span>{ ' ' }
 											{ isFresh === true && (
 												<span className="subtle">
@@ -5786,10 +5806,8 @@ function HubOverview( { hub, onNavigate } ) {
 		const out = { enabled: 0, held: 0, revoked: 0, stale: 0 };
 		environments.forEach( ( env ) => {
 			out[ env.status ] = ( out[ env.status ] || 0 ) + 1;
-			const contact = env.last_contact_at
-				? new Date(
-						env.last_contact_at.replace( ' ', 'T' ) + 'Z'
-				  ).getTime()
+			const contact = seenAt( env )
+				? new Date( seenAt( env ).replace( ' ', 'T' ) + 'Z' ).getTime()
 				: 0;
 			if (
 				env.status === 'enabled' &&
@@ -5821,18 +5839,16 @@ function HubOverview( { hub, onNavigate } ) {
 					env.label || env.environment_id
 				),
 				detail: `${ env.hold_reason || '' } · ${ __(
-					'last contact',
+					'last seen',
 					'dbvc'
-				) } ${ relative( env.last_contact_at ) }`,
+				) } ${ relative( seenAt( env ) ) }`,
 			} )
 		);
 	environments
 		.filter( ( env ) => env.status === 'enabled' )
 		.forEach( ( env ) => {
-			const contact = env.last_contact_at
-				? new Date(
-						env.last_contact_at.replace( ' ', 'T' ) + 'Z'
-				  ).getTime()
+			const contact = seenAt( env )
+				? new Date( seenAt( env ).replace( ' ', 'T' ) + 'Z' ).getTime()
 				: 0;
 			if ( ! contact || Date.now() - contact > freshness * 1000 ) {
 				attention.push( {
@@ -5846,8 +5862,8 @@ function HubOverview( { hub, onNavigate } ) {
 						),
 						env.label || env.environment_id
 					),
-					detail: `${ __( 'last contact', 'dbvc' ) } ${ relative(
-						env.last_contact_at
+					detail: `${ __( 'last seen', 'dbvc' ) } ${ relative(
+						seenAt( env )
 					) } · ${ __(
 						'its projections read unknown, never clean',
 						'dbvc'
@@ -8579,12 +8595,10 @@ function Fleet( { notify, onCompare } ) {
 										<td>
 											<span
 												title={ absoluteTime(
-													site.last_contact_at
+													seenAt( site )
 												) }
 											>
-												{ relative(
-													site.last_contact_at
-												) }
+												{ relative( seenAt( site ) ) }
 											</span>
 											{ ! site.fresh && site.live && (
 												<span
@@ -9558,7 +9572,7 @@ function PublishProgress( {
 	);
 }
 
-function Sync( { notify } ) {
+function Sync( { notify, onChanges } ) {
 	const [ environments, setEnvironments ] = useState( [] );
 	const [ pair, setPair ] = useState( { source: '', target: '' } );
 	const [ policy, setPolicy ] = useState( null );
@@ -9837,7 +9851,11 @@ function Sync( { notify } ) {
 
 	const hasPair = !! ( pair.source && pair.target );
 	const canPropose = policy && policy.enabled && policy.mode !== 'manual';
-	const isAuto = policy && policy.enabled && policy.mode === 'auto';
+	// auto and report are the hub-driven (tracked) modes: both expose Advance.
+	const isTracked =
+		policy &&
+		policy.enabled &&
+		( policy.mode === 'auto' || policy.mode === 'report' );
 	const inFlight =
 		policy && ( policy.active_release_uid || policy.active_rollout_uid );
 
@@ -9946,7 +9964,7 @@ function Sync( { notify } ) {
 							>
 								{ __( 'Sync now', 'dbvc' ) }
 							</button>
-							{ isAuto && (
+							{ isTracked && (
 								<>
 									{ ' ' }
 									<button
@@ -9957,6 +9975,21 @@ function Sync( { notify } ) {
 									>
 										{ __( 'Advance', 'dbvc' ) }
 									</button>
+									{ policy.mode === 'report' && onChanges && (
+										<>
+											{ ' ' }
+											<button
+												type="button"
+												className="btn btn--ghost"
+												onClick={ onChanges }
+											>
+												{ __(
+													'Open Site Changes',
+													'dbvc'
+												) }
+											</button>
+										</>
+									) }
 								</>
 							) }
 							{ ! canPropose && (
@@ -10113,6 +10146,12 @@ function Sync( { notify } ) {
 											'dbvc'
 										) }
 									</option>
+									<option value="report">
+										{ __(
+											'report only (tell me what changed, never apply)',
+											'dbvc'
+										) }
+									</option>
 								</select>
 							</div>
 							<div className="dbvc-ce-field">
@@ -10257,7 +10296,7 @@ function Sync( { notify } ) {
 								</select>
 								<p className="description">
 									{ __(
-										'How often the hub cron starts a new auto cycle (auto mode only); an in-flight cycle advances every tick.',
+										'How often the hub cron starts a new cycle (auto and report modes); an in-flight cycle advances every tick.',
 										'dbvc'
 									) }
 								</p>
@@ -10354,6 +10393,1497 @@ function Sync( { notify } ) {
 					) }
 				</div>
 			</div>
+		</div>
+	);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Site Changes — the change report (CR-3b).                                 */
+/*                                                                            */
+/* The simple page is the default surface (approved mockup                    */
+/* docs/implementation/active/mockups/change-report-mockup.html): one calm    */
+/* column of objects that appear as each report-mode pass records them, one   */
+/* decision per item in plain words (Done / Leave it / Remind me tomorrow /   */
+/* Sorted), drill-down one click away ("Show technical names"), and a "Full   */
+/* console" toggle for runs, bulk decisions, promote and purge. Nothing here  */
+/* applies anything: the operator edits LocalWP by hand, then says Done.      */
+/* ------------------------------------------------------------------------- */
+
+const CHANGE_LABEL_TONE = {
+	created: 'positive',
+	updated: 'directional',
+	removed: 'negative',
+	conflict: 'caution',
+	local_only: 'neutral',
+	converged: 'positive',
+	locked: 'caution',
+	unknown: 'uncertain',
+	baseline_required: 'uncertain',
+};
+
+const CHANGE_LABEL_GLYPH = {
+	created: '▣',
+	updated: '▤',
+	removed: '▤',
+	conflict: '◈',
+	local_only: '▤',
+	converged: '✓',
+	locked: '🔒',
+	unknown: '?',
+	baseline_required: '?',
+};
+
+function changeOpState( operation ) {
+	if ( operation === 'add' ) {
+		return 'created';
+	}
+	return operation === 'remove' ? 'removed' : 'changed';
+}
+
+function changeOpLabel( operation ) {
+	if ( operation === 'add' ) {
+		return __( 'New', 'dbvc' );
+	}
+	return operation === 'remove'
+		? __( 'Removed', 'dbvc' )
+		: __( 'Changed', 'dbvc' );
+}
+
+function changeDoneLabel( label ) {
+	if ( label === 'removed' ) {
+		return __( 'Done — removed on the target', 'dbvc' );
+	}
+	return label === 'created'
+		? __( 'Done — created on the target', 'dbvc' )
+		: __( 'Done — I updated the target', 'dbvc' );
+}
+
+function changeLeaveLabel( label ) {
+	if ( label === 'removed' ) {
+		return __( 'Keep it on the target', 'dbvc' );
+	}
+	return label === 'created'
+		? __( "Don't need it on the target", 'dbvc' )
+		: __( 'Leave the target as it is', 'dbvc' );
+}
+
+function changeDecisionCell( item ) {
+	if ( item.decision ) {
+		return (
+			<span className="subtle">
+				{ item.decision.decision } · { item.decision.verify_state }
+			</span>
+		);
+	}
+	return (
+		<span className="subtle">
+			{ item.resolved ? __( 'settled', 'dbvc' ) : __( 'open', 'dbvc' ) }
+		</span>
+	);
+}
+
+function changeDecisionToast( decision ) {
+	const map = {
+		reconciled: __(
+			'Done — the next pass checks that the two sites match.',
+			'dbvc'
+		),
+		ignored: __(
+			'Left as is. It comes back if staging changes it again.',
+			'dbvc'
+		),
+		snoozed: __( 'Snoozed until tomorrow.', 'dbvc' ),
+	};
+	return map[ decision ] || __( 'Reopened.', 'dbvc' );
+}
+
+function changeItemRef( item ) {
+	return `${ item.domain }:${ item.instance_uid }`;
+}
+
+function changeDomainLabel( domain ) {
+	const map = {
+		'bricks.global_class': __( 'Global class', 'dbvc' ),
+		'bricks.variable': __( 'Variable', 'dbvc' ),
+		'wp.service': __( 'Service', 'dbvc' ),
+		'wp.bricks:components': __( 'Component', 'dbvc' ),
+		'wp.bricks:color_palette': __( 'Color palette', 'dbvc' ),
+		'wp.bricks:theme_styles': __( 'Theme styles', 'dbvc' ),
+		'wp.bricks:breakpoints': __( 'Breakpoints', 'dbvc' ),
+	};
+	if ( map[ domain ] ) {
+		return map[ domain ];
+	}
+	if ( domain.startsWith( 'wp.post:' ) ) {
+		const type = domain.slice( 'wp.post:'.length );
+		return type === 'bricks_template'
+			? __( 'Template', 'dbvc' )
+			: type.charAt( 0 ).toUpperCase() + type.slice( 1 );
+	}
+	if ( domain.startsWith( 'wp.' ) ) {
+		return domain.slice( 3 ).replace( /_/g, ' ' );
+	}
+	return domain;
+}
+
+/**
+ * Plain-language "what changed" line for a card head.
+ *
+ * @param {Object} item
+ * @return {string} One plain-language line for the card head.
+ */
+function changeWhatText( item ) {
+	const n = item.path_count || 0;
+	switch ( item.label ) {
+		case 'created':
+			return __(
+				"A new object that doesn't exist on the target yet.",
+				'dbvc'
+			);
+		case 'removed':
+			return __(
+				'Removed on staging. It still exists on the target.',
+				'dbvc'
+			);
+		case 'conflict':
+			return __(
+				'Changed on staging and on the target since the snapshot.',
+				'dbvc'
+			);
+		case 'local_only':
+			return __(
+				'Changed on the target only; staging has not. Nothing to do.',
+				'dbvc'
+			);
+		case 'converged':
+			return __( 'Both sites match now.', 'dbvc' );
+		case 'locked':
+			return __(
+				'Protected on the target (approved client work); not transported.',
+				'dbvc'
+			);
+		case 'unknown':
+			return __(
+				'One side is not reporting, so this cannot be compared yet.',
+				'dbvc'
+			);
+		case 'baseline_required':
+			return __(
+				'No agreed starting point for this object yet.',
+				'dbvc'
+			);
+		default:
+			if ( item.receipt_outcome === 'blocked' ) {
+				return __(
+					'Changed on staging; the target could not read it (see details).',
+					'dbvc'
+				);
+			}
+			return n
+				? sprintf(
+						/* translators: %d: number of changed fields */
+						_n(
+							'%d field changed on staging.',
+							'%d fields changed on staging.',
+							n,
+							'dbvc'
+						),
+						n
+				  )
+				: __( 'Changed on staging.', 'dbvc' );
+	}
+}
+
+/**
+ * A human name for a dot-path: the last meaningful segment, Bricks element
+ * trees read as "Section › element › setting".
+ *
+ * @param {string} path
+ * @return {string} A human name for the path.
+ */
+function changePathLabel( path ) {
+	const parts = String( path || '' ).split( '.' );
+	const friendly = {
+		post_title: __( 'Title', 'dbvc' ),
+		post_content: __( 'Content', 'dbvc' ),
+		post_excerpt: __( 'Excerpt', 'dbvc' ),
+		post_name: __( 'Slug', 'dbvc' ),
+		post_status: __( 'Status', 'dbvc' ),
+		menu_order: __( 'Menu order', 'dbvc' ),
+		name: __( 'Name', 'dbvc' ),
+		label: __( 'Label', 'dbvc' ),
+		settings: __( 'Settings', 'dbvc' ),
+		text: __( 'Text', 'dbvc' ),
+		image: __( 'Image', 'dbvc' ),
+		id: __( 'Id', 'dbvc' ),
+	};
+	if ( parts.length === 1 ) {
+		return friendly[ parts[ 0 ] ] || parts[ 0 ];
+	}
+	const last = parts[ parts.length - 1 ];
+	const where = parts
+		.filter(
+			( p ) =>
+				! /^\d+$/.test( p ) &&
+				! [
+					'meta',
+					'settings',
+					'_bricks_page_content_2',
+					'content',
+				].includes( p )
+		)
+		.slice( 0, -1 )
+		.map( ( p ) => p.replace( /^_/, '' ).replace( /_/g, ' ' ) );
+	const leaf =
+		friendly[ last ] || last.replace( /^_/, '' ).replace( /[_-]/g, ' ' );
+	return where.length ? `${ leaf } · ${ where.join( ' › ' ) }` : leaf;
+}
+
+function changeStatusText( status ) {
+	if ( ! status?.enabled ) {
+		return { tone: 'neutral', text: __( 'Paused', 'dbvc' ) };
+	}
+	if ( status.mode !== 'report' ) {
+		return {
+			tone: 'neutral',
+			text: sprintf(
+				/* translators: %s: sync policy mode */
+				__( 'Mode %s — not a report pair', 'dbvc' ),
+				status.mode
+			),
+		};
+	}
+	const note = String( status.last_run_note || '' );
+	if ( note.startsWith( 'stale_target' ) ) {
+		return {
+			tone: 'uncertain',
+			text: sprintf(
+				/* translators: %s: relative time */
+				__(
+					"The target hasn't checked in since %s. Usually it is just closed.",
+					'dbvc'
+				),
+				relative(
+					status.target_last_seen_at || status.target_last_contact_at
+				)
+			),
+		};
+	}
+	if ( note.startsWith( 'stale_source' ) ) {
+		return {
+			tone: 'uncertain',
+			text: sprintf(
+				/* translators: %s: relative time */
+				__( "Staging hasn't checked in since %s.", 'dbvc' ),
+				relative(
+					status.source_last_seen_at || status.source_last_contact_at
+				)
+			),
+		};
+	}
+	if ( note.startsWith( 'unstable_source' ) ) {
+		return {
+			tone: 'caution',
+			text: __(
+				'Staging kept changing while we were reading it. Retrying next hour.',
+				'dbvc'
+			),
+		};
+	}
+	if ( note.startsWith( 'frozen_target' ) ) {
+		return {
+			tone: 'caution',
+			text: __(
+				'The target is in a maintenance freeze; checking resumes after it.',
+				'dbvc'
+			),
+		};
+	}
+	if ( status.in_flight ) {
+		return { tone: 'directional', text: __( 'Checking…', 'dbvc' ) };
+	}
+	return {
+		tone: 'positive',
+		text: sprintf(
+			/* translators: %s: relative time */
+			__( 'Watching · checked %s', 'dbvc' ),
+			relative( status.last_run_at )
+		),
+	};
+}
+
+function ChangeValues( { path, tech } ) {
+	const hasValues =
+		path.before_value !== undefined || path.after_value !== undefined;
+	if ( ! hasValues ) {
+		return (
+			<p className="dbvc-ce-muted dbvc-ce-vals__none">
+				{ __(
+					'Values are not included (the target keeps them off).',
+					'dbvc'
+				) }
+			</p>
+		);
+	}
+	const cell = ( value, side ) => (
+		<div className={ `dbvc-ce-vals__cell dbvc-ce-vals__cell--${ side }` }>
+			<span className="dbvc-ce-vals__lab">
+				{ side === 'before'
+					? __( 'Target', 'dbvc' )
+					: __( 'Staging', 'dbvc' ) }
+			</span>
+			<span className={ tech ? 'dbvc-ce-hash' : undefined }>
+				{ value === undefined || value === null
+					? __( '(absent)', 'dbvc' )
+					: String( value ) }
+			</span>
+		</div>
+	);
+	return (
+		<div className="dbvc-ce-vals">
+			{ cell( path.before_value, 'before' ) }
+			{ cell( path.after_value, 'after' ) }
+		</div>
+	);
+}
+
+function ChangeCard( { item, busy, onDecide, onOpen } ) {
+	const [ open, setOpen ] = useState( false );
+	const [ tech, setTech ] = useState( false );
+	const needsLook = item.needs_look;
+	const isConflict = item.label === 'conflict';
+	const decision = item.decision;
+	const decisionLabel = decision
+		? {
+				reconciled: __( 'Done', 'dbvc' ),
+				ignored: __( 'Left as is', 'dbvc' ),
+				snoozed: __( 'Snoozed', 'dbvc' ),
+				promoted: __( 'Release created', 'dbvc' ),
+		  }[ decision.decision ] || decision.decision
+		: '';
+	const verifyLabel = decision
+		? {
+				pending: __( 'checking next pass', 'dbvc' ),
+				verified: __( 'verified', 'dbvc' ),
+				still_differs: __( 'still differs', 'dbvc' ),
+				muted: '',
+				changed_again: __( 'changed again', 'dbvc' ),
+				snoozed: __( 'until tomorrow', 'dbvc' ),
+				due: __( 'due', 'dbvc' ),
+		  }[ decision.verify_state ] || decision.verify_state
+		: '';
+	const isBusy = busy === changeItemRef( item );
+	return (
+		<article
+			className={ `dbvc-ce-change dbvc-ce-change--${ item.label }${
+				item.resolved ? ' is-resolved' : ''
+			}` }
+		>
+			<div className="dbvc-ce-change__head">
+				<span className="dbvc-ce-change__glyph" aria-hidden="true">
+					{ CHANGE_LABEL_GLYPH[ item.label ] || '▤' }
+				</span>
+				<div className="dbvc-ce-change__main">
+					<div className="dbvc-ce-change__title">
+						<button
+							type="button"
+							className="dbvc-ce-linkbtn"
+							aria-expanded={ open }
+							onClick={ () => setOpen( ! open ) }
+						>
+							{ item.display_name || item.instance_uid }
+						</button>
+						<span className="dbvc-ce-tag">
+							{ changeDomainLabel( item.domain ) }
+						</span>
+						<span
+							className={ `dbvc-badge dbvc-badge--${
+								CHANGE_LABEL_TONE[ item.label ] || 'neutral'
+							}` }
+						>
+							{ item.label_text || item.label }
+						</span>
+						{ decision && (
+							<span className="dbvc-badge dbvc-badge--neutral">
+								{ decisionLabel }
+								{ verifyLabel ? ` · ${ verifyLabel }` : '' }
+							</span>
+						) }
+					</div>
+					<p className="dbvc-ce-change__what">
+						{ changeWhatText( item ) }
+					</p>
+					<p className="dbvc-ce-change__meta">
+						{ relative( item.changed_at ) }
+						{ item.receipt_outcome &&
+						item.receipt_outcome !== 'ready' &&
+						item.receipt_outcome !== ''
+							? ` · ${ item.receipt_outcome }`
+							: '' }
+						{ item.truncated
+							? ` · ${ __( 'list of fields cut short', 'dbvc' ) }`
+							: '' }
+					</p>
+				</div>
+				<div className="dbvc-ce-change__acts">
+					{ needsLook && ! isConflict && (
+						<button
+							type="button"
+							className="btn btn--small"
+							disabled={ isBusy }
+							onClick={ () => onDecide( item, 'reconciled' ) }
+						>
+							{ __( 'Done', 'dbvc' ) }
+						</button>
+					) }
+					{ needsLook && isConflict && (
+						<span className="dbvc-ce-muted">
+							{ __( 'Open to compare', 'dbvc' ) }
+						</span>
+					) }
+					{ ! needsLook && ! decision && (
+						<span className="dbvc-ce-muted">
+							{ __( 'No action needed', 'dbvc' ) }
+						</span>
+					) }
+				</div>
+			</div>
+			{ open && (
+				<div className="dbvc-ce-change__body">
+					{ isConflict && (
+						<div className="dbvc-inline-notice dbvc-inline-notice--warning">
+							<p>
+								<strong>
+									{ __(
+										'Both copies differ from the snapshot.',
+										'dbvc'
+									) }
+								</strong>{ ' ' }
+								{ __(
+									'Pick the one you want by hand on the target, then press "Sorted". The next pass checks that the two match.',
+									'dbvc'
+								) }
+							</p>
+						</div>
+					) }
+					{ item.blockers && item.blockers.length > 0 && (
+						<p className="dbvc-ce-hint">
+							{ __( 'The target reported:', 'dbvc' ) }{ ' ' }
+							<code>{ item.blockers.join( ', ' ) }</code>
+						</p>
+					) }
+					{ item.paths.length > 0 && (
+						<>
+							<div className="dbvc-ce-change__h">
+								<span>{ __( 'What changed', 'dbvc' ) }</span>
+								<button
+									type="button"
+									className="dbvc-ce-linkbtn"
+									onClick={ () => setTech( ! tech ) }
+								>
+									{ tech
+										? __( 'Hide technical names', 'dbvc' )
+										: __( 'Show technical names', 'dbvc' ) }
+								</button>
+							</div>
+							<div className="dbvc-ce-flds">
+								{ item.paths.map( ( path ) => (
+									<div
+										className="dbvc-ce-fld"
+										key={ path.path }
+									>
+										<div className="dbvc-ce-fld__h">
+											<span>
+												{ changePathLabel( path.path ) }
+											</span>
+											{ tech && (
+												<code className="dbvc-ce-fld__path">
+													{ path.path }
+												</code>
+											) }
+											<Badge
+												state={ changeOpState(
+													path.operation
+												) }
+											>
+												{ changeOpLabel(
+													path.operation
+												) }
+											</Badge>
+										</div>
+										<ChangeValues
+											path={ path }
+											tech={ tech }
+										/>
+									</div>
+								) ) }
+							</div>
+						</>
+					) }
+					{ item.paths.length === 0 && item.label === 'removed' && (
+						<p className="dbvc-ce-muted">
+							{ __(
+								'Nothing to compare — the whole object went. If you remove it on the target too, press Done. To keep it there, press "Keep it".',
+								'dbvc'
+							) }
+						</p>
+					) }
+					{ isConflict && item.baseline_hash && (
+						<p className="dbvc-ce-hint">
+							{ __( 'Snapshot', 'dbvc' ) }:{ ' ' }
+							<code className="dbvc-ce-hash">
+								{ String( item.baseline_hash ).slice( 0, 12 ) }
+							</code>
+							{ ' · ' }
+							{ __( 'Target', 'dbvc' ) }:{ ' ' }
+							<code className="dbvc-ce-hash">
+								{ String( item.target_hash || '' ).slice(
+									0,
+									12
+								) }
+							</code>
+							{ ' · ' }
+							{ __( 'Staging', 'dbvc' ) }:{ ' ' }
+							<code className="dbvc-ce-hash">
+								{ String( item.source_hash || '' ).slice(
+									0,
+									12
+								) }
+							</code>
+						</p>
+					) }
+					<div className="dbvc-ce-change__foot">
+						<button
+							type="button"
+							className="btn btn--small btn--ghost"
+							onClick={ () => onOpen( item ) }
+						>
+							{ __( 'Copy details', 'dbvc' ) }
+						</button>
+						<span className="spacer" />
+						{ needsLook && isConflict && (
+							<>
+								<button
+									type="button"
+									className="btn btn--small btn--primary"
+									disabled={ isBusy }
+									onClick={ () =>
+										onDecide( item, 'reconciled', {
+											rebaseline: true,
+										} )
+									}
+								>
+									{ __( 'Sorted — they match now', 'dbvc' ) }
+								</button>
+								<button
+									type="button"
+									className="btn btn--small btn--ghost"
+									disabled={ isBusy }
+									onClick={ () =>
+										onDecide( item, 'snoozed' )
+									}
+								>
+									{ __( 'Remind me tomorrow', 'dbvc' ) }
+								</button>
+							</>
+						) }
+						{ needsLook && ! isConflict && (
+							<>
+								<button
+									type="button"
+									className="btn btn--small btn--primary"
+									disabled={ isBusy }
+									onClick={ () =>
+										onDecide( item, 'reconciled' )
+									}
+								>
+									{ changeDoneLabel( item.label ) }
+								</button>
+								<button
+									type="button"
+									className="btn btn--small btn--ghost"
+									disabled={ isBusy }
+									onClick={ () =>
+										onDecide( item, 'ignored' )
+									}
+								>
+									{ changeLeaveLabel( item.label ) }
+								</button>
+							</>
+						) }
+						{ decision && (
+							<button
+								type="button"
+								className="btn btn--small btn--ghost"
+								disabled={ isBusy }
+								onClick={ () => onDecide( item, 'clear' ) }
+							>
+								{ __( 'Reopen', 'dbvc' ) }
+							</button>
+						) }
+					</div>
+				</div>
+			) }
+		</article>
+	);
+}
+
+// Full console: runs, per-run items with bulk decisions, promote and purge.
+function ChangesConsole( { pair, notify, onChanged } ) {
+	const [ runs, setRuns ] = useState( [] );
+	const [ run, setRun ] = useState( '' );
+	const [ items, setItems ] = useState( [] );
+	const [ runInfo, setRunInfo ] = useState( null );
+	const [ selected, setSelected ] = useState( {} );
+	const [ busy, setBusy ] = useState( '' );
+	const [ purgePreview, setPurgePreview ] = useState( null );
+
+	const loadRuns = useCallback( async () => {
+		try {
+			const res = await apiFetch( {
+				path: `agency/change-reports?source=${ encodeURIComponent(
+					pair.source
+				) }&target=${ encodeURIComponent( pair.target ) }&limit=50`,
+			} );
+			setRuns( res.reports || [] );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	}, [ pair, notify ] );
+
+	const loadRun = useCallback(
+		async ( uid ) => {
+			setRun( uid );
+			setSelected( {} );
+			setRunInfo( null );
+			if ( ! uid ) {
+				setItems( [] );
+				return;
+			}
+			try {
+				const res = await apiFetch( {
+					path: `agency/change-report?source=${ encodeURIComponent(
+						pair.source
+					) }&target=${ encodeURIComponent(
+						pair.target
+					) }&report=${ encodeURIComponent(
+						uid
+					) }&handled_limit=500`,
+				} );
+				setItems( [
+					...( res.items || [] ),
+					...( res.handled || [] ),
+				] );
+				setRunInfo( res.run || null );
+			} catch ( err ) {
+				notify( 'error', errorMessage( err ) );
+			}
+		},
+		[ pair, notify ]
+	);
+
+	useEffect( () => {
+		loadRuns();
+	}, [ loadRuns ] );
+
+	const selectedRefs = Object.keys( selected ).filter(
+		( k ) => selected[ k ]
+	);
+
+	const bulk = async ( path, data, label ) => {
+		setBusy( label );
+		try {
+			const res = await apiFetch( {
+				path,
+				method: 'POST',
+				data: { source: pair.source, target: pair.target, ...data },
+			} );
+			notify(
+				'success',
+				res.release
+					? sprintf(
+							/* translators: 1: release uid, 2: object count */
+							__(
+								'Release %1$s created from %2$d object(s); approve it from Releases.',
+								'dbvc'
+							),
+							res.release.release_uid,
+							res.promoted
+					  )
+					: sprintf(
+							/* translators: %d: number of items */
+							__( '%d item(s) updated.', 'dbvc' ),
+							( res.items || [] ).length
+					  )
+			);
+			await loadRun( run );
+			await loadRuns();
+			onChanged();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const purge = async ( dryRun ) => {
+		setBusy( 'purge' );
+		try {
+			const res = await apiFetch( {
+				path: 'agency/change-report-purge',
+				method: 'POST',
+				data: { dry_run: dryRun },
+			} );
+			setPurgePreview( res );
+			if ( ! dryRun ) {
+				notify(
+					'success',
+					sprintf(
+						/* translators: %d: number of releases */
+						__( 'Purged %d report release(s).', 'dbvc' ),
+						res.purged
+					)
+				);
+				setPurgePreview( null );
+				await loadRuns();
+			}
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	return (
+		<div className="dbvc-ce-console">
+			<div className="dbvc-tools-panel">
+				<div className="dbvc-ce-panel__head">
+					<h2>{ __( 'Runs', 'dbvc' ) }</h2>
+					<span className="dbvc-ce-asof">
+						{ __(
+							'One row per completed check; the newest 20 are kept per pair.',
+							'dbvc'
+						) }
+					</span>
+				</div>
+				{ runs.length === 0 ? (
+					<p className="dbvc-ce-empty">
+						{ __( 'No completed runs yet.', 'dbvc' ) }
+					</p>
+				) : (
+					<table className="widefat striped">
+						<thead>
+							<tr>
+								<th>{ __( 'Run', 'dbvc' ) }</th>
+								<th>{ __( 'State', 'dbvc' ) }</th>
+								<th className="num">
+									{ __( 'Objects', 'dbvc' ) }
+								</th>
+								<th>
+									{ __(
+										'New / changed / removed / conflict / local-only',
+										'dbvc'
+									) }
+								</th>
+								<th>{ __( 'Values', 'dbvc' ) }</th>
+								<th>{ __( 'Generated', 'dbvc' ) }</th>
+							</tr>
+						</thead>
+						<tbody>
+							{ runs.map( ( r ) => (
+								<tr
+									key={ r.report_uid }
+									aria-selected={ run === r.report_uid }
+								>
+									<td>
+										<button
+											type="button"
+											className="dbvc-ce-linkbtn"
+											onClick={ () =>
+												loadRun(
+													run === r.report_uid
+														? ''
+														: r.report_uid
+												)
+											}
+										>
+											<code>{ r.report_uid }</code>
+										</button>
+									</td>
+									<td>
+										<Badge
+											state={
+												r.state === 'ready'
+													? 'complete'
+													: r.state
+											}
+										/>
+									</td>
+									<td className="num">{ r.items }</td>
+									<td className="num">
+										{ r.created } / { r.updated } /{ ' ' }
+										{ r.removed } / { r.conflict } /{ ' ' }
+										{ r.local_only }
+									</td>
+									<td>{ r.values }</td>
+									<td className="subtle">
+										{ relative( r.generated_at ) }
+									</td>
+								</tr>
+							) ) }
+						</tbody>
+					</table>
+				) }
+			</div>
+			{ run && (
+				<div className="dbvc-tools-panel" style={ { marginTop: 16 } }>
+					<div className="dbvc-ce-panel__head">
+						<h2>
+							{ __( 'Objects in', 'dbvc' ) } <code>{ run }</code>
+						</h2>
+						<span className="dbvc-ce-asof">
+							{ runInfo && runInfo.snapshot === false
+								? __(
+										'Recorded before per-run history: showing the live rows still stamped with this run.',
+										'dbvc'
+								  )
+								: __(
+										'As this run recorded them; decisions are current.',
+										'dbvc'
+								  ) }
+						</span>
+					</div>
+					<table className="widefat striped">
+						<thead>
+							<tr>
+								<th style={ { width: 24 } } />
+								<th>{ __( 'Object', 'dbvc' ) }</th>
+								<th>{ __( 'Label', 'dbvc' ) }</th>
+								<th className="num">
+									{ __( 'Fields', 'dbvc' ) }
+								</th>
+								<th>{ __( 'Dry run', 'dbvc' ) }</th>
+								<th>{ __( 'Decision', 'dbvc' ) }</th>
+							</tr>
+						</thead>
+						<tbody>
+							{ items.map( ( item ) => {
+								const ref = changeItemRef( item );
+								return (
+									<tr
+										key={ ref }
+										aria-selected={ !! selected[ ref ] }
+									>
+										<td>
+											<input
+												type="checkbox"
+												aria-label={ ref }
+												checked={ !! selected[ ref ] }
+												disabled={ ! item.operation }
+												onChange={ ( e ) =>
+													setSelected( {
+														...selected,
+														[ ref ]:
+															e.target.checked,
+													} )
+												}
+											/>
+										</td>
+										<td>
+											<span className="obj">
+												{ item.display_name ||
+													item.instance_uid }
+											</span>
+											<code>{ ref }</code>
+										</td>
+										<td>
+											<span
+												className={ `dbvc-badge dbvc-badge--${
+													CHANGE_LABEL_TONE[
+														item.label
+													] || 'neutral'
+												}` }
+											>
+												{ item.label_text ||
+													item.label }
+											</span>
+										</td>
+										<td className="num">
+											{ item.path_count }
+										</td>
+										<td>
+											{ item.receipt_outcome ? (
+												<Badge
+													state={
+														item.receipt_outcome
+													}
+												/>
+											) : (
+												<span className="subtle">
+													—
+												</span>
+											) }
+										</td>
+										<td>{ changeDecisionCell( item ) }</td>
+									</tr>
+								);
+							} ) }
+						</tbody>
+					</table>
+					{ selectedRefs.length > 0 && (
+						<div className="dbvc-ce-composer">
+							<strong>
+								{ sprintf(
+									/* translators: %d: number of selected objects */
+									__( '%d selected', 'dbvc' ),
+									selectedRefs.length
+								) }
+							</strong>
+							<div className="dbvc-ce__actions">
+								<button
+									type="button"
+									className="btn btn--small"
+									disabled={ !! busy }
+									onClick={ () =>
+										bulk(
+											'agency/change-report-decide',
+											{
+												items: selectedRefs,
+												decision: 'reconciled',
+											},
+											'done'
+										)
+									}
+								>
+									{ __( 'Done', 'dbvc' ) }
+								</button>
+								<button
+									type="button"
+									className="btn btn--small btn--ghost"
+									disabled={ !! busy }
+									onClick={ () =>
+										bulk(
+											'agency/change-report-decide',
+											{
+												items: selectedRefs,
+												decision: 'ignored',
+											},
+											'ignore'
+										)
+									}
+								>
+									{ __( 'Leave it', 'dbvc' ) }
+								</button>
+								<button
+									type="button"
+									className="btn btn--small btn--ghost"
+									disabled={ !! busy }
+									onClick={ () =>
+										bulk(
+											'agency/change-report-decide',
+											{
+												items: selectedRefs,
+												decision: 'clear',
+											},
+											'clear'
+										)
+									}
+								>
+									{ __( 'Reopen', 'dbvc' ) }
+								</button>
+								<button
+									type="button"
+									className="btn btn--small btn--primary"
+									disabled={ !! busy }
+									onClick={ () =>
+										bulk(
+											'agency/change-report-promote',
+											{ items: selectedRefs },
+											'promote'
+										)
+									}
+								>
+									{ sprintf(
+										/* translators: %d: number of selected objects */
+										__(
+											'Create release from %d object(s)',
+											'dbvc'
+										),
+										selectedRefs.length
+									) }
+								</button>
+							</div>
+						</div>
+					) }
+				</div>
+			) }
+			<div className="dbvc-tools-panel" style={ { marginTop: 16 } }>
+				<div className="dbvc-ce-panel__head">
+					<h2>{ __( 'Retention', 'dbvc' ) }</h2>
+					<span className="dbvc-ce-asof">
+						{ __(
+							'Report releases older than 7 days whose report exists are purged (release, payloads, dry runs); the report and its items stay.',
+							'dbvc'
+						) }
+					</span>
+				</div>
+				<div className="dbvc-ce-actions">
+					<button
+						type="button"
+						className="btn btn--small btn--ghost"
+						disabled={ !! busy }
+						onClick={ () => purge( true ) }
+					>
+						{ __( 'Preview purge', 'dbvc' ) }
+					</button>
+					{ purgePreview && (
+						<>
+							<span className="dbvc-ce-muted">
+								{ sprintf(
+									/* translators: 1: purgeable count, 2: kept count */
+									__(
+										'%1$d purgeable · %2$d kept because their report never completed',
+										'dbvc'
+									),
+									purgePreview.purgeable,
+									purgePreview.kept_without_report
+								) }
+							</span>
+							{ purgePreview.purgeable > 0 && (
+								<button
+									type="button"
+									className="btn btn--small btn--danger"
+									disabled={ !! busy }
+									onClick={ () => purge( false ) }
+								>
+									{ __( 'Purge now', 'dbvc' ) }
+								</button>
+							) }
+						</>
+					) }
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function Changes( { notify, onSync } ) {
+	const [ policies, setPolicies ] = useState( null );
+	const [ pair, setPair ] = useState( null );
+	const [ inbox, setInbox ] = useState( null );
+	const [ loading, setLoading ] = useState( true );
+	const [ busy, setBusy ] = useState( '' );
+	const [ showHandled, setShowHandled ] = useState( false );
+	const [ console, setConsole ] = useState( false );
+	const [ lastSeen, setLastSeen ] = useState( '' );
+
+	const loadPolicies = useCallback( async () => {
+		try {
+			const res = await apiFetch( {
+				path: 'agency/sync-policies?limit=200',
+			} );
+			const report = ( res.policies || [] ).filter(
+				( p ) => p.mode === 'report'
+			);
+			setPolicies( report );
+			setPair( ( current ) => {
+				if (
+					current &&
+					report.some(
+						( p ) =>
+							p.source_environment_id === current.source &&
+							p.target_environment_id === current.target
+					)
+				) {
+					return current;
+				}
+				return report.length
+					? {
+							source: report[ 0 ].source_environment_id,
+							target: report[ 0 ].target_environment_id,
+					  }
+					: null;
+			} );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+			setPolicies( [] );
+		}
+	}, [ notify ] );
+
+	const loadInbox = useCallback( async () => {
+		if ( ! pair ) {
+			setInbox( null );
+			setLoading( false );
+			return;
+		}
+		setLoading( true );
+		try {
+			const res = await apiFetch( {
+				path: `agency/change-report?source=${ encodeURIComponent(
+					pair.source
+				) }&target=${ encodeURIComponent(
+					pair.target
+				) }&handled_limit=50`,
+			} );
+			setInbox( res );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setLoading( false );
+	}, [ pair, notify ] );
+
+	useEffect( () => {
+		loadPolicies();
+	}, [ loadPolicies ] );
+
+	useEffect( () => {
+		loadInbox();
+	}, [ loadInbox ] );
+
+	useEffect( () => {
+		if ( ! pair ) {
+			return;
+		}
+		try {
+			const key = `dbvc-ce-changes-seen:${ pair.source }>${ pair.target }`;
+			setLastSeen( window.localStorage.getItem( key ) || '' );
+			window.localStorage.setItem( key, new Date().toISOString() );
+		} catch ( e ) {
+			// Browser storage is a convenience only.
+		}
+	}, [ pair ] );
+
+	const decide = async ( item, decision, extra = {} ) => {
+		const ref = changeItemRef( item );
+		setBusy( ref );
+		try {
+			await apiFetch( {
+				path: 'agency/change-report-decide',
+				method: 'POST',
+				data: {
+					source: pair.source,
+					target: pair.target,
+					items: [ ref ],
+					decision,
+					...extra,
+				},
+			} );
+			notify( 'success', changeDecisionToast( decision ) );
+			await loadInbox();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const checkNow = async () => {
+		setBusy( 'check' );
+		try {
+			const res = await apiFetch( {
+				path: 'agency/sync-advance',
+				method: 'POST',
+				data: { source: pair.source, target: pair.target },
+			} );
+			notify(
+				'success',
+				sprintf(
+					/* translators: %s: reconcile phase */
+					__( 'Check: %s.', 'dbvc' ),
+					String( res.note || '' ).replace( /_/g, ' ' )
+				)
+			);
+			await loadInbox();
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+		setBusy( '' );
+	};
+
+	const copyMarkdown = async ( item ) => {
+		try {
+			const res = await apiFetch( {
+				path: `agency/change-report?source=${ encodeURIComponent(
+					pair.source
+				) }&target=${ encodeURIComponent(
+					pair.target
+				) }&format=markdown&handled_limit=0`,
+			} );
+			let text = res.markdown || '';
+			if ( item ) {
+				const ref = changeItemRef( item );
+				const block = text
+					.split( '\n- **' )
+					.find(
+						( b ) =>
+							b.includes( `(${ item.domain })` ) &&
+							b.startsWith(
+								item.display_name || item.instance_uid
+							)
+					);
+				text = block
+					? `- **${ block }`
+					: `${ item.display_name || item.instance_uid } (${ ref })`;
+			}
+			await window.navigator.clipboard.writeText( text );
+			notify( 'success', __( 'Copied as Markdown.', 'dbvc' ) );
+		} catch ( err ) {
+			notify( 'error', errorMessage( err ) );
+		}
+	};
+
+	if ( policies === null ) {
+		return <p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>;
+	}
+
+	if ( policies.length === 0 ) {
+		return (
+			<div className="dbvc-ce dbvc-ce-inbox">
+				<div className="dbvc-tools-panel dbvc-ce-quiet">
+					<h2>{ __( 'No pair is being watched yet', 'dbvc' ) }</h2>
+					<p className="dbvc-ce-muted">
+						{ __(
+							'Set a sync policy to "report only" for the pair you edit on (staging) and the copy you keep up to date (LocalWP). Each pass then lists what changed here, object by object. Nothing is ever applied.',
+							'dbvc'
+						) }
+					</p>
+					<button
+						type="button"
+						className="btn btn--primary"
+						onClick={ onSync }
+					>
+						{ __( 'Set up in Sync', 'dbvc' ) }
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	const status = inbox ? changeStatusText( inbox.status ) : null;
+	const items = inbox ? inbox.items : [];
+	const needs = items.filter( ( i ) => i.needs_look );
+	const info = items.filter( ( i ) => ! i.needs_look );
+	const newSince = lastSeen
+		? items.filter(
+				( i ) =>
+					new Date(
+						i.changed_at.replace( ' ', 'T' ) + 'Z'
+					).getTime() > new Date( lastSeen ).getTime()
+		  ).length
+		: 0;
+
+	return (
+		<div className="dbvc-ce dbvc-ce-inbox">
+			<div className="dbvc-ce-panel__head">
+				<div>
+					<h2>{ __( 'Site Changes', 'dbvc' ) }</h2>
+					{ status && (
+						<div className="dbvc-ce-status">
+							<span
+								className={ `dbvc-ce-status__dot dbvc-ce-status__dot--${ status.tone }` }
+							/>
+							<span>{ status.text }</span>
+						</div>
+					) }
+				</div>
+				<span className="spacer" />
+				{ policies.length > 1 && (
+					<select
+						aria-label={ __( 'Pair', 'dbvc' ) }
+						value={
+							pair ? `${ pair.source }>${ pair.target }` : ''
+						}
+						onChange={ ( e ) => {
+							const [ source, target ] =
+								e.target.value.split( '>' );
+							setPair( { source, target } );
+						} }
+					>
+						{ policies.map( ( p ) => (
+							<option
+								key={ p.sync_policy_id }
+								value={ `${ p.source_environment_id }>${ p.target_environment_id }` }
+							>
+								{ p.source_environment_id } →{ ' ' }
+								{ p.target_environment_id }
+							</option>
+						) ) }
+					</select>
+				) }
+				{ policies.length === 1 && pair && (
+					<span className="dbvc-ce-muted">
+						{ pair.source } → { pair.target }
+					</span>
+				) }
+				<button
+					type="button"
+					className="btn btn--small btn--ghost"
+					disabled={ busy === 'check' }
+					aria-busy={ busy === 'check' }
+					onClick={ checkNow }
+				>
+					{ busy === 'check'
+						? __( 'Checking…', 'dbvc' )
+						: __( 'Check now', 'dbvc' ) }
+				</button>
+				<button
+					type="button"
+					className="btn btn--small btn--ghost"
+					onClick={ () => copyMarkdown( null ) }
+					disabled={ ! inbox }
+				>
+					{ __( 'Copy as Markdown', 'dbvc' ) }
+				</button>
+				<button
+					type="button"
+					className="btn btn--small"
+					aria-pressed={ console }
+					onClick={ () => setConsole( ! console ) }
+				>
+					{ console
+						? __( 'Simple view', 'dbvc' )
+						: __( 'Full console', 'dbvc' ) }
+				</button>
+			</div>
+
+			{ console && pair && (
+				<ChangesConsole
+					pair={ pair }
+					notify={ notify }
+					onChanged={ loadInbox }
+				/>
+			) }
+
+			{ ! console && loading && ! inbox && (
+				<p className="dbvc-ce-loading">{ __( 'Loading…', 'dbvc' ) }</p>
+			) }
+			{ ! console && inbox && (
+				<>
+					{ inbox.status.mode === 'report' &&
+						! inbox.status.enabled && (
+							<div className="dbvc-inline-notice dbvc-inline-notice--warning">
+								<p>
+									{ __(
+										'Watching is paused for this pair. Enable the policy in Sync to resume.',
+										'dbvc'
+									) }
+								</p>
+							</div>
+						) }
+					{ items.length === 0 ? (
+						<div className="dbvc-tools-panel dbvc-ce-quiet">
+							<div
+								className="dbvc-ce-quiet__big"
+								aria-hidden="true"
+							>
+								☕
+							</div>
+							<h2>{ __( 'Nothing new', 'dbvc' ) }</h2>
+							<p className="dbvc-ce-muted">
+								{ inbox.summary.since
+									? sprintf(
+											/* translators: %s: relative time */
+											__( 'Last check %s.', 'dbvc' ),
+											relative( inbox.summary.since )
+									  )
+									: __(
+											'No completed check yet. Edits on staging show up here within the hour.',
+											'dbvc'
+									  ) }
+							</p>
+						</div>
+					) : (
+						<>
+							<p className="dbvc-ce-lede">
+								{ inbox.summary.text }
+								{ inbox.summary.since
+									? ` ${ sprintf(
+											/* translators: %s: relative time */
+											__( 'Last check %s.', 'dbvc' ),
+											relative( inbox.summary.since )
+									  ) }`
+									: '' }
+							</p>
+							{ newSince > 0 && (
+								<p className="dbvc-ce-newline">
+									{ sprintf(
+										/* translators: %d: number of new items */
+										_n(
+											'%d new since you last looked',
+											'%d new since you last looked',
+											newSince,
+											'dbvc'
+										),
+										newSince
+									) }
+								</p>
+							) }
+							{ needs.length > 0 && (
+								<>
+									<h3 className="dbvc-ce-day">
+										{ __( 'Needs a look', 'dbvc' ) }
+									</h3>
+									{ needs.map( ( item ) => (
+										<ChangeCard
+											key={ changeItemRef( item ) }
+											item={ item }
+											busy={ busy }
+											onDecide={ decide }
+											onOpen={ copyMarkdown }
+										/>
+									) ) }
+								</>
+							) }
+							{ info.length > 0 && (
+								<>
+									<h3 className="dbvc-ce-day">
+										{ __( 'Just so you know', 'dbvc' ) }
+									</h3>
+									{ info.map( ( item ) => (
+										<ChangeCard
+											key={ changeItemRef( item ) }
+											item={ item }
+											busy={ busy }
+											onDecide={ decide }
+											onOpen={ copyMarkdown }
+										/>
+									) ) }
+								</>
+							) }
+						</>
+					) }
+					{ inbox.handled.length > 0 && (
+						<div className="dbvc-ce-handled">
+							<button
+								type="button"
+								className="dbvc-ce-linkbtn"
+								aria-expanded={ showHandled }
+								onClick={ () =>
+									setShowHandled( ! showHandled )
+								}
+							>
+								{ sprintf(
+									/* translators: %d: number of handled items */
+									_n(
+										'%d handled · show',
+										'%d handled · show',
+										inbox.handled.length,
+										'dbvc'
+									),
+									inbox.handled.length
+								) }
+							</button>
+							{ showHandled &&
+								inbox.handled.map( ( item ) => (
+									<ChangeCard
+										key={ changeItemRef( item ) }
+										item={ item }
+										busy={ busy }
+										onDecide={ decide }
+										onOpen={ copyMarkdown }
+									/>
+								) ) }
+						</div>
+					) }
+				</>
+			) }
 		</div>
 	);
 }
@@ -10498,6 +12028,7 @@ function App() {
 		...( overview?.roles?.hub
 			? [
 					{ key: 'fleet', label: __( 'Fleet', 'dbvc' ) },
+					{ key: 'changes', label: __( 'Site Changes', 'dbvc' ) },
 					{
 						key: 'environments',
 						label: __( 'Environments', 'dbvc' ),
@@ -10603,8 +12134,14 @@ function App() {
 			{ overview && overview.roles.hub && view === 'subscriptions' && (
 				<Subscriptions notify={ notify } onChanged={ load } />
 			) }
+			{ overview && overview.roles.hub && view === 'changes' && (
+				<Changes notify={ notify } onSync={ () => setView( 'sync' ) } />
+			) }
 			{ overview && overview.roles.hub && view === 'sync' && (
-				<Sync notify={ notify } />
+				<Sync
+					notify={ notify }
+					onChanges={ () => setView( 'changes' ) }
+				/>
 			) }
 			{ overview && overview.roles.hub && view === 'compare' && (
 				<Compare

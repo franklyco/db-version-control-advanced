@@ -146,6 +146,32 @@ const buildDecisionItems = ( recommendations, decisions, conflicts, kind ) => {
 		} );
 };
 
+// D-19: the records one URL becomes, each included unless a reviewer excluded it.
+const buildRecordDecisions = ( detail ) =>
+	Array.isArray( detail?.recommendations?.targetEntities )
+		? detail.recommendations.targetEntities.map( ( entity ) => ( {
+				entityRef: entity?.entityRef || '',
+				label: entity?.label || entity?.entityRef || '',
+				targetObjectKey: entity?.targetObjectKey || '',
+				included: entity?.included !== false,
+		  } ) )
+		: [];
+
+// Unresolved items a reviewer chose to leave out of the package.
+const buildLeftUnmapped = ( detail, useSaved ) =>
+	Array.isArray( detail?.recommendations?.unresolvedItems )
+		? detail.recommendations.unresolvedItems
+				.filter( ( item ) => item?.item_id )
+				.map( ( item ) => ( {
+					itemId: item.item_id,
+					reason: item?.reason || '',
+					entityRef: item?.entity_ref || '',
+					leftUnmapped: useSaved
+						? Boolean( item?.leftUnmapped )
+						: false,
+				} ) )
+		: [];
+
 const buildInitialDraft = ( detail ) => {
 	const recommendations = detail?.recommendations || {};
 	const mappingDecisions = detail?.decisions?.mapping || {};
@@ -177,6 +203,8 @@ const buildInitialDraft = ( detail ) => {
 			recommendations.conflicts,
 			'media'
 		),
+		recordDecisions: buildRecordDecisions( detail ),
+		unresolvedItems: buildLeftUnmapped( detail, true ),
 	};
 };
 
@@ -210,6 +238,11 @@ const buildLatestRecommendationDraft = ( detail ) => {
 			recommendations.conflicts,
 			'media'
 		),
+		recordDecisions: buildRecordDecisions( detail ).map( ( record ) => ( {
+			...record,
+			included: true,
+		} ) ),
+		unresolvedItems: buildLeftUnmapped( detail, false ),
 	};
 };
 
@@ -229,6 +262,12 @@ const serializeDraft = ( draft ) =>
 		selectedResolutionMode: draft?.selectedResolutionMode || '',
 		fieldDecisions: serializeDecisionItems( draft?.fieldDecisions ),
 		mediaDecisions: serializeDecisionItems( draft?.mediaDecisions ),
+		recordDecisions: ( draft?.recordDecisions || [] ).map(
+			( record ) => `${ record.entityRef }:${ record.included }`
+		),
+		leftUnmapped: ( draft?.unresolvedItems || [] )
+			.filter( ( item ) => item.leftUnmapped )
+			.map( ( item ) => item.itemId ),
 	} );
 
 const updateDecisionItems = ( items, recommendationId, updater ) =>
@@ -310,6 +349,8 @@ export default function useInspectorDecisionDraft( detail ) {
 		selectedResolutionMode: draft.selectedResolutionMode,
 		fieldDecisions: draft.fieldDecisions,
 		mediaDecisions: draft.mediaDecisions,
+		recordDecisions: draft.recordDecisions || [],
+		unresolvedItems: draft.unresolvedItems || [],
 		candidateTargetObjects,
 		selectedTargetObject,
 		recommendedTargetObject,
@@ -337,6 +378,26 @@ export default function useInspectorDecisionDraft( detail ) {
 			setDraft( ( currentDraft ) => ( {
 				...currentDraft,
 				selectedResolutionMode,
+			} ) ),
+		setRecordIncluded: ( entityRef, included ) =>
+			setDraft( ( currentDraft ) => ( {
+				...currentDraft,
+				recordDecisions: ( currentDraft.recordDecisions || [] ).map(
+					( record ) =>
+						record.entityRef === entityRef
+							? { ...record, included }
+							: record
+				),
+			} ) ),
+		setLeftUnmapped: ( itemId, leftUnmapped ) =>
+			setDraft( ( currentDraft ) => ( {
+				...currentDraft,
+				unresolvedItems: ( currentDraft.unresolvedItems || [] ).map(
+					( item ) =>
+						item.itemId === itemId
+							? { ...item, leftUnmapped }
+							: item
+				),
 			} ) ),
 		setDecisionState: ( kind, recommendationId, state ) =>
 			setDraft( ( currentDraft ) => ( {
@@ -428,6 +489,19 @@ export default function useInspectorDecisionDraft( detail ) {
 					recommendationId: item.recommendationId,
 					overrideTarget: item.overrideTarget.trim(),
 				} ) ),
+			leftUnmappedItemIds: ( draft.unresolvedItems || [] )
+				.filter( ( item ) => item.leftUnmapped )
+				.map( ( item ) => item.itemId ),
+			...( ( draft.recordDecisions || [] ).length
+				? {
+						targetEntities: Object.fromEntries(
+							draft.recordDecisions.map( ( record ) => [
+								record.entityRef,
+								{ include: record.included },
+							] )
+						),
+				  }
+				: {} ),
 		} ),
 	};
 }

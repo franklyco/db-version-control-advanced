@@ -72,6 +72,9 @@ final class DBVC_CC_V2_Contracts
     public const STORAGE_PACKAGE_SUMMARY_FILE = 'package-summary.v1.json';
     public const STORAGE_PACKAGE_ZIP_FILE = 'import-package.v1.zip';
 
+    /** Prefix of the URL fragment that names one record of a multi-record page. */
+    public const ENTITY_FRAGMENT_PREFIX = 'dbvc-record-';
+
     /**
      * Lets a producer outside WordPress supply a complete page artifact bundle for one row,
      * bypassing the in-WordPress fetch and DOM extraction. Return null to let PHP capture run.
@@ -288,6 +291,100 @@ final class DBVC_CC_V2_Contracts
                     'backoff_seconds' => 5,
                 ],
             ],
+        ];
+    }
+
+    /**
+     * The records a page's `mapping-recommendations.v2` resolves to, always as a list.
+     *
+     * One source URL can become several records (V3 guide D-19). The artifact carries
+     * `target_entities` only when it does; a single-record page keeps the
+     * `recommended_target_object` it always had, read here as a list of one with an empty
+     * `entity_ref`. Every reader that used to take the one target goes through this, so a
+     * single-record page reads exactly as before.
+     *
+     * @param array<string, mixed>|null $recommendations
+     * @return array<int, array<string, mixed>>
+     */
+    public static function get_target_entities($recommendations)
+    {
+        if (! is_array($recommendations)) {
+            return [];
+        }
+
+        if (isset($recommendations['target_entities']) && is_array($recommendations['target_entities']) && $recommendations['target_entities'] !== []) {
+            return array_values(array_filter($recommendations['target_entities'], 'is_array'));
+        }
+
+        if (isset($recommendations['recommended_target_object']) && is_array($recommendations['recommended_target_object'])) {
+            return [array_merge($recommendations['recommended_target_object'], ['entity_ref' => ''])];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed>|null $recommendations
+     * @return bool
+     */
+    public static function has_entity_set($recommendations)
+    {
+        return is_array($recommendations)
+            && isset($recommendations['target_entities'])
+            && is_array($recommendations['target_entities'])
+            && $recommendations['target_entities'] !== [];
+    }
+
+    /**
+     * A record's slug: its own name, made unique among its siblings on the same page.
+     *
+     * @param string              $label
+     * @param string              $entity_ref
+     * @param array<string, bool> $taken
+     * @return string
+     */
+    public static function build_entity_slug($label, $entity_ref, array $taken = [])
+    {
+        $base = sanitize_title((string) $label);
+        if ($base === '') {
+            $base = sanitize_title('record-' . (string) $entity_ref);
+        }
+
+        $slug = $base;
+        $suffix = 2;
+        while (isset($taken[$slug])) {
+            $slug = $base . '-' . $suffix;
+            ++$suffix;
+        }
+
+        return $slug;
+    }
+
+    /**
+     * The identity one record of a multi-record page is imported under.
+     *
+     * The importer matches an existing post by source URL, then source path, then source hash,
+     * then page path, then slug, and creates only when all miss. Five records sharing the page's
+     * URL and path would all match the first one written, or block as ambiguous on the next run.
+     * Giving each record its own URL fragment and a path below the page keeps that match order
+     * intact per record: a rerun finds each record by its own source URL, exactly once.
+     *
+     * @param string $source_url
+     * @param string $path
+     * @param string $slug
+     * @return array{source_url: string, path: string}
+     */
+    public static function entity_identity($source_url, $path, $slug)
+    {
+        $source_url = (string) $source_url;
+        $hash = strpos($source_url, '#');
+        if ($hash !== false) {
+            $source_url = substr($source_url, 0, $hash);
+        }
+
+        return [
+            'source_url' => $source_url . '#' . self::ENTITY_FRAGMENT_PREFIX . $slug,
+            'path' => rtrim((string) $path, '/') . '/' . $slug,
         ];
     }
 

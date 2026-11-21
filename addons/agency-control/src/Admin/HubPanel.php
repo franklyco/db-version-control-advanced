@@ -202,17 +202,17 @@ final class HubPanel
             <p class="description"><?php esc_html_e('No environment is enrolled yet.', 'dbvc'); ?></p>
           <?php else : ?>
             <table class="widefat striped">
-              <thead><tr><th><?php esc_html_e('Environment', 'dbvc'); ?></th><th><?php esc_html_e('Client', 'dbvc'); ?></th><th><?php esc_html_e('Label', 'dbvc'); ?></th><th><?php esc_html_e('Status', 'dbvc'); ?></th><th><?php esc_html_e('Epoch', 'dbvc'); ?></th><th><?php esc_html_e('Last contact', 'dbvc'); ?></th><th><?php esc_html_e('Fresh', 'dbvc'); ?></th><th><?php esc_html_e('Received', 'dbvc'); ?></th></tr></thead>
+              <thead><tr><th><?php esc_html_e('Environment', 'dbvc'); ?></th><th><?php esc_html_e('Client', 'dbvc'); ?></th><th><?php esc_html_e('Label', 'dbvc'); ?></th><th><?php esc_html_e('Status', 'dbvc'); ?></th><th><?php esc_html_e('Epoch', 'dbvc'); ?></th><th><?php esc_html_e('Last seen', 'dbvc'); ?></th><th><?php esc_html_e('Fresh', 'dbvc'); ?></th><th><?php esc_html_e('Received', 'dbvc'); ?></th></tr></thead>
               <tbody>
               <?php foreach ($environments as $environment) : ?>
-                <?php $fresh = $environment['status'] === EnvironmentRegistry::STATUS_ENABLED && ! empty($environment['last_contact_at']) && (time() - (int) strtotime((string) $environment['last_contact_at'] . ' UTC')) <= $freshness; ?>
+                <?php $fresh = EnvironmentRegistry::is_fresh($environment, $freshness); ?>
                 <tr>
                   <td><code><?php echo esc_html((string) $environment['environment_id']); ?></code></td>
                   <td><?php echo esc_html((string) $environment['client_id']); ?></td>
                   <td><?php echo esc_html((string) $environment['label']); ?></td>
                   <td><?php echo esc_html((string) $environment['status']); ?><?php echo ! empty($environment['hold_reason']) ? ' (' . esc_html((string) $environment['hold_reason']) . ')' : ''; ?></td>
                   <td><code><?php echo esc_html((string) $environment['current_epoch']); ?></code></td>
-                  <td><?php echo esc_html((string) ($environment['last_contact_at'] ?: __('never', 'dbvc'))); ?></td>
+                  <td><?php echo esc_html((string) (($environment['last_seen_at'] ?? null) ?: __('never', 'dbvc'))); ?></td>
                   <td><?php echo $fresh ? esc_html__('yes', 'dbvc') : esc_html__('no', 'dbvc'); ?></td>
                   <td><?php echo esc_html((string) (int) $environment['received_events']); ?></td>
                 </tr>

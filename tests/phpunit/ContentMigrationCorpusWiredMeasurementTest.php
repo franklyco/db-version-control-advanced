@@ -1,5 +1,7 @@
 <?php
 
+require_once dirname(__DIR__, 2) . '/addons/content-migration/tests/corpus/target/corpus-target-translation.php';
+
 /**
  * G-4 and G-5, measured on the wired path.
  *
@@ -32,11 +34,14 @@
  * - ACF is not installed in the test environment, so the pinned schema is loaded into the
  *   `$GLOBALS['dbvc_test_acf_*']` doubles the suite already uses. Those two functions are the
  *   legacy catalog service's entire ACF contract, so everything downstream of them is shipped
- *   code.
+ *   code. The definitions come from `DBVC_CC_Corpus_Target_Translation`, the same translation
+ *   the provisioned target site registers with real ACF, so the two are one target.
  * - The pinned schema and the live catalog do not write a target_ref the same way. The schema
  *   authors a repeater sub-field as `acf:page_cards:items.card_title` and a meta field as
  *   `meta:_seo_title`; the product writes `acf:<group_key>:<field_key>` flat and
- *   `meta:post:<subtype>:<key>`. `normalise_target_ref()` reconciles the two for scoring only.
+ *   `meta:post:<subtype>:<key>`, and gives a leaf the schema reuses across groups its group as
+ *   a prefix (`acf:page_hero:page_hero_heading`). `normalise_target_ref()` reconciles the two for
+ *   scoring only.
  *   Nothing in the product changes shape for this test.
  */
 class ContentMigrationCorpusWiredMeasurementTest extends WP_UnitTestCase
@@ -57,9 +62,9 @@ class ContentMigrationCorpusWiredMeasurementTest extends WP_UnitTestCase
     private $permit = null;
 
     /**
-     * @var array<string, mixed>
+     * @var DBVC_CC_Corpus_Target_Translation|null
      */
-    private static $schema = [];
+    private static $target = null;
 
     public function set_up(): void
     {
@@ -201,6 +206,366 @@ class ContentMigrationCorpusWiredMeasurementTest extends WP_UnitTestCase
     }
 
     /**
+     * `/dental-team` on the wired path: the page V2 routes to `page`, which must become five
+     * `team_member` records (D-19). The interpreter is offered the classifier's other post-type
+     * candidates as collections and decides whether the page is a set. Paid: one model call.
+     */
+    public function test_the_team_page_on_the_wired_path_becomes_five_team_member_records()
+    {
+        $artifacts = $this->artifacts_dir();
+        if ($artifacts === '') {
+            $this->markTestSkipped('Corpus fixture artifacts are not present. Set DBVC_CORPUS_FIXTURES to the slot capture root.');
+        }
+
+        // A reviewed answer is cached by prompt version, model and payload, so a rerun replays
+        // the same model answer (`model_attempt.from_cache`) instead of paying for a new one.
+        $cache = static function ($options) {
+            $options['cache_dir'] = get_temp_dir() . 'dbvc-cc-corpus-wired-model-cache';
+
+            return $options;
+        };
+        add_filter(DBVC_CC_V2_Mapping_Interpretation_Service::FILTER_INTERPRETATION_OPTIONS, $cache);
+
+        $this->stage_page('dental-team', $artifacts);
+        $run = $this->run_ingest();
+        remove_filter(DBVC_CC_V2_Mapping_Interpretation_Service::FILTER_INTERPRETATION_OPTIONS, $cache);
+
+        $result = $this->read_artifact('dental-team', DBVC_CC_V2_Contracts::STORAGE_INTERPRETATION_RESULT_SUFFIX);
+        $recommendations = $this->read_artifact('dental-team', DBVC_CC_V2_Contracts::STORAGE_MAPPING_RECOMMENDATIONS_SUFFIX);
+        $report = $this->score_records($recommendations, $this->expected_page($this->slot_dir(), 'dental-team'));
+
+        fwrite(STDERR, "\n" . $this->format_record_report($result, $report, 'dental-team') . "\n");
+
+        $this->assertSame(
+            DBVC_CC_Interp_Contracts::INTERPRETER_MODEL,
+            (string) ($result['interpreter'] ?? ''),
+            'The model did not answer: ' . (string) ($result['model_attempt']['reason'] ?? '')
+                . ' — ' . (string) ($result['model_attempt']['detail'] ?? '')
+        );
+
+        // And the set is what gets built: a reviewer approves the people, leaves the page-level
+        // items out, and the package commits one team_member post per person.
+        $run_id = (string) ($run['runId'] ?? '');
+        $page_id = '';
+        foreach ($run['pages'] ?? [] as $page) {
+            if (strpos((string) ($page['path'] ?? ''), 'dental-team') !== false) {
+                $page_id = (string) $page['pageId'];
+            }
+        }
+        $detail = $this->rest('GET', '/runs/' . $run_id . '/urls/' . $page_id);
+        // Where two values claim one field of one person — a role heading and the photo's alt
+        // text both read as the role — the reviewer keeps the first and rejects the rest.
+        // The stand-in reviewer is the ground truth: it also rejects what the ground truth says
+        // belongs to no field (alt text lifted into a paragraph, footer chrome), as a reviewer
+        // reading the escalation would.
+        $page_truth = $this->expected_page($this->slot_dir(), 'dental-team');
+        $conflict_losers = [];
+        foreach ($detail['recommendations']['fieldRecommendations'] ?? [] as $recommendation) {
+            foreach (array_merge($page_truth['expected_unmapped'] ?? [], $page_truth['must_not_map'] ?? []) as $gap) {
+                if (stripos((string) ($recommendation['source_evidence'] ?? ''), (string) $gap['source_probe']) !== false) {
+                    $conflict_losers[] = (string) $recommendation['recommendation_id'];
+                }
+            }
+        }
+        foreach ($detail['recommendations']['conflicts'] ?? [] as $conflict) {
+            $ids = array_values(array_diff(array_map('strval', (array) ($conflict['recommendation_ids'] ?? [])), $conflict_losers));
+            array_shift($ids);
+            $conflict_losers = array_merge($conflict_losers, $ids);
+        }
+        $conflict_losers = array_values(array_unique($conflict_losers));
+        $this->rest('POST', '/runs/' . $run_id . '/urls/' . $page_id . '/decision', [
+            'approvedRecommendationIds' => array_values(array_filter(array_map(
+                static function ($recommendation) use ($conflict_losers) {
+                    // Only values filed under a person; a value with no record has nowhere to go.
+                    return isset($recommendation['entity_ref']) && $recommendation['entity_ref'] !== ''
+                        && ! in_array((string) $recommendation['recommendation_id'], $conflict_losers, true)
+                        ? (string) $recommendation['recommendation_id']
+                        : '';
+                },
+                $detail['recommendations']['fieldRecommendations'] ?? []
+            ))),
+            'rejectedRecommendationIds' => array_values(array_filter(array_map(
+                static function ($recommendation) use ($conflict_losers) {
+                    return empty($recommendation['entity_ref']) || in_array((string) $recommendation['recommendation_id'], $conflict_losers, true)
+                        ? (string) $recommendation['recommendation_id']
+                        : '';
+                },
+                $detail['recommendations']['fieldRecommendations'] ?? []
+            ))),
+            'leftUnmappedItemIds' => array_column($detail['recommendations']['unresolvedItems'] ?? [], 'item_id'),
+        ]);
+        $package = $this->rest('POST', '/runs/' . $run_id . '/package');
+        $package_id = (string) ($package['selectedPackageId'] ?? '');
+
+        update_option(DBVC_CC_Contracts::OPTION_FLAG_IMPORT_EXECUTE, '1');
+        $approval = $this->rest('POST', '/runs/' . $run_id . '/preflight-approve', ['packageId' => $package_id, 'confirmApproval' => true]);
+        $execute = $this->rest('POST', '/runs/' . $run_id . '/execute', [
+            'packageId' => $package_id,
+            'confirmExecute' => true,
+            'approvalTokens' => $approval['approvalTokens'] ?? [],
+        ]);
+        update_option(DBVC_CC_Contracts::OPTION_FLAG_IMPORT_EXECUTE, '0');
+
+        $posts = get_posts(['post_type' => 'team_member', 'post_status' => 'any', 'numberposts' => -1, 'orderby' => 'ID', 'order' => 'ASC']);
+        $lines = [sprintf('  from cache         : %s; reviewer rejected %d value(s): ground-truth unmapped, then conflict losers', ! empty($result['model_attempt']['from_cache']) ? 'yes' : 'no', count($conflict_losers))];
+        foreach ($package['selectedPackage']['qaReport']['blocking_issues'] ?? [] as $issue) {
+            $lines[] = '  package blocker    : ' . (string) ($issue['code'] ?? '');
+        }
+        $lines[] = sprintf(
+            '  package            : %s, %d records; execute %s, %d completed / %d blocked; %d team_member posts',
+            (string) ($package['selectedPackage']['qaReport']['readiness_status'] ?? '?'),
+            (int) ($package['selectedPackage']['summary']['record_count'] ?? 0),
+            (string) ($execute['status'] ?? '?'),
+            (int) ($execute['summary']['completedPages'] ?? 0),
+            (int) ($execute['summary']['blockedPages'] ?? 0),
+            count($posts)
+        );
+        foreach ($posts as $post) {
+            $lines[] = sprintf(
+                '    post %-5d %-22s role=%s | bio=%d chars',
+                $post->ID,
+                $post->post_title,
+                (string) get_post_meta($post->ID, 'role', true) ?: '-',
+                strlen((string) get_post_meta($post->ID, 'bio', true))
+            );
+        }
+        fwrite(STDERR, implode("\n", $lines) . "\n");
+
+        $this->assertCount(5, $posts, 'The built package should commit the five people as five team_member posts.');
+    }
+
+    /**
+     * @param string               $method
+     * @param string               $route
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    private function rest($method, $route, array $params = [])
+    {
+        $request = new WP_REST_Request($method, '/' . DBVC_CC_V2_Contracts::REST_NAMESPACE . $route);
+        foreach ($params as $key => $value) {
+            $request->set_param($key, $value);
+        }
+        $response = rest_do_request($request);
+        if ($response->is_error()) {
+            $error = $response->as_error();
+            $this->fail(sprintf('%s %s failed: [%s] %s', $method, $route, $error->get_error_code(), $error->get_error_message()));
+        }
+        $data = $response->get_data();
+
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * The same page with the flag off. Free. The lexical floor never reads a page as a set, so
+     * this is the single-record baseline the model's set is measured against.
+     */
+    public function test_the_team_page_on_the_wired_path_with_the_lexical_floor()
+    {
+        delete_option(DBVC_CC_Contracts::OPTION_FLAG_MODEL_INTERPRETATION);
+        $artifacts = $this->artifacts_dir();
+        if ($artifacts === '') {
+            $this->markTestSkipped('Corpus fixture artifacts are not present. Set DBVC_CORPUS_FIXTURES to the slot capture root.');
+        }
+
+        $this->stage_page('dental-team', $artifacts);
+        $this->run_ingest();
+
+        $recommendations = $this->read_artifact('dental-team', DBVC_CC_V2_Contracts::STORAGE_MAPPING_RECOMMENDATIONS_SUFFIX);
+        $report = $this->score_records($recommendations, $this->expected_page($this->slot_dir(), 'dental-team'));
+
+        fwrite(STDERR, "\n" . $this->format_record_report(
+            ['interpreter' => 'lexical_mapping_index', 'model_attempt' => []],
+            $report,
+            'dental-team'
+        ) . "\n");
+
+        $this->assertArrayNotHasKey('target_entities', $recommendations, 'The lexical floor must never read a page as a set.');
+    }
+
+    /**
+     * Score a page whose ground truth is a set of records: a value is right only in the right
+     * field of the right person. Mirrors `dbvc_corpus_score_entity_recommendations()` in the
+     * headless evaluator, on the product's own artifact.
+     *
+     * @param array<string, mixed> $artifact mapping-recommendations.v2
+     * @param array<string, mixed> $page     expected-mappings.json page entry
+     * @return array<string, mixed>
+     */
+    private function score_records(array $artifact, array $page)
+    {
+        $expected = array_values($page['expected_entities'] ?? []);
+        $entities = DBVC_CC_V2_Contracts::has_entity_set($artifact) ? DBVC_CC_V2_Contracts::get_target_entities($artifact) : [];
+
+        $own_for = [];
+        foreach ($expected as $index => $person) {
+            $name = strtolower((string) $person['entity']);
+            foreach ($entities as $entity) {
+                $label = strtolower((string) ($entity['label'] ?? ''));
+                if ($label !== '' && ! isset($own_for[$entity['entity_ref']]) && (strpos($label, $name) !== false || strpos($name, $label) !== false)) {
+                    $own_for[(string) $entity['entity_ref']] = $index;
+                    break;
+                }
+            }
+        }
+
+        $auto_accepted = 0;
+        $wrong_auto_accepted = 0;
+        $right = 0;
+        $wrong = 0;
+        $misses = [];
+        $values = [];
+        foreach ($artifact['recommendations'] ?? [] as $recommendation) {
+            $accepted = empty($recommendation['requires_review']);
+            $auto_accepted += $accepted ? 1 : 0;
+            $evidence = strtolower($this->evidence_of($recommendation));
+            $actual = $this->normalise_target_ref($this->target_ref_of($recommendation));
+            $entity_ref = (string) ($recommendation['entity_ref'] ?? '');
+            $own = $own_for[$entity_ref] ?? null;
+            if ($own !== null) {
+                $values[$own][$actual][] = (string) ($recommendation['source_evidence'] ?? '');
+            }
+
+            $order = array_keys($expected);
+            if ($own !== null) {
+                $order = array_merge([$own], array_values(array_diff($order, [$own])));
+            }
+            $verdict = null;
+            // Alt text the capture lifted into a paragraph embeds the person's name and role; the
+            // ground truth says it belongs to no field, and that more specific probe wins.
+            foreach ($page['expected_unmapped'] ?? [] as $gap) {
+                if (stripos($evidence, (string) $gap['source_probe']) !== false) {
+                    $verdict = 'wrong';
+                    $misses[] = sprintf(
+                        '%s -> %s%s (expected unmapped%s)',
+                        substr($evidence, 0, 40),
+                        $actual,
+                        $own === null ? ' in no record' : ' of ' . $expected[$own]['entity'],
+                        $accepted ? '; AUTO-ACCEPTED' : '; escalated'
+                    );
+                    break;
+                }
+            }
+            foreach ($verdict === null ? $order : [] as $index) {
+                $hits = [];
+                foreach ($expected[$index]['mappings'] ?? [] as $mapping) {
+                    if (stripos($evidence, (string) $mapping['source_probe']) !== false) {
+                        $hits[] = $this->normalise_target_ref((string) $mapping['target_ref']);
+                    }
+                }
+                if ($hits === []) {
+                    continue;
+                }
+                $verdict = ($own === $index && in_array($actual, $hits, true)) ? 'right' : 'wrong';
+                if ($verdict === 'wrong') {
+                    $misses[] = sprintf(
+                        '%s -> %s%s (expected %s of %s)',
+                        substr($evidence, 0, 40),
+                        $actual,
+                        $own === null ? ' in no record' : ' of ' . $expected[$own]['entity'],
+                        $hits[0],
+                        $expected[$index]['entity']
+                    );
+                }
+                break;
+            }
+            if ($verdict === null) {
+                foreach ($page['must_not_map'] ?? [] as $forbidden) {
+                    if (stripos($evidence, (string) $forbidden['source_probe']) !== false) {
+                        $verdict = 'wrong';
+                        $misses[] = sprintf('%s -> %s (must not map)', $forbidden['source_probe'], $actual);
+                        break;
+                    }
+                }
+            }
+            if ($verdict === 'right') {
+                ++$right;
+            } elseif ($verdict === 'wrong') {
+                ++$wrong;
+                $wrong_auto_accepted += $accepted ? 1 : 0;
+            }
+        }
+
+        $total = count($artifact['recommendations'] ?? []);
+
+        return [
+            'records' => array_map(
+                static function ($entity) {
+                    return (string) ($entity['label'] ?? '') . ' [' . (string) ($entity['target_object_key'] ?? '') . ']';
+                },
+                $entities
+            ),
+            'expected_records' => count($expected),
+            'values' => $values,
+            'names' => array_column($expected, 'entity'),
+            'recommendations' => $total,
+            'auto_accepted' => $auto_accepted,
+            'auto_resolve_rate' => $total === 0 ? 0.0 : round(100 * $auto_accepted / $total, 1),
+            'wrong_auto_accepted' => $wrong_auto_accepted,
+            'precision_error_rate' => $auto_accepted === 0 ? null : round(100 * $wrong_auto_accepted / $auto_accepted, 1),
+            'right' => $right,
+            'wrong' => $wrong,
+            'field_accuracy' => ($right + $wrong) === 0 ? 0.0 : round(100 * $right / ($right + $wrong), 1),
+            'misses' => $misses,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     * @param array<string, mixed> $report
+     * @param string               $slug
+     * @return string
+     */
+    private function format_record_report(array $result, array $report, $slug)
+    {
+        $attempt = isset($result['model_attempt']) && is_array($result['model_attempt']) ? $result['model_attempt'] : [];
+        $lines = [
+            sprintf('=== One URL, many records on the WIRED path (corpus slot 1, %s) ===', $slug),
+            sprintf('  interpreter        : %s  (%s)', (string) ($result['interpreter'] ?? ''), (string) ($attempt['model'] ?? 'no model')),
+            sprintf('  records            : %d produced / %d expected: %s', count($report['records']), (int) $report['expected_records'], implode('; ', $report['records'])),
+            sprintf('  G-4 auto-resolve   : %d/%d = %s%%', (int) $report['auto_accepted'], (int) $report['recommendations'], $report['auto_resolve_rate']),
+            sprintf(
+                '  G-5 wrong accepted : %d/%d = %s',
+                (int) $report['wrong_auto_accepted'],
+                (int) $report['auto_accepted'],
+                $report['precision_error_rate'] === null ? 'no denominator' : $report['precision_error_rate'] . '%'
+            ),
+            sprintf('  field accuracy     : %d right, %d wrong = %s%% (right field AND right person)', (int) $report['right'], (int) $report['wrong'], $report['field_accuracy']),
+        ];
+        foreach ($report['names'] as $index => $name) {
+            $values = $report['values'][$index] ?? [];
+            $lines[] = sprintf(
+                '    %-22s name=%s | role=%s | bio=%d paragraph(s)',
+                $name,
+                implode(' / ', $values['core:post_title'] ?? ['-']),
+                implode(' / ', $values['acf:team_member:role'] ?? ['-']),
+                count($values['acf:team_member:bio'] ?? [])
+            );
+        }
+        foreach ($report['misses'] as $miss) {
+            $lines[] = '    wrong       : ' . $miss;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param string $slot
+     * @param string $slug
+     * @return array<string, mixed>
+     */
+    private function expected_page($slot, $slug)
+    {
+        foreach ($this->read_json($slot . '/expected-mappings.json')['pages'] ?? [] as $page) {
+            if ((string) ($page['slug'] ?? '') === $slug) {
+                return $page;
+            }
+        }
+
+        return [];
+    }
+
+    /**
      * How many answers the interpreter produced, and how many the mapping stage had nowhere to
      * put. The second number is the one the headless evaluator cannot see.
      *
@@ -220,7 +585,7 @@ class ContentMigrationCorpusWiredMeasurementTest extends WP_UnitTestCase
     }
 
     /**
-     * @return void
+     * @return array<string, mixed> The run payload.
      */
     private function run_ingest()
     {
@@ -233,6 +598,10 @@ class ContentMigrationCorpusWiredMeasurementTest extends WP_UnitTestCase
             $error = $response->as_error();
             $this->fail(sprintf('The ingest run failed: [%s] %s', $error->get_error_code(), $error->get_error_message()));
         }
+
+        $data = $response->get_data();
+
+        return is_array($data) ? $data : [];
     }
 
     /**
@@ -356,7 +725,9 @@ class ContentMigrationCorpusWiredMeasurementTest extends WP_UnitTestCase
             $target_ref = implode(':', $parts);
         }
 
-        return $target_ref;
+        // A leaf the schema reuses across groups carries its group as a prefix in the catalog
+        // (`acf:page_hero:page_hero_heading`), because a real ACF install could not hold both.
+        return self::$target !== null ? self::$target->schema_ref($target_ref) : $target_ref;
     }
 
     /**
@@ -469,137 +840,23 @@ class ContentMigrationCorpusWiredMeasurementTest extends WP_UnitTestCase
      */
     private function install_target_schema()
     {
-        self::$schema = $this->read_json($this->slot_dir() . '/target-schema.v1.json');
+        self::$target = DBVC_CC_Corpus_Target_Translation::from_file($this->slot_dir() . '/target-schema.v1.json');
 
-        foreach ($this->schema_objects() as $object) {
-            if (($object['type_family'] ?? '') !== 'post_type' || ($object['object_key'] ?? '') === 'page') {
-                continue;
-            }
-
-            register_post_type((string) $object['object_key'], [
-                'public' => true,
-                'label' => (string) ($object['label'] ?? $object['object_key']),
-                'supports' => ['title', 'editor', 'excerpt'],
-            ]);
+        foreach (self::$target->post_types() as $post_type => $args) {
+            register_post_type($post_type, $args);
         }
 
-        foreach ($this->schema_objects() as $object) {
-            foreach ($object['fields'] ?? [] as $field) {
-                $field_ref = (string) ($field['field_ref'] ?? '');
-                if (strpos($field_ref, 'meta:') !== 0) {
-                    continue;
-                }
-
-                $parts = explode(':', $field_ref);
-                register_post_meta((string) $object['object_key'], (string) end($parts), [
-                    'single' => true,
-                    'type' => 'string',
-                    'show_in_rest' => true,
-                    'description' => (string) ($field['purpose'] ?? $field['label'] ?? ''),
-                ]);
-            }
+        foreach (self::$target->post_meta() as $meta) {
+            register_post_meta($meta['object_key'], $meta['meta_key'], $meta['args']);
         }
 
         // The repo's test suite already declares `acf_get_field_groups()` and `acf_get_fields()`
         // as doubles reading these globals (see ContentCollectorV2Phase32Test), which are the
         // legacy catalog service's entire ACF contract. Everything downstream of them is shipped
-        // code.
-        $GLOBALS['dbvc_test_acf_groups'] = self::acf_groups();
-        $GLOBALS['dbvc_test_acf_fields'] = [];
-        foreach ($GLOBALS['dbvc_test_acf_groups'] as $group) {
-            $GLOBALS['dbvc_test_acf_fields'][(string) $group['key']] = self::acf_fields((string) $group['key']);
-        }
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    public static function acf_groups()
-    {
-        $groups = [];
-        foreach (self::$schema['objects'] ?? [] as $object) {
-            foreach ($object['fields'] ?? [] as $field) {
-                $field_ref = (string) ($field['field_ref'] ?? '');
-                if (strpos($field_ref, 'acf:') !== 0) {
-                    continue;
-                }
-
-                list(, $group_key) = explode(':', $field_ref);
-                if (isset($groups[$group_key])) {
-                    continue;
-                }
-
-                $groups[$group_key] = [
-                    'key' => $group_key,
-                    'name' => $group_key,
-                    'title' => ucwords(str_replace('_', ' ', $group_key)),
-                    'location' => [[['param' => 'post_type', 'operator' => '==', 'value' => (string) $object['object_key']]]],
-                ];
-            }
-        }
-
-        return array_values($groups);
-    }
-
-    /**
-     * @param string $group_key
-     * @return array<int, array<string, mixed>>
-     */
-    public static function acf_fields($group_key)
-    {
-        $fields = [];
-        foreach (self::$schema['objects'] ?? [] as $object) {
-            foreach ($object['fields'] ?? [] as $field) {
-                $field_ref = (string) ($field['field_ref'] ?? '');
-                if (strpos($field_ref, 'acf:' . $group_key . ':') !== 0) {
-                    continue;
-                }
-
-                $fields[] = self::acf_field($field, $group_key);
-            }
-        }
-
-        return $fields;
-    }
-
-    /**
-     * @param array<string, mixed> $field
-     * @param string               $group_key
-     * @return array<string, mixed>
-     */
-    private static function acf_field(array $field, $group_key)
-    {
-        $parts = explode(':', (string) $field['field_ref']);
-        $leaf = explode('.', (string) end($parts));
-        // A real ACF sub-field has its own key; the schema writes the repeater path for
-        // readability. Taking the leaf is what an ACF install would actually report.
-        $key = (string) end($leaf);
-
-        $entry = [
-            'key' => $key,
-            'name' => $key,
-            'label' => (string) ($field['label'] ?? $key),
-            'type' => (string) ($field['type'] ?? 'text'),
-            'required' => ! empty($field['required']),
-            'description' => (string) ($field['purpose'] ?? ''),
-        ];
-
-        if (! empty($field['sub_fields'])) {
-            $entry['sub_fields'] = [];
-            foreach ($field['sub_fields'] as $sub) {
-                $entry['sub_fields'][] = self::acf_field($sub, $group_key);
-            }
-        }
-
-        return $entry;
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function schema_objects()
-    {
-        return isset(self::$schema['objects']) && is_array(self::$schema['objects']) ? self::$schema['objects'] : [];
+        // code. The provisioned target site registers the same definitions with real ACF.
+        $doubles = self::$target->acf_doubles();
+        $GLOBALS['dbvc_test_acf_groups'] = $doubles['groups'];
+        $GLOBALS['dbvc_test_acf_fields'] = $doubles['fields'];
     }
 
     /**

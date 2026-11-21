@@ -151,6 +151,10 @@ class ConnectedBricksTemplatesTest extends WP_UnitTestCase
             ['id' => 'el1', 'name' => 'image', 'parent' => 0, 'label' => 'root', 'settings' => [
                 'image' => ['id' => $att, 'url' => (string) wp_get_attachment_url($att), 'filename' => basename((string) get_attached_file($att)), 'size' => 'full'],
             ]],
+            ['id' => 'el2', 'name' => 'posts', 'parent' => 0, 'label' => 'loop', 'settings' => [
+                'hasLoop' => true,
+                'query' => ['post_type' => ['post'], 'posts_per_page' => 3, 'signature' => '95baa5352be9c2a1be038f1624227504', 'time' => 1793806336],
+            ]],
         ]);
         update_post_meta($post_id, '_bricks_template_settings', ['templatePreviewPostId' => '107510', 'templatePreviewType' => 'single']);
 
@@ -177,6 +181,9 @@ class ConnectedBricksTemplatesTest extends WP_UnitTestCase
         $settings = $body['meta']['_bricks_template_settings'][0] ?? [];
         $this->assertArrayNotHasKey('templatePreviewPostId', $settings, 'The builder preview post id is stripped from the projection.');
         $this->assertArrayNotHasKey('templatePreviewType', $settings);
+
+        $query = $body['meta']['_bricks_page_content_2'][0][1]['settings']['query'];
+        $this->assertSame(['post_type' => ['post'], 'posts_per_page' => 3], $query, 'The query-loop cache stamp (signature/time) Bricks rewrites on every save is not design.');
     }
 
     public function test_structured_media_projection_is_identity_independent_across_sites(): void
@@ -193,6 +200,11 @@ class ConnectedBricksTemplatesTest extends WP_UnitTestCase
         update_post_meta($post_id, '_bricks_page_content_2', [
             ['id' => 'el1', 'name' => 'image', 'parent' => 0, 'label' => 'root', 'settings' => [
                 'image' => ['id' => $att_b, 'url' => (string) wp_get_attachment_url($att_b), 'filename' => 'b.png', 'size' => 'full'],
+            ]],
+            // Same loop, re-saved on site B: Bricks stamped a new cache signature/time.
+            ['id' => 'el2', 'name' => 'posts', 'parent' => 0, 'label' => 'loop', 'settings' => [
+                'hasLoop' => true,
+                'query' => ['post_type' => ['post'], 'posts_per_page' => 3, 'signature' => 'b170d5d9dea3dc6874a00574cae01b38', 'time' => 1793835316],
             ]],
         ]);
         DomainRegistry::reset_observers();
@@ -258,5 +270,126 @@ class ConnectedBricksTemplatesTest extends WP_UnitTestCase
                 $this->assertSame($bytes, base64_decode((string) $m['bytes']), 'The exact bytes are carried.');
             }
         }
+    }
+    /**
+     * A template whose Template element renders another template by local post id.
+     *
+     * @param int|string $ref  The referenced template's local id (or a token).
+     * @param string     $key  `template` (current Bricks) or `templateId` (older exports).
+     */
+    private function make_referencing_template($ref, string $key = 'template', string $uid = 'tpl-parent'): int
+    {
+        $post_id = wp_insert_post(['post_type' => 'bricks_template', 'post_status' => 'publish', 'post_title' => 'Parent', 'post_name' => 'parent-' . $uid]);
+        update_post_meta($post_id, 'vf_object_uid', $uid);
+        update_post_meta($post_id, '_bricks_template_type', 'content');
+        update_post_meta($post_id, '_bricks_page_content_2', [
+            ['id' => 'root', 'name' => 'section', 'parent' => 0, 'settings' => ['template' => 'not-a-reference']], // a non-Template element: never touched
+            ['id' => 'tpl', 'name' => 'template', 'parent' => 'root', 'settings' => [$key => $ref]],
+        ]);
+
+        return (int) $post_id;
+    }
+
+    private function make_referenced_template(string $uid = 'tpl-child'): int
+    {
+        $post_id = wp_insert_post(['post_type' => 'bricks_template', 'post_status' => 'publish', 'post_title' => 'Child ' . $uid, 'post_name' => 'child-' . $uid]);
+        update_post_meta($post_id, 'vf_object_uid', $uid);
+        update_post_meta($post_id, '_bricks_template_type', 'section');
+        update_post_meta($post_id, '_bricks_page_content_2', [['id' => 'c1', 'name' => 'section', 'parent' => 0, 'settings' => []]]);
+
+        return (int) $post_id;
+    }
+
+    public function test_projection_tokenizes_template_element_references_by_uid(): void
+    {
+        $child = $this->make_referenced_template('tpl-child');
+        $parent = $this->make_referencing_template($child);
+        $legacy = $this->make_referencing_template((string) $child, 'templateId', 'tpl-legacy');
+        $orphan = $this->make_referencing_template(99000001, 'template', 'tpl-orphan');
+
+        $observer = DomainRegistry::observer_for(self::DOMAIN);
+        $token = ReferenceTokens::token(ReferenceTokens::KIND_TEMPLATE, 'tpl-child');
+
+        $body = json_decode((string) $observer->snapshot(['storage_key' => (string) $parent])['canonical'], true);
+        $elements = $body['meta']['_bricks_page_content_2'][0];
+        $this->assertSame($token, $elements[1]['settings']['template'], 'The Template element references the child by portable uid.');
+        $this->assertSame('not-a-reference', $elements[0]['settings']['template'], 'A `template` key on a non-Template element is content.');
+
+        $body = json_decode((string) $observer->snapshot(['storage_key' => (string) $legacy])['canonical'], true);
+        $this->assertSame($token, $body['meta']['_bricks_page_content_2'][0][1]['settings']['templateId'], 'The older templateId key is tokenized too.');
+
+        $body = json_decode((string) $observer->snapshot(['storage_key' => (string) $orphan])['canonical'], true);
+        $this->assertSame(99000001, $body['meta']['_bricks_page_content_2'][0][1]['settings']['template'], 'An unresolvable id stays literal.');
+    }
+
+    public function test_template_reference_projection_is_identity_independent_across_sites(): void
+    {
+        $child_a = $this->make_referenced_template('tpl-child');
+        $parent = $this->make_referencing_template($child_a);
+        $observer = DomainRegistry::observer_for(self::DOMAIN);
+        $a = $observer->snapshot(['storage_key' => (string) $parent]);
+        $this->assertSame('available', $a['status']);
+
+        // "Site B": the same child template under a different local post id.
+        wp_delete_post($child_a, true);
+        $child_b = $this->make_referenced_template('tpl-child');
+        $this->assertNotSame($child_a, $child_b);
+        update_post_meta($parent, '_bricks_page_content_2', [
+            ['id' => 'root', 'name' => 'section', 'parent' => 0, 'settings' => ['template' => 'not-a-reference']],
+            ['id' => 'tpl', 'name' => 'template', 'parent' => 'root', 'settings' => ['template' => $child_b]],
+        ]);
+        DomainRegistry::reset_observers();
+        $b = DomainRegistry::observer_for(self::DOMAIN)->snapshot(['storage_key' => (string) $parent]);
+
+        $this->assertSame($a['semantic_hash'], $b['semantic_hash'], 'The parent hashes the same despite a different local child id.');
+    }
+
+    public function test_apply_body_detokenizes_template_references_and_ledger_tracks_them(): void
+    {
+        $child = $this->make_referenced_template('tpl-child');
+        $parent = $this->make_referencing_template(12345); // stale content, overwritten by apply
+        $token = ReferenceTokens::token(ReferenceTokens::KIND_TEMPLATE, 'tpl-child');
+        $missing = ReferenceTokens::token(ReferenceTokens::KIND_TEMPLATE, 'tpl-nowhere');
+        $body = [
+            'post_status' => 'publish', 'post_title' => 'Parent', 'post_name' => 'parent-tpl-parent',
+            'post_content' => '', 'post_excerpt' => '', 'post_date_gmt' => '2026-10-01 00:00:00', 'post_parent_uid' => '', 'menu_order' => 0,
+            'tax_input' => [],
+            'meta' => [
+                '_bricks_template_type' => [0 => 'content'],
+                '_bricks_page_content_2' => [0 => [['id' => 'tpl', 'name' => 'template', 'parent' => 0, 'settings' => ['template' => $token]]]],
+            ],
+        ];
+
+        $observer = DomainRegistry::observer_for(self::DOMAIN);
+        $result = $observer->apply_body($parent, $body);
+        $this->assertTrue($result === true, is_string($result) ? $result : 'apply_body failed');
+        $written = get_post_meta($parent, '_bricks_page_content_2', true);
+        $this->assertSame((string) $child, (string) $written[0]['settings']['template'], 'Token resolved to the local child post id.');
+        $re = json_decode((string) $observer->snapshot(['storage_key' => (string) $parent])['canonical'], true);
+        $this->assertSame($token, $re['meta']['_bricks_page_content_2'][0][0]['settings']['template'], 'Re-projection re-derives the token.');
+
+        // Ledger: present locally; selected when the release supplies it; unresolved (blocking) otherwise.
+        $after = $body;
+        $ledger = \Dbvc\Connected\Preparation\DependencyLedger::build(self::DOMAIN, $after, [], $observer);
+        $entries = [];
+        foreach ($ledger['entries'] as $entry) {
+            $entries[$entry['ref']] = $entry;
+        }
+        $this->assertSame('present', $entries['tpl-child']['status']);
+        $this->assertSame('post:' . $child, $entries['tpl-child']['detail']);
+        $this->assertSame([], $ledger['blocking']);
+
+        $after['meta']['_bricks_page_content_2'][0][0]['settings']['template'] = $missing;
+        $ledger = \Dbvc\Connected\Preparation\DependencyLedger::build(self::DOMAIN, $after, [], $observer);
+        $this->assertContains('dependency_unresolved:' . self::DOMAIN . ':tpl-nowhere', $ledger['blocking']);
+
+        $release_items = [['domain' => self::DOMAIN, 'instance_uid' => 'tpl-nowhere', 'body' => '{}']];
+        $ledger = \Dbvc\Connected\Preparation\DependencyLedger::build(self::DOMAIN, $after, $release_items, $observer);
+        $entries = [];
+        foreach ($ledger['entries'] as $entry) {
+            $entries[$entry['ref']] = $entry;
+        }
+        $this->assertSame('selected', $entries['tpl-nowhere']['status']);
+        $this->assertSame([], $ledger['blocking']);
     }
 }

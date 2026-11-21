@@ -9,7 +9,8 @@ namespace Dbvc\AgencyControl\Storage;
  */
 final class SyncPolicyStore
 {
-    public const MODES = ['manual', 'assisted', 'auto'];
+    /** `report` (CR-2): tracked like auto, but the cycle ends at the target's dry run — nothing is approved or applied. */
+    public const MODES = ['manual', 'assisted', 'auto', 'report'];
     public const CONFLICT_POLICIES = ['hold', 'source_wins', 'skip'];
     public const DIRECTIONS = ['push'];
 
@@ -131,6 +132,43 @@ final class SyncPolicyStore
     }
 
     /**
+     * Update the report-mode drive state (CR-2): the in-flight release and prepare
+     * operation, the consecutive mismatch-cycle count, and optionally the comparison
+     * digest memo. Never touches the operator's policy config.
+     *
+     * @param string      $source
+     * @param string      $target
+     * @param string      $release_uid
+     * @param string      $operation_id
+     * @param int         $mismatch_cycles
+     * @param string      $note
+     * @param string|null $comparison_digest Null leaves the memo as it is.
+     * @return void
+     */
+    public function set_report_state($source, $target, $release_uid, $operation_id, $mismatch_cycles, $note, $comparison_digest = null)
+    {
+        global $wpdb;
+
+        $data = [
+            'active_release_uid' => (string) $release_uid,
+            'active_rollout_uid' => '',
+            'active_operation_id' => (string) $operation_id,
+            'mismatch_cycles' => max(0, (int) $mismatch_cycles),
+            'last_run_at' => current_time('mysql', 1),
+            'last_run_note' => substr((string) $note, 0, 191),
+            'updated_at' => current_time('mysql', 1),
+        ];
+        if ($comparison_digest !== null) {
+            $data['last_comparison_digest'] = (string) $comparison_digest;
+        }
+        $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+            Schema::table('sync_policies'),
+            $data,
+            ['source_environment_id' => (string) $source, 'target_environment_id' => (string) $target]
+        );
+    }
+
+    /**
      * @param string $source
      * @param string $target
      * @return bool
@@ -175,6 +213,9 @@ final class SyncPolicyStore
             'note' => (string) $row['note'],
             'active_release_uid' => (string) ($row['active_release_uid'] ?? ''),
             'active_rollout_uid' => (string) ($row['active_rollout_uid'] ?? ''),
+            'active_operation_id' => (string) ($row['active_operation_id'] ?? ''),
+            'last_comparison_digest' => (string) ($row['last_comparison_digest'] ?? ''),
+            'mismatch_cycles' => (int) ($row['mismatch_cycles'] ?? 0),
             'last_run_at' => (string) ($row['last_run_at'] ?? ''),
             'last_run_note' => (string) ($row['last_run_note'] ?? ''),
             'created_at' => (string) $row['created_at'],

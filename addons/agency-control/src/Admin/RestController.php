@@ -17,10 +17,10 @@ final class RestController
     public const CAPABILITY = 'manage_options';
 
     /** @var array<int, string> Inspector methods exposed as GET. */
-    private const READS = ['status', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'reviews', 'compare', 'baselines', 'links', 'link_proposals', 'definitions', 'overrides', 'framework_status', 'fleet', 'framework_plan', 'framework_rollouts', 'framework_rollout', 'segments', 'releases', 'preparations', 'approvals', 'invitations', 'rollouts', 'sync_policies', 'parity', 'audit_export', 'notifications', 'notification_log'];
+    private const READS = ['status', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'reviews', 'compare', 'baselines', 'links', 'link_proposals', 'definitions', 'overrides', 'framework_status', 'fleet', 'framework_plan', 'framework_rollouts', 'framework_rollout', 'segments', 'releases', 'preparations', 'approvals', 'invitations', 'rollouts', 'sync_policies', 'parity', 'audit_export', 'notifications', 'notification_log', 'change_reports', 'change_report'];
 
     /** @var array<int, string> Inspector methods exposed as POST. */
-    private const WRITES = ['invite', 'revoke', 'release', 'hold', 'environment_reassign', 'rollback', 'subscribe', 'subscribe_framework', 'route', 'baseline_confirm', 'link_instance', 'unlink_instance', 'link_accept', 'definition_publish', 'definition_desire', 'framework_publish', 'framework_rollout_start', 'framework_rollout_advance', 'framework_rollout_resume', 'framework_rollout_retry', 'framework_rollout_withdraw', 'environment_tag', 'adopt_version', 'override_approve', 'override_detach', 'review_classify', 'review_resolve', 'release_create', 'release_withdraw', 'prepare_request', 'approve', 'revoke_approval', 'rollout_create', 'rollout_advance', 'rollout_pause', 'rollout_resume', 'rollout_retry', 'rollout_withdraw', 'rollout_prune', 'sync_policy_set', 'sync_policy_delete', 'sync_now', 'sync_advance', 'freeze_set', 'freeze_clear', 'notification_channel_set', 'notification_channel_delete', 'notification_flush'];
+    private const WRITES = ['invite', 'revoke', 'release', 'hold', 'environment_reassign', 'rollback', 'subscribe', 'subscribe_framework', 'route', 'baseline_confirm', 'link_instance', 'unlink_instance', 'link_accept', 'definition_publish', 'definition_desire', 'framework_publish', 'framework_rollout_start', 'framework_rollout_advance', 'framework_rollout_resume', 'framework_rollout_retry', 'framework_rollout_withdraw', 'environment_tag', 'adopt_version', 'override_approve', 'override_detach', 'review_classify', 'review_resolve', 'release_create', 'release_withdraw', 'prepare_request', 'approve', 'revoke_approval', 'rollout_create', 'rollout_advance', 'rollout_pause', 'rollout_resume', 'rollout_retry', 'rollout_withdraw', 'rollout_prune', 'sync_policy_set', 'sync_policy_delete', 'sync_now', 'sync_advance', 'freeze_set', 'freeze_clear', 'notification_channel_set', 'notification_channel_delete', 'notification_flush', 'change_report_decide', 'change_report_promote', 'change_report_purge'];
 
     /**
      * Write routes reserved to the client *approver* (reviewing, approving and
@@ -29,7 +29,7 @@ final class RestController
      *
      * @var array<int, string>
      */
-    private const APPROVER_WRITES = ['approve', 'revoke_approval', 'override_approve', 'override_detach', 'review_classify', 'review_resolve', 'rollback', 'hold', 'freeze_set', 'freeze_clear'];
+    private const APPROVER_WRITES = ['approve', 'revoke_approval', 'override_approve', 'override_detach', 'review_classify', 'review_resolve', 'rollback', 'hold', 'freeze_set', 'freeze_clear', 'change_report_decide'];
 
     /**
      * @return void

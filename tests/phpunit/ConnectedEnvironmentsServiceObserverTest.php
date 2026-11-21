@@ -83,6 +83,8 @@ class ConnectedEnvironmentsServiceObserverTest extends WP_UnitTestCase
         $post_id = wp_insert_post(['post_type' => 'service', 'post_status' => 'publish', 'post_title' => 'Roof repair', 'post_content' => 'Content v1', 'post_name' => 'roof-repair']);
         update_post_meta($post_id, 'price', '250');
         update_post_meta($post_id, 'cta', ['label' => 'Book', 'url' => '/book']);
+        update_post_meta($post_id, '_oembed_9a6f2e6627dbebf01c210cab89e6894', '<blockquote>cached</blockquote>');
+        update_post_meta($post_id, '_oembed_time_9a6f2e6627dbebf01c210cab89e6894', '1793806336');
         wp_set_object_terms($post_id, ['north', 'south'], 'service_area');
         $uid = (string) get_post_meta($post_id, 'vf_object_uid', true);
         $this->assertNotSame('', $uid, 'DBVC assigned the portable identity on save.');
@@ -112,6 +114,7 @@ class ConnectedEnvironmentsServiceObserverTest extends WP_UnitTestCase
         $this->assertSame([['label' => 'Book', 'url' => '/book']], $canonical['meta']['cta']);
         $this->assertArrayNotHasKey('vf_object_uid', $canonical['meta']);
         $this->assertArrayNotHasKey('_edit_lock', $canonical['meta']);
+        $this->assertSame([], array_filter(array_keys($canonical['meta']), static fn($k) => strpos($k, '_oembed_') === 0), 'WordPress oEmbed cache meta is per-site derived state, ignored by prefix.');
         $this->assertArrayNotHasKey('post_modified', $canonical);
         $this->assertArrayNotHasKey('post_author', $canonical);
         $this->assertArrayNotHasKey('ID', $canonical);

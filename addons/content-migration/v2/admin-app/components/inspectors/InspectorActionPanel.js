@@ -1,3 +1,4 @@
+import InspectorRecordsPanel from './InspectorRecordsPanel';
 import RecommendationDecisionCard from './RecommendationDecisionCard';
 
 export default function InspectorActionPanel( { decisionDraft } ) {
@@ -8,6 +9,7 @@ export default function InspectorActionPanel( { decisionDraft } ) {
 		hasUnsavedChanges,
 		isStale,
 		mediaDecisions,
+		recordDecisions,
 		recommendedTargetObject,
 		resetToLatestRecommendations,
 		restoreSavedDraft,
@@ -17,9 +19,12 @@ export default function InspectorActionPanel( { decisionDraft } ) {
 		selectedTargetObjectKey,
 		setDecisionState,
 		setOverrideTarget,
+		setLeftUnmapped,
+		setRecordIncluded,
 		setReviewerNote,
 		setSelectedResolutionMode,
 		setSelectedTargetObjectKey,
+		unresolvedItems,
 		validationErrors,
 	} = decisionDraft;
 
@@ -158,6 +163,13 @@ export default function InspectorActionPanel( { decisionDraft } ) {
 					</strong>
 				</p>
 			</div>
+
+			<InspectorRecordsPanel
+				recordDecisions={ recordDecisions }
+				unresolvedItems={ unresolvedItems }
+				setRecordIncluded={ setRecordIncluded }
+				setLeftUnmapped={ setLeftUnmapped }
+			/>
 
 			<div className="dbvc-cc-v2-toolbar__field">
 				<label htmlFor="dbvc-cc-v2-reviewer-note">

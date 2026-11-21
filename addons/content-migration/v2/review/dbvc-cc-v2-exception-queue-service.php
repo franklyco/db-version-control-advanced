@@ -169,6 +169,10 @@ final class DBVC_CC_V2_Exception_Queue_Service
         $unresolved_count = isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
             ? count($recommendations['unresolved_items'])
             : 0;
+        // Items a reviewer chose to leave unmapped are resolved, exactly as readiness counts them.
+        if (! $is_stale && is_array($mapping_decisions) && isset($mapping_decisions['left_unmapped']) && is_array($mapping_decisions['left_unmapped'])) {
+            $unresolved_count = max(0, $unresolved_count - count($mapping_decisions['left_unmapped']));
+        }
         $active_conflicts = DBVC_CC_V2_Recommendation_Review_Service::get_instance()->filter_active_conflicts(
             isset($recommendations['conflicts']) && is_array($recommendations['conflicts'])
                 ? $recommendations['conflicts']
@@ -214,7 +218,7 @@ final class DBVC_CC_V2_Exception_Queue_Service
             ? $target_transform['resolution_preview']
             : [];
 
-        return [
+        $item = [
             'runId' => $run_id,
             'pageId' => $page_id,
             'path' => isset($row['path']) ? (string) $row['path'] : '',
@@ -252,6 +256,27 @@ final class DBVC_CC_V2_Exception_Queue_Service
                 ? (string) $mapping_decisions['generated_at']
                 : '',
         ];
+
+        // D-19: a URL that becomes several records says so in the queue, so a reviewer sees the
+        // set before opening it. Absent for a single-record page.
+        if (DBVC_CC_V2_Contracts::has_entity_set($recommendations)) {
+            $entity_decisions = is_array($mapping_decisions) && isset($mapping_decisions['target_entity_decisions']) && is_array($mapping_decisions['target_entity_decisions'])
+                ? $mapping_decisions['target_entity_decisions']
+                : [];
+            $item['records'] = [];
+            foreach (DBVC_CC_V2_Contracts::get_target_entities($recommendations) as $entity) {
+                $entity_ref = (string) $entity['entity_ref'];
+                $item['records'][] = [
+                    'entityRef' => $entity_ref,
+                    'label' => isset($entity['label']) ? (string) $entity['label'] : '',
+                    'objectKey' => isset($entity['target_object_key']) ? (string) $entity['target_object_key'] : '',
+                    'included' => ($entity_decisions[$entity_ref]['decision'] ?? 'include') !== 'exclude',
+                ];
+            }
+            $item['recordCount'] = count($item['records']);
+        }
+
+        return $item;
     }
 
     /**
@@ -306,6 +331,7 @@ final class DBVC_CC_V2_Exception_Queue_Service
                         isset($item['sourceUrl']) ? (string) $item['sourceUrl'] : '',
                         isset($item['targetObject']['label']) ? (string) $item['targetObject']['label'] : '',
                         isset($item['targetObject']['key']) ? (string) $item['targetObject']['key'] : '',
+                        isset($item['records']) && is_array($item['records']) ? implode(' ', array_column($item['records'], 'label')) : '',
                     ]
                 )
             )

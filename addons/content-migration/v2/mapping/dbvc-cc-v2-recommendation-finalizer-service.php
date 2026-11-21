@@ -59,12 +59,14 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
         );
 
         $recommendations = $this->build_recommendations($assignment, $transform_lookup);
+        $target_entities = $this->build_target_entities($page_context, $mapping_index_artifact, $recommendations);
         $media_recommendations = $this->build_media_recommendations($media_candidates_artifact, $transform_lookup);
         $unresolved_items = $this->build_unresolved_items($assignment, $media_candidates_artifact);
         $conflicts = $this->build_conflicts($recommendations, $media_recommendations);
+        $recommendations = $this->escalate_contested_record_fields($recommendations, $conflicts);
         $review = $this->build_review($primary, $resolution_preview, $recommendations, $media_recommendations, $unresolved_items, $conflicts);
 
-        return [
+        $artifact = [
             'artifact_schema_version' => DBVC_CC_Contracts::ARTIFACT_SCHEMA_VERSION,
             'artifact_type' => 'mapping-recommendations.v2',
             'journey_id' => isset($raw_artifact['journey_id']) ? (string) $raw_artifact['journey_id'] : '',
@@ -94,6 +96,17 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'target' => isset($resolution_preview['target']) && is_array($resolution_preview['target']) ? $resolution_preview['target'] : [],
             ],
             'candidate_target_objects' => $this->build_candidate_target_objects($primary, $alternates),
+        ];
+
+        // D-19: the records this one URL becomes, when it is more than the page itself. Absent
+        // for a single-record page, so that artifact is byte-for-byte the one V2 always wrote and
+        // every reader falls back to `recommended_target_object` as a list of one
+        // (`DBVC_CC_V2_Contracts::get_target_entities()`).
+        if ($target_entities !== []) {
+            $artifact['target_entities'] = $target_entities;
+        }
+
+        return $artifact + [
             'recommendations' => $recommendations,
             'media_recommendations' => $media_recommendations,
             'unresolved_items' => $unresolved_items,
@@ -204,10 +217,120 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'value_contract_validation' => isset($transform['value_contract_validation']) && is_array($transform['value_contract_validation'])
                     ? $transform['value_contract_validation']
                     : [],
-            ];
+            ] + (array_key_exists('entity_ref', $content_item) ? ['entity_ref' => (string) $content_item['entity_ref']] : []);
         }
 
         return $recommendations;
+    }
+
+    /**
+     * Two values competing for one field of one record are a contest, and a contest is never
+     * settled unreviewed.
+     *
+     * Measured on corpus slot 1's team page: each photo's alt text, which the capture lifts into
+     * a paragraph (D-18), was filed as the person's role beside the real role heading, both at
+     * auto-accept confidence. The duplicate is already a conflict that holds the package, but a
+     * recommendation that still reads `requires_review: false` is one G-5 counts as decided
+     * without a reviewer — and it was wrong. Same rule as D-22: escalate, don't re-score. The
+     * confidence is untouched; the value just stops auto-accepting, with the reason named.
+     *
+     * Scoped to values filed under a record, which only a model-declared set produces, so a
+     * single-record page is unchanged.
+     *
+     * @param array<int, array<string, mixed>> $recommendations
+     * @param array<int, array<string, mixed>> $conflicts
+     * @return array<int, array<string, mixed>>
+     */
+    private function escalate_contested_record_fields(array $recommendations, array $conflicts)
+    {
+        $contested = [];
+        foreach ($conflicts as $conflict) {
+            foreach ((array) ($conflict['recommendation_ids'] ?? []) as $recommendation_id) {
+                $contested[(string) $recommendation_id] = true;
+            }
+        }
+        if ($contested === []) {
+            return $recommendations;
+        }
+
+        foreach ($recommendations as $index => $recommendation) {
+            if (! isset($recommendation['entity_ref']) || ! isset($contested[(string) $recommendation['recommendation_id']])) {
+                continue;
+            }
+            $recommendations[$index]['requires_review'] = true;
+            $reason_codes = isset($recommendation['selection']['reason_codes']) && is_array($recommendation['selection']['reason_codes'])
+                ? $recommendation['selection']['reason_codes']
+                : [];
+            $reason_codes[] = 'contested_field_in_record';
+            $recommendations[$index]['selection']['reason_codes'] = array_values(array_unique($reason_codes));
+        }
+
+        return $recommendations;
+    }
+
+    /**
+     * The records one source URL becomes, read from the interpreter's set (D-19).
+     *
+     * Empty unless the mapping index recorded a model-declared set. Each entry is shaped like
+     * `recommended_target_object` plus the record's own `entity_ref`, `label` and `slug`, so a
+     * reader that handles one target handles each of these the same way. Resolution is
+     * previewed per record against the record's own slug; the importer's match order still runs
+     * per record at dry run and is what actually decides create-or-update.
+     *
+     * @param array<string, mixed>             $page_context
+     * @param array<string, mixed>             $mapping_index_artifact
+     * @param array<int, array<string, mixed>> $recommendations
+     * @return array<int, array<string, mixed>>
+     */
+    private function build_target_entities(array $page_context, array $mapping_index_artifact, array $recommendations)
+    {
+        $entities = isset($mapping_index_artifact['interpretation']['entities']) && is_array($mapping_index_artifact['interpretation']['entities'])
+            ? $mapping_index_artifact['interpretation']['entities']
+            : [];
+        if ($entities === []) {
+            return [];
+        }
+
+        $target_entities = [];
+        $used_slugs = [];
+        foreach ($entities as $entity) {
+            if (! is_array($entity) || empty($entity['entity_id']) || empty($entity['object_key'])) {
+                continue;
+            }
+
+            $entity_ref = (string) $entity['entity_id'];
+            $confidences = [];
+            foreach ($recommendations as $recommendation) {
+                if (isset($recommendation['entity_ref']) && $recommendation['entity_ref'] === $entity_ref) {
+                    $confidences[] = (float) $recommendation['confidence'];
+                }
+            }
+            if ($confidences === []) {
+                continue;
+            }
+
+            $label = isset($entity['label']) ? (string) $entity['label'] : '';
+            $slug = DBVC_CC_V2_Contracts::build_entity_slug($label, $entity_ref, $used_slugs);
+            $used_slugs[$slug] = true;
+            $object_key = sanitize_key((string) $entity['object_key']);
+            $preview = DBVC_CC_V2_Target_Transform_Service::get_instance()->build_entity_resolution_preview($object_key, $slug);
+
+            $target_entities[] = [
+                'entity_ref' => $entity_ref,
+                'target_family' => 'post_type',
+                'target_object_key' => $object_key,
+                'label' => $label,
+                'slug' => $slug,
+                // The weakest value decides how far the record can be trusted unreviewed.
+                'confidence' => round(min($confidences), 2),
+                'resolution_mode' => (string) $preview['mode'],
+                'resolution_reason' => (string) $preview['reason'],
+                'target' => $preview['target'],
+                'recommendation_count' => count($confidences),
+            ];
+        }
+
+        return $target_entities;
     }
 
     /**
@@ -324,14 +447,26 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
             if ($this->target_ref_is_repeatable($target_ref)) {
                 continue;
             }
-
-            if (! isset($target_index[$target_ref])) {
-                $target_index[$target_ref] = [];
+            // Within one record of a set, several paragraphs bound for one rich-text field are
+            // that field's value, merged in source order at packaging — not a contest.
+            if (isset($recommendation['entity_ref']) && ($recommendation['recommended_value_type'] ?? '') === 'rich_text') {
+                continue;
             }
-            $target_index[$target_ref][] = isset($recommendation['recommendation_id']) ? (string) $recommendation['recommendation_id'] : '';
+
+            // Five records each have a title; that is five fields, not one field claimed five
+            // times. Only values bound for the same record compete.
+            $index_key = isset($recommendation['entity_ref'])
+                ? (string) $recommendation['entity_ref'] . "\x1f" . $target_ref
+                : $target_ref;
+            if (! isset($target_index[$index_key])) {
+                $target_index[$index_key] = ['target_ref' => $target_ref, 'ids' => []];
+            }
+            $target_index[$index_key]['ids'][] = isset($recommendation['recommendation_id']) ? (string) $recommendation['recommendation_id'] : '';
         }
 
-        foreach ($target_index as $target_ref => $recommendation_ids) {
+        foreach ($target_index as $entry) {
+            $target_ref = $entry['target_ref'];
+            $recommendation_ids = $entry['ids'];
             $recommendation_ids = array_values(array_filter($recommendation_ids));
             if (count($recommendation_ids) <= 1) {
                 continue;

@@ -9,7 +9,7 @@ namespace Dbvc\AgencyControl\Storage;
  */
 final class Schema
 {
-    public const SCHEMA_VERSION = 20;
+    public const SCHEMA_VERSION = 23;
     public const OPTION_SCHEMA_VERSION = 'dbvc_agency_control_schema_version';
     public const ENVIRONMENT_ROLE = 'dbvc_connected_environment';
 
@@ -60,6 +60,10 @@ final class Schema
             'notification_channels' => "{$wpdb->prefix}dbvc_ac_notification_channels",
             'notification_log' => "{$wpdb->prefix}dbvc_ac_notification_log",
             'media_blobs' => "{$wpdb->prefix}dbvc_ac_media_blobs",
+            'change_reports' => "{$wpdb->prefix}dbvc_ac_change_reports",
+            'change_report_items' => "{$wpdb->prefix}dbvc_ac_change_report_items",
+            'change_report_decisions' => "{$wpdb->prefix}dbvc_ac_change_report_decisions",
+            'change_report_run_items' => "{$wpdb->prefix}dbvc_ac_change_report_run_items",
         ];
         if (! isset($map[$name])) {
             throw new \InvalidArgumentException('Unknown hub table: ' . (string) $name);
@@ -73,7 +77,7 @@ final class Schema
      */
     public static function table_names()
     {
-        return array_map([self::class, 'table'], ['invitations', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'review_items', 'baselines', 'instance_links', 'definitions', 'overrides', 'releases', 'release_items', 'preparations', 'approvals', 'rollouts', 'rollout_targets']);
+        return array_map([self::class, 'table'], ['invitations', 'environments', 'events', 'projections', 'subscriptions', 'deliveries', 'review_items', 'baselines', 'instance_links', 'definitions', 'overrides', 'releases', 'release_items', 'preparations', 'approvals', 'rollouts', 'rollout_targets', 'change_reports', 'change_report_items', 'change_report_decisions', 'change_report_run_items']);
     }
 
     /**
@@ -475,6 +479,7 @@ final class Schema
             source_environment_id varbinary(128) NOT NULL,
             source_epoch varbinary(64) NOT NULL,
             state varbinary(32) NOT NULL DEFAULT 'open',
+            purpose varbinary(16) NOT NULL DEFAULT 'release',
             item_count int(10) unsigned NOT NULL DEFAULT 0,
             digest varbinary(64) NOT NULL DEFAULT '',
             note varchar(191) NOT NULL DEFAULT '',
@@ -483,7 +488,8 @@ final class Schema
             sealed_at datetime NULL,
             PRIMARY KEY  (release_id),
             UNIQUE KEY release_uid (release_uid),
-            KEY source_state (source_environment_id, state, release_id)
+            KEY source_state (source_environment_id, state, release_id),
+            KEY purpose_created (purpose, created_at)
         ) {$charset_collate};";
 
         $sql[] = "CREATE TABLE {$release_items} (
@@ -600,6 +606,9 @@ final class Schema
 
         // M8: one parity sync policy per source→target pair (additive). The driver reads
         // it to auto-propose releases for `outgoing` objects through the existing pipeline.
+        // v21 (change report CR-2): `report` mode tracks its prepare request in
+        // active_operation_id (never a rollout), memoises the last comparison digest so a
+        // tick with no change creates nothing, and counts consecutive mismatch cycles.
         $sql[] = "CREATE TABLE {$sync_policies} (
             sync_policy_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             agency_id varbinary(128) NOT NULL,
@@ -620,6 +629,9 @@ final class Schema
             note varchar(191) NOT NULL DEFAULT '',
             active_release_uid varbinary(128) NOT NULL DEFAULT '',
             active_rollout_uid varbinary(128) NOT NULL DEFAULT '',
+            active_operation_id varbinary(128) NOT NULL DEFAULT '',
+            last_comparison_digest varbinary(64) NOT NULL DEFAULT '',
+            mismatch_cycles int(10) unsigned NOT NULL DEFAULT 0,
             last_run_at datetime NULL,
             last_run_note varchar(191) NOT NULL DEFAULT '',
             created_by bigint(20) unsigned NULL,
@@ -714,6 +726,121 @@ final class Schema
             created_at datetime NOT NULL,
             bytes longblob NULL,
             PRIMARY KEY  (hash)
+        ) {$charset_collate};";
+
+        // Change report (CR-3, v22): one row per completed report cycle (a run), one LIVE
+        // row per pair+object (the inbox: updated by every run, never duplicated — CR-M
+        // decision e), and one decision per pair+object carried across runs (D11).
+        $change_reports = self::table('change_reports');
+        $change_report_items = self::table('change_report_items');
+        $change_report_decisions = self::table('change_report_decisions');
+        $sql[] = "CREATE TABLE {$change_reports} (
+            report_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            report_uid varbinary(128) NOT NULL,
+            agency_id varbinary(128) NOT NULL,
+            client_id varbinary(128) NOT NULL,
+            source_environment_id varbinary(128) NOT NULL,
+            target_environment_id varbinary(128) NOT NULL,
+            release_uid varbinary(128) NOT NULL DEFAULT '',
+            operation_id varbinary(128) NOT NULL DEFAULT '',
+            state varbinary(32) NOT NULL DEFAULT 'ready',
+            receipt_outcome varbinary(32) NOT NULL DEFAULT '',
+            comparison_digest varbinary(64) NOT NULL DEFAULT '',
+            values_included tinyint(1) NOT NULL DEFAULT 0,
+            item_count int(10) unsigned NOT NULL DEFAULT 0,
+            counts longtext NULL,
+            generated_at datetime NOT NULL,
+            PRIMARY KEY  (report_id),
+            UNIQUE KEY report_uid (report_uid),
+            KEY pair_generated (source_environment_id, target_environment_id, generated_at),
+            KEY release_uid (release_uid)
+        ) {$charset_collate};";
+        $sql[] = "CREATE TABLE {$change_report_items} (
+            item_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            source_environment_id varbinary(128) NOT NULL,
+            target_environment_id varbinary(128) NOT NULL,
+            domain varbinary(128) NOT NULL,
+            instance_uid varbinary(128) NOT NULL,
+            target_instance_uid varbinary(128) NOT NULL DEFAULT '',
+            profile varbinary(128) NOT NULL DEFAULT '',
+            display_name varchar(191) NOT NULL DEFAULT '',
+            label varbinary(32) NOT NULL DEFAULT 'updated',
+            comparison_state varbinary(32) NOT NULL DEFAULT '',
+            operation varbinary(16) NOT NULL DEFAULT '',
+            source_hash varbinary(64) NULL,
+            target_hash varbinary(64) NULL,
+            baseline_hash varbinary(64) NULL,
+            paths longtext NULL,
+            path_count int(10) unsigned NOT NULL DEFAULT 0,
+            values_included tinyint(1) NOT NULL DEFAULT 0,
+            truncated tinyint(1) NOT NULL DEFAULT 0,
+            receipt_outcome varbinary(32) NOT NULL DEFAULT '',
+            blockers longtext NULL,
+            report_uid varbinary(128) NOT NULL DEFAULT '',
+            first_report_uid varbinary(128) NOT NULL DEFAULT '',
+            resolved tinyint(1) NOT NULL DEFAULT 0,
+            changed_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (item_id),
+            UNIQUE KEY pair_object (source_environment_id, target_environment_id, domain, instance_uid),
+            KEY pair_open (source_environment_id, target_environment_id, resolved, changed_at),
+            KEY report_uid (report_uid)
+        ) {$charset_collate};";
+        $sql[] = "CREATE TABLE {$change_report_decisions} (
+            decision_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            source_environment_id varbinary(128) NOT NULL,
+            target_environment_id varbinary(128) NOT NULL,
+            domain varbinary(128) NOT NULL,
+            instance_uid varbinary(128) NOT NULL,
+            decision varbinary(16) NOT NULL,
+            decided_source_hash varbinary(64) NULL,
+            decided_target_hash varbinary(64) NULL,
+            decided_by bigint(20) unsigned NULL,
+            decided_at datetime NOT NULL,
+            note varchar(191) NOT NULL DEFAULT '',
+            verify_state varbinary(32) NOT NULL DEFAULT 'pending',
+            snoozed_until datetime NULL,
+            rebaseline_object tinyint(1) NOT NULL DEFAULT 0,
+            release_uid varbinary(128) NOT NULL DEFAULT '',
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (decision_id),
+            UNIQUE KEY pair_object (source_environment_id, target_environment_id, domain, instance_uid),
+            KEY pair_state (source_environment_id, target_environment_id, verify_state)
+        ) {$charset_collate};";
+
+        // Per-run snapshot (CR-4e, v23): one row per run + object AS THAT RUN RECORDED IT.
+        // The live items table keeps re-stamping an object with the last run that touched
+        // it, so an older run's object list shrank as later runs ran; the console reads a
+        // run from here instead. Written beside the live upsert, deleted with its report,
+        // never read by the inbox.
+        $change_report_run_items = self::table('change_report_run_items');
+        $sql[] = "CREATE TABLE {$change_report_run_items} (
+            run_item_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            report_uid varbinary(128) NOT NULL,
+            source_environment_id varbinary(128) NOT NULL,
+            target_environment_id varbinary(128) NOT NULL,
+            domain varbinary(128) NOT NULL,
+            instance_uid varbinary(128) NOT NULL,
+            target_instance_uid varbinary(128) NOT NULL DEFAULT '',
+            profile varbinary(128) NOT NULL DEFAULT '',
+            display_name varchar(191) NOT NULL DEFAULT '',
+            label varbinary(32) NOT NULL DEFAULT 'updated',
+            comparison_state varbinary(32) NOT NULL DEFAULT '',
+            operation varbinary(16) NOT NULL DEFAULT '',
+            source_hash varbinary(64) NULL,
+            target_hash varbinary(64) NULL,
+            baseline_hash varbinary(64) NULL,
+            paths longtext NULL,
+            path_count int(10) unsigned NOT NULL DEFAULT 0,
+            values_included tinyint(1) NOT NULL DEFAULT 0,
+            truncated tinyint(1) NOT NULL DEFAULT 0,
+            receipt_outcome varbinary(32) NOT NULL DEFAULT '',
+            blockers longtext NULL,
+            resolved tinyint(1) NOT NULL DEFAULT 0,
+            recorded_at datetime NOT NULL,
+            PRIMARY KEY  (run_item_id),
+            UNIQUE KEY run_object (report_uid, domain, instance_uid),
+            KEY pair_report (source_environment_id, target_environment_id, report_uid)
         ) {$charset_collate};";
 
         foreach ($sql as $statement) {

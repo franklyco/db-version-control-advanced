@@ -132,8 +132,8 @@ final class ComparisonService
         }
 
         return [
-            'source' => ['environment_id' => $source['environment_id'], 'epoch' => $source['current_epoch'], 'status' => $source['status'], 'last_contact_at' => $source['last_contact_at'], 'fresh' => $source_fresh, 'coverage' => $source_coverage],
-            'target' => ['environment_id' => $target['environment_id'], 'epoch' => $target['current_epoch'], 'status' => $target['status'], 'last_contact_at' => $target['last_contact_at'], 'fresh' => $target_fresh, 'coverage' => $target_coverage],
+            'source' => ['environment_id' => $source['environment_id'], 'epoch' => $source['current_epoch'], 'status' => $source['status'], 'last_contact_at' => $source['last_contact_at'], 'last_seen_at' => $source['last_seen_at'] ?? EnvironmentRegistry::last_seen_at($source), 'fresh' => $source_fresh, 'coverage' => $source_coverage],
+            'target' => ['environment_id' => $target['environment_id'], 'epoch' => $target['current_epoch'], 'status' => $target['status'], 'last_contact_at' => $target['last_contact_at'], 'last_seen_at' => $target['last_seen_at'] ?? EnvironmentRegistry::last_seen_at($target), 'fresh' => $target_fresh, 'coverage' => $target_coverage],
             'domain' => $domain,
             'freshness_seconds' => $freshness,
             'baselines' => count($baselines),
@@ -283,11 +283,9 @@ final class ComparisonService
      */
     private function is_fresh(array $environment, $freshness)
     {
-        if ($environment['status'] !== EnvironmentRegistry::STATUS_ENABLED || empty($environment['last_contact_at'])) {
-            return false;
-        }
-
-        return (time() - (int) strtotime((string) $environment['last_contact_at'] . ' UTC')) <= $freshness;
+        // CR-4d: a connector that polls is alive and its projections current; the
+        // last observation alone would call a quiet site stale after one window.
+        return EnvironmentRegistry::is_fresh($environment, $freshness);
     }
 
     /**

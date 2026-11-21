@@ -63,6 +63,10 @@ final class Runtime
         // Auto parity: a base WP-Cron tick advances due/in-flight auto policies (idempotent schedule).
         add_action(ParityScheduler::HOOK, [ParityScheduler::class, 'run']);
         ParityScheduler::schedule();
+        // Change report (CR-3): build/verify the durable report from report-mode cycles.
+        \Dbvc\AgencyControl\Reports\ChangeReportService::register();
+        // Change report (CR-4): notify on a generated report, an unstable source, or a stale side.
+        \Dbvc\AgencyControl\Notifications\ChangeReportNotifier::register();
         // Framework rollouts: a base WP-Cron tick advances every running campaign hands-off (idempotent schedule).
         add_action(FrameworkRolloutScheduler::HOOK, [FrameworkRolloutScheduler::class, 'run']);
         FrameworkRolloutScheduler::schedule();
@@ -88,6 +92,8 @@ final class Runtime
         // Detach the cron callback; the scheduled event itself is cleared only on explicit disable.
         remove_action(ParityScheduler::HOOK, [ParityScheduler::class, 'run']);
         remove_action(FrameworkRolloutScheduler::HOOK, [FrameworkRolloutScheduler::class, 'run']);
+        \Dbvc\AgencyControl\Reports\ChangeReportService::unregister();
+        \Dbvc\AgencyControl\Notifications\ChangeReportNotifier::unregister();
         HubPanel::unregister();
         if (self::$admin_rest instanceof AdminRestController) {
             remove_action('rest_api_init', [self::$admin_rest, 'register_routes']);

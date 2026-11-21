@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 492,
-        "source_fingerprint": "sha256:c8ef9ba80a335dbbbec8b1645d48fc216a8ecc8412e4c8f789455eefe9f6bfda",
+        "source_file_count": 502,
+        "source_fingerprint": "sha256:8103b7e1eac85785e2e4dab2efb411e8cd29533fa6f86b012f4e944385a02e91",
         "live_runtime_verified": false
     },
     "counts": {
@@ -12,16 +12,16 @@
         "admin_menus": 13,
         "bootstrap_includes": 138,
         "bootstrap_initializers": 19,
-        "cli_commands": 131,
+        "cli_commands": 138,
         "cli_namespaces": 13,
-        "database_tables": 45,
-        "documentation": 542,
-        "extension_points": 204,
-        "hook_listeners": 225,
+        "database_tables": 49,
+        "documentation": 547,
+        "extension_points": 211,
+        "hook_listeners": 230,
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "tests": 209
+        "tests": 219
     },
     "collections": {
         "admin_handlers": [
@@ -1943,7 +1943,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2870
+                    "line": 3010
                 }
             },
             {
@@ -1962,7 +1962,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3733
+                    "line": 3873
                 }
             },
             {
@@ -1977,7 +1977,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3489
+                    "line": 3629
                 }
             },
             {
@@ -1996,7 +1996,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2298
+                    "line": 2438
                 }
             },
             {
@@ -2014,7 +2014,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2588
+                    "line": 2728
                 }
             },
             {
@@ -2032,7 +2032,93 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2614
+                    "line": 2754
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.change-report",
+                "command": "dbvc agency change-report",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "change_report",
+                "summary": "Change report: what changed on staging since the last check, object by object (the inbox for a pair)",
+                "synopsis_tokens": [
+                    "[--design-review=<file>]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--handled_limit=<n>]",
+                    "[--report=<uid>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 4362
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.change-report-decide",
+                "command": "dbvc agency change-report-decide",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "change_report_decide",
+                "summary": "Decide change-report items: reconciled (\"Done\"), ignored (\"Leave it\"), snoozed (\"Remind me tomorrow\") or clear",
+                "synopsis_tokens": [
+                    "[--note=<note>]",
+                    "[--rebaseline=<bool>]",
+                    "[--snooze_seconds=<n>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 4457
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.change-report-promote",
+                "command": "dbvc agency change-report-promote",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "change_report_promote",
+                "summary": "Promote change-report items into a real release (publisher); approve it from Releases",
+                "synopsis_tokens": [
+                    "[--note=<note>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 4485
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.change-report-purge",
+                "command": "dbvc agency change-report-purge",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "change_report_purge",
+                "summary": "Purge report-purpose releases (release, items, preparations) older than the retention window whose report exists; reclaims orphan media",
+                "synopsis_tokens": [
+                    "[--days=<n>]",
+                    "[--dry-run]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 4507
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.agency.change-reports",
+                "command": "dbvc agency change-reports",
+                "namespace": "dbvc agency",
+                "class": "DBVC_WP_CLI_Agency",
+                "method": "change_reports",
+                "summary": "Change report runs for a pair, newest first",
+                "synopsis_tokens": [
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--limit=<n>]",
+                    "[--source=<id>]",
+                    "[--target=<id>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-agency-cli.php",
+                    "line": 4420
                 }
             },
             {
@@ -2050,7 +2136,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2551
+                    "line": 2691
                 }
             },
             {
@@ -2065,7 +2151,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2823
+                    "line": 2963
                 }
             },
             {
@@ -2090,7 +2176,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2799
+                    "line": 2939
                 }
             },
             {
@@ -2108,7 +2194,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2849
+                    "line": 2989
                 }
             },
             {
@@ -2126,7 +2212,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2487
+                    "line": 2627
                 }
             },
             {
@@ -2139,7 +2225,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2418
+                    "line": 2558
                 }
             },
             {
@@ -2154,7 +2240,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4051
+                    "line": 4191
                 }
             },
             {
@@ -2169,7 +2255,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3032
+                    "line": 3172
                 }
             },
             {
@@ -2187,7 +2273,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2234
+                    "line": 2374
                 }
             },
             {
@@ -2206,7 +2292,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2263
+                    "line": 2403
                 }
             },
             {
@@ -2223,7 +2309,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3008
+                    "line": 3148
                 }
             },
             {
@@ -2241,7 +2327,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3119
+                    "line": 3259
                 }
             },
             {
@@ -2260,7 +2346,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3092
+                    "line": 3232
                 }
             },
             {
@@ -2273,7 +2359,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3253
+                    "line": 3393
                 }
             },
             {
@@ -2286,7 +2372,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3209
+                    "line": 3349
                 }
             },
             {
@@ -2299,7 +2385,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3170
+                    "line": 3310
                 }
             },
             {
@@ -2312,7 +2398,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3191
+                    "line": 3331
                 }
             },
             {
@@ -2332,7 +2418,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3152
+                    "line": 3292
                 }
             },
             {
@@ -2345,7 +2431,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3292
+                    "line": 3432
                 }
             },
             {
@@ -2361,7 +2447,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3274
+                    "line": 3414
                 }
             },
             {
@@ -2380,7 +2466,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2983
+                    "line": 3123
                 }
             },
             {
@@ -2393,7 +2479,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3802
+                    "line": 3942
                 }
             },
             {
@@ -2408,7 +2494,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3783
+                    "line": 3923
                 }
             },
             {
@@ -2423,7 +2509,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4023
+                    "line": 4163
                 }
             },
             {
@@ -2441,7 +2527,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4077
+                    "line": 4217
                 }
             },
             {
@@ -2459,7 +2545,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2208
+                    "line": 2348
                 }
             },
             {
@@ -2477,7 +2563,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2745
+                    "line": 2885
                 }
             },
             {
@@ -2492,7 +2578,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2647
+                    "line": 2787
                 }
             },
             {
@@ -2507,7 +2593,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2712
+                    "line": 2852
                 }
             },
             {
@@ -2524,7 +2610,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2688
+                    "line": 2828
                 }
             },
             {
@@ -2537,7 +2623,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3928
+                    "line": 4068
                 }
             },
             {
@@ -2556,7 +2642,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3909
+                    "line": 4049
                 }
             },
             {
@@ -2571,7 +2657,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3986
+                    "line": 4126
                 }
             },
             {
@@ -2587,7 +2673,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3967
+                    "line": 4107
                 }
             },
             {
@@ -2602,7 +2688,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3945
+                    "line": 4085
                 }
             },
             {
@@ -2617,7 +2703,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2903
+                    "line": 3043
                 }
             },
             {
@@ -2630,7 +2716,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2930
+                    "line": 3070
                 }
             },
             {
@@ -2647,7 +2733,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2953
+                    "line": 3093
                 }
             },
             {
@@ -2660,7 +2746,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4207
+                    "line": 4529
                 }
             },
             {
@@ -2680,7 +2766,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3465
+                    "line": 3605
                 }
             },
             {
@@ -2693,7 +2779,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3433
+                    "line": 3573
                 }
             },
             {
@@ -2712,7 +2798,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2327
+                    "line": 2467
                 }
             },
             {
@@ -2725,7 +2811,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4003
+                    "line": 4143
                 }
             },
             {
@@ -2742,7 +2828,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3361
+                    "line": 3501
                 }
             },
             {
@@ -2755,7 +2841,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3379
+                    "line": 3519
                 }
             },
             {
@@ -2774,7 +2860,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3408
+                    "line": 3548
                 }
             },
             {
@@ -2790,7 +2876,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3313
+                    "line": 3453
                 }
             },
             {
@@ -2803,7 +2889,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3334
+                    "line": 3474
                 }
             },
             {
@@ -2823,7 +2909,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2519
+                    "line": 2659
                 }
             },
             {
@@ -2836,7 +2922,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3754
+                    "line": 3894
                 }
             },
             {
@@ -2851,7 +2937,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3704
+                    "line": 3844
                 }
             },
             {
@@ -2864,7 +2950,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3846
+                    "line": 3986
                 }
             },
             {
@@ -2877,7 +2963,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3872
+                    "line": 4012
                 }
             },
             {
@@ -2892,7 +2978,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3820
+                    "line": 3960
                 }
             },
             {
@@ -2907,7 +2993,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3509
+                    "line": 3649
                 }
             },
             {
@@ -2920,7 +3006,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3551
+                    "line": 3691
                 }
             },
             {
@@ -2935,7 +3021,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3533
+                    "line": 3673
                 }
             },
             {
@@ -2950,7 +3036,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3572
+                    "line": 3712
                 }
             },
             {
@@ -2966,7 +3052,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3683
+                    "line": 3823
                 }
             },
             {
@@ -2979,7 +3065,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3590
+                    "line": 3730
                 }
             },
             {
@@ -2992,7 +3078,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3611
+                    "line": 3751
                 }
             },
             {
@@ -3005,7 +3091,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3629
+                    "line": 3769
                 }
             },
             {
@@ -3024,7 +3110,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3658
+                    "line": 3798
                 }
             },
             {
@@ -3039,7 +3125,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2461
+                    "line": 2601
                 }
             },
             {
@@ -3052,7 +3138,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3222
+                    "line": 3362
                 }
             },
             {
@@ -3065,7 +3151,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3235
+                    "line": 3375
                 }
             },
             {
@@ -3081,7 +3167,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 3053
+                    "line": 3193
                 }
             },
             {
@@ -3094,7 +3180,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2179
+                    "line": 2319
                 }
             },
             {
@@ -3109,7 +3195,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2350
+                    "line": 2490
                 }
             },
             {
@@ -3125,7 +3211,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2383
+                    "line": 2523
                 }
             },
             {
@@ -3143,7 +3229,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2444
+                    "line": 2584
                 }
             },
             {
@@ -3156,7 +3242,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4254
+                    "line": 4576
                 }
             },
             {
@@ -3171,7 +3257,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4232
+                    "line": 4554
                 }
             },
             {
@@ -3190,7 +3276,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4163
+                    "line": 4303
                 }
             },
             {
@@ -3203,7 +3289,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4185
+                    "line": 4325
                 }
             },
             {
@@ -3228,7 +3314,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4132
+                    "line": 4272
                 }
             },
             {
@@ -3241,7 +3327,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2665
+                    "line": 2805
                 }
             },
             {
@@ -3254,7 +3340,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 2400
+                    "line": 2540
                 }
             },
             {
@@ -3385,6 +3471,28 @@
                 }
             },
             {
+                "discovery_id": "cli.command.dbvc.connected.compare-file",
+                "command": "dbvc connected compare-file",
+                "namespace": "dbvc connected",
+                "class": "DBVC_WP_CLI_Connected",
+                "method": "compare_file",
+                "summary": "Compare an objects-export bundle from another site against this site's recorded objects and print the change report (CR-5 hubless file mode)",
+                "synopsis_tokens": [
+                    "<file>",
+                    "[--design-review=<file>]",
+                    "[--domains=<domains>]",
+                    "[--force]",
+                    "[--format=<format>]",
+                    "[--max-paths=<number>]",
+                    "[--out=<path>]",
+                    "[--values=<bool>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-connected-cli.php",
+                    "line": 788
+                }
+            },
+            {
                 "discovery_id": "cli.command.dbvc.connected.deliver",
                 "command": "dbvc connected deliver",
                 "namespace": "dbvc connected",
@@ -3396,7 +3504,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 690
+                    "line": 941
                 }
             },
             {
@@ -3409,7 +3517,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 661
+                    "line": 912
                 }
             },
             {
@@ -3426,7 +3534,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 713
+                    "line": 964
                 }
             },
             {
@@ -3444,7 +3552,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 620
+                    "line": 871
                 }
             },
             {
@@ -3461,7 +3569,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 539
+                    "line": 675
                 }
             },
             {
@@ -3479,7 +3587,24 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 565
+                    "line": 701
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.connected.objects-export",
+                "command": "dbvc connected objects-export",
+                "namespace": "dbvc connected",
+                "class": "DBVC_WP_CLI_Connected",
+                "method": "objects_export",
+                "summary": "Write this site's recorded objects (canonical bodies from dbvc_ce_objects) as one JSON bundle for a hubless comparison elsewhere (CR-5)",
+                "synopsis_tokens": [
+                    "[--domains=<domains>]",
+                    "[--force]",
+                    "[--out=<path>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-connected-cli.php",
+                    "line": 733
                 }
             },
             {
@@ -3497,7 +3622,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 798
+                    "line": 1049
                 }
             },
             {
@@ -3515,7 +3640,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 591
+                    "line": 842
                 }
             },
             {
@@ -3530,7 +3655,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 730
+                    "line": 981
                 }
             },
             {
@@ -3548,7 +3673,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 768
+                    "line": 1019
                 }
             },
             {
@@ -3564,7 +3689,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 822
+                    "line": 1073
                 }
             },
             {
@@ -3579,7 +3704,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 637
+                    "line": 888
                 }
             },
             {
@@ -3592,7 +3717,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 742
+                    "line": 993
                 }
             },
             {
@@ -3605,7 +3730,7 @@
                 "synopsis_tokens": [],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 673
+                    "line": 924
                 }
             },
             {
@@ -3620,7 +3745,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 516
+                    "line": 652
                 }
             },
             {
@@ -4102,7 +4227,7 @@
                 "class": "DBVC_WP_CLI_Agency",
                 "source_ref": {
                     "path": "commands/class-agency-cli.php",
-                    "line": 4298
+                    "line": 4620
                 }
             },
             {
@@ -4138,7 +4263,7 @@
                 "class": "DBVC_WP_CLI_Connected",
                 "source_ref": {
                     "path": "commands/class-connected-cli.php",
-                    "line": 866
+                    "line": 1117
                 }
             },
             {
@@ -4414,6 +4539,42 @@
                 }
             },
             {
+                "discovery_id": "database.table.dbvc_ac_change_reports",
+                "scope": "core",
+                "name": "dbvc_ac_change_reports",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Storage/Schema.php",
+                    "line": 63
+                }
+            },
+            {
+                "discovery_id": "database.table.dbvc_ac_change_report_items",
+                "scope": "core",
+                "name": "dbvc_ac_change_report_items",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Storage/Schema.php",
+                    "line": 64
+                }
+            },
+            {
+                "discovery_id": "database.table.dbvc_ac_change_report_decisions",
+                "scope": "core",
+                "name": "dbvc_ac_change_report_decisions",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Storage/Schema.php",
+                    "line": 65
+                }
+            },
+            {
+                "discovery_id": "database.table.dbvc_ac_change_report_run_items",
+                "scope": "core",
+                "name": "dbvc_ac_change_report_run_items",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Storage/Schema.php",
+                    "line": 66
+                }
+            },
+            {
                 "discovery_id": "database.table.dbvc_ce_state",
                 "scope": "core",
                 "name": "dbvc_ce_state",
@@ -4645,6 +4806,8 @@
             "docs/archives/bricks-assets/BRICKS_ASSETS_HANDOFF.md",
             "docs/archives/bricks-assets/README.md",
             "docs/archives/connected-environments-build-record.md",
+            "docs/archives/content-migration-v3/content-migration-v3-s1d.md",
+            "docs/archives/content-migration-v3/README.md",
             "docs/archives/content-migration-workbench-handoff/CODEX_KICKOFF_PROMPT.md",
             "docs/archives/content-migration-workbench-handoff/docs/00-architecture-findings-and-recommendations.md",
             "docs/archives/content-migration-workbench-handoff/docs/01-product-overview.md",
@@ -4852,11 +5015,13 @@
             "docs/implementation/active/configuration-portability-tool-guide.md",
             "docs/implementation/active/connected-environments-admin-page.md",
             "docs/implementation/active/connected-environments-agency-control.md",
+            "docs/implementation/active/connected-environments-change-report.md",
             "docs/implementation/active/connected-environments-fleet-battletest-handoff.md",
             "docs/implementation/active/connected-environments-m9-handoff.md",
             "docs/implementation/active/connected-environments-media-capacity-design.md",
             "docs/implementation/active/connected-environments-operator-runbook.md",
-            "docs/implementation/active/content-migration-v3-s1d.md",
+            "docs/implementation/active/content-migration-v3-s3.md",
+            "docs/implementation/active/content-migration-v3-unit-economics.md",
             "docs/implementation/active/README.md",
             "docs/implementation/active/term-entity-polish.md",
             "docs/implementation/active/wsform-reference-portability.md",
@@ -4899,6 +5064,7 @@
             "docs/implementation/proposed/bricks-reference-mapping-plan.md",
             "docs/implementation/proposed/configuration-portability-tool-guide.md",
             "docs/implementation/proposed/content-collection-v3/README.md",
+            "docs/implementation/proposed/content-collection-v3/unit-economics-baseline.md",
             "docs/implementation/proposed/cross-site-entity-packet-guide.md",
             "docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md",
             "docs/implementation/proposed/media-sync-hydration-guide.md",
@@ -5499,6 +5665,17 @@
                 }
             },
             {
+                "discovery_id": "hook.extension_point.dbvc_agency_change_report_generated.2eedfb21",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_agency_change_report_generated",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Reports/ChangeReportService.php",
+                    "line": 336
+                }
+            },
+            {
                 "discovery_id": "hook.extension_point.dbvc_agency_control_freshness_seconds.cd011d36",
                 "kind": "extension_point",
                 "scope": "core",
@@ -5528,7 +5705,7 @@
                 "hook": "dbvc_agency_max_pull_file_bytes",
                 "source_ref": {
                     "path": "addons/agency-control/src/Release/ReleaseService.php",
-                    "line": 338
+                    "line": 340
                 }
             },
             {
@@ -5550,7 +5727,51 @@
                 "hook": "dbvc_agency_release_domain_ranks",
                 "source_ref": {
                     "path": "addons/agency-control/src/Storage/ReleaseStore.php",
-                    "line": 169
+                    "line": 174
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_agency_report_comparison.b1b9f4c0",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_agency_report_comparison",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Parity/SyncDriver.php",
+                    "line": 484
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_agency_report_cycle_complete.bd57e7af",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_agency_report_cycle_complete",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Parity/SyncDriver.php",
+                    "line": 531
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_agency_report_stale.d691a12f",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_agency_report_stale",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Parity/SyncDriver.php",
+                    "line": 472
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_agency_report_unstable_source.b66adb8d",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_agency_report_unstable_source",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Parity/SyncDriver.php",
+                    "line": 442
                 }
             },
             {
@@ -6199,7 +6420,7 @@
                 "hook": "dbvc_connected_post_create_terms",
                 "source_ref": {
                     "path": "addons/connected-environments/src/Adapters/PostTypeObserver.php",
-                    "line": 654
+                    "line": 696
                 }
             },
             {
@@ -6221,7 +6442,18 @@
                 "hook": "dbvc_connected_post_ignored_meta_keys",
                 "source_ref": {
                     "path": "addons/connected-environments/src/Adapters/PostTypeObserver.php",
-                    "line": 618
+                    "line": 660
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_connected_post_media_meta_keys.0bb96c7f",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "apply_filters",
+                "hook": "dbvc_connected_post_media_meta_keys",
+                "source_ref": {
+                    "path": "addons/connected-environments/src/Preparation/MetaMediaReferences.php",
+                    "line": 77
                 }
             },
             {
@@ -6232,7 +6464,7 @@
                 "hook": "dbvc_connected_post_meta_allow",
                 "source_ref": {
                     "path": "addons/connected-environments/src/Adapters/PostTypeObserver.php",
-                    "line": 636
+                    "line": 678
                 }
             },
             {
@@ -6244,6 +6476,17 @@
                 "source_ref": {
                     "path": "addons/connected-environments/src/Capture/DirtyCapture.php",
                     "line": 96
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_connected_receipt_values.dc0a38a9",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "apply_filters",
+                "hook": "dbvc_connected_receipt_values",
+                "source_ref": {
+                    "path": "addons/connected-environments/src/Preparation/ReceiptRedactor.php",
+                    "line": 46
                 }
             },
             {
@@ -6826,7 +7069,7 @@
                 "hook": "dbvc_skip_meta_keys",
                 "source_ref": {
                     "path": "addons/connected-environments/src/Adapters/PostTypeObserver.php",
-                    "line": 610
+                    "line": 652
                 }
             },
             {
@@ -8314,6 +8557,61 @@
                 "source_ref": {
                     "path": "admin/admin-page.php",
                     "line": 5617
+                }
+            },
+            {
+                "discovery_id": "hook.listener.dbvc_agency_change_report_generated.a384b72c",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "dbvc_agency_change_report_generated",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Notifications/ChangeReportNotifier.php",
+                    "line": 53
+                }
+            },
+            {
+                "discovery_id": "hook.listener.dbvc_agency_report_comparison.5b72b1e9",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "dbvc_agency_report_comparison",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Reports/ChangeReportService.php",
+                    "line": 87
+                }
+            },
+            {
+                "discovery_id": "hook.listener.dbvc_agency_report_cycle_complete.6df53866",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "dbvc_agency_report_cycle_complete",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Reports/ChangeReportService.php",
+                    "line": 86
+                }
+            },
+            {
+                "discovery_id": "hook.listener.dbvc_agency_report_stale.145b278a",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "dbvc_agency_report_stale",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Notifications/ChangeReportNotifier.php",
+                    "line": 55
+                }
+            },
+            {
+                "discovery_id": "hook.listener.dbvc_agency_report_unstable_source.cb7f22d8",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "dbvc_agency_report_unstable_source",
+                "source_ref": {
+                    "path": "addons/agency-control/src/Notifications/ChangeReportNotifier.php",
+                    "line": 54
                 }
             },
             {
@@ -13276,6 +13574,11 @@
             "tests/phpunit/ConnectedBricksDomainsTest.php",
             "tests/phpunit/ConnectedBricksSingletonTest.php",
             "tests/phpunit/ConnectedBricksTemplatesTest.php",
+            "tests/phpunit/ConnectedChangeReceiptTest.php",
+            "tests/phpunit/ConnectedChangeReportModeTest.php",
+            "tests/phpunit/ConnectedChangeReportNotifyTest.php",
+            "tests/phpunit/ConnectedChangeReportTest.php",
+            "tests/phpunit/ConnectedDesignReviewAnnotationTest.php",
             "tests/phpunit/ConnectedDriftNotifyTest.php",
             "tests/phpunit/ConnectedEnvironmentReassignTest.php",
             "tests/phpunit/ConnectedEnvironmentsDeliveryTest.php",
@@ -13283,6 +13586,7 @@
             "tests/phpunit/ConnectedEnvironmentsIsolationTest.php",
             "tests/phpunit/ConnectedEnvironmentsObservationTest.php",
             "tests/phpunit/ConnectedEnvironmentsServiceObserverTest.php",
+            "tests/phpunit/ConnectedFileComparisonTest.php",
             "tests/phpunit/ConnectedFleetTest.php",
             "tests/phpunit/ConnectedFrameworkPublishTest.php",
             "tests/phpunit/ConnectedFrameworkRolloutTest.php",
@@ -13293,6 +13597,7 @@
             "tests/phpunit/ConnectedMediaMaterializerPullTest.php",
             "tests/phpunit/ConnectedMediaPullChannelTest.php",
             "tests/phpunit/ConnectedMediaTest.php",
+            "tests/phpunit/ConnectedMetaMediaReferencesTest.php",
             "tests/phpunit/ConnectedNotificationsTest.php",
             "tests/phpunit/ConnectedParityAutoTest.php",
             "tests/phpunit/ConnectedParitySchedulerTest.php",
@@ -13332,6 +13637,7 @@
             "tests/phpunit/ContentCollectorV2Phase32Test.php",
             "tests/phpunit/ContentMigrationAiMappingFlagBoundaryTest.php",
             "tests/phpunit/ContentMigrationCliTest.php",
+            "tests/phpunit/ContentMigrationCorpusTargetProvisioningTest.php",
             "tests/phpunit/ContentMigrationCorpusWiredMeasurementTest.php",
             "tests/phpunit/ContentMigrationExplorerContextTest.php",
             "tests/phpunit/ContentMigrationExternalArtifactIngestTest.php",
@@ -13344,6 +13650,7 @@
             "tests/phpunit/ContentMigrationInterpretationBridgeTest.php",
             "tests/phpunit/ContentMigrationLexicalAutoAcceptPrecisionTest.php",
             "tests/phpunit/ContentMigrationMappingInterpretationTest.php",
+            "tests/phpunit/ContentMigrationMultiEntityPerUrlTest.php",
             "tests/phpunit/ContentMigrationPhase4ImportExecutorTest.php",
             "tests/phpunit/ContentMigrationPhase36DeterminismTest.php",
             "tests/phpunit/ContentMigrationPhase36HardeningTest.php",
@@ -13361,6 +13668,7 @@
             "tests/phpunit/EntityEditorCliTest.php",
             "tests/phpunit/EntityEditorEndpointsTest.php",
             "tests/phpunit/EntityEditorRawIntakeTest.php",
+            "tests/phpunit/ExportManagerResumeRefreshTest.php",
             "tests/phpunit/ExportMaskingPostFieldsTest.php",
             "tests/phpunit/ImportRouterRegressionTest.php",
             "tests/phpunit/MaskingEndpointsTest.php",

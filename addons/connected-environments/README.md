@@ -4,7 +4,7 @@ Off by default. Enable under DBVC → Configure → Add-ons → Connected Enviro
 
 What it does: records save-side dirty markers for `bricks_global_classes`, `bricks_global_variables` and `service` posts (`wp.service`, identity = DBVC `vf_object_uid`; add `service` to DBVC's post types), snapshots each class/variable and the collection order in a leased background worker, keeps immutable `agency-control.observation.v0.2` events in a local outbox, and — once enrolled with a hub — delivers them outbound-only with per-event settlement and polls its hub inbox (store-before-ack). Received observations are stored for comparison and never applied to content.
 
-Inspect: `wp dbvc connected status|jobs|objects|outbox|inventory`. Drive: `wp dbvc connected reconcile|process|deliver|resume` (or let WP-Cron run `dbvc_connected_process_observations` / `dbvc_connected_deliver_outbox`). Enroll: `wp dbvc connected enroll --hub=<url> --token=<invitation>`.
+Inspect: `wp dbvc connected status|jobs|objects|outbox|inventory`. Hubless change report (CR-5): `wp dbvc connected objects-export --out=<file>` on one site, `wp dbvc connected compare-file <file>` on the other (read-only, no hub; `--design-review=<review.json>` notes a VerticalFramework Design Review round's pins and approvals on the page rows, CR-6). Drive: `wp dbvc connected reconcile|process|deliver|resume` (or let WP-Cron run `dbvc_connected_process_observations` / `dbvc_connected_deliver_outbox`). Enroll: `wp dbvc connected enroll --hub=<url> --token=<invitation>`.
 
 Implementation truth and verification: `docs/implementation/active/connected-environments-agency-control.md`. Design baseline: `docs/dropins/dbvc-connected-agency/`.
 

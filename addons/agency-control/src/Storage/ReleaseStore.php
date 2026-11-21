@@ -22,6 +22,10 @@ final class ReleaseStore
     public const PAYLOAD_RECEIVED = 'received';
     public const PAYLOAD_MISMATCH = 'mismatch';
 
+    public const PURPOSE_RELEASE = 'release';
+    /** A release created by `report` mode: transport for a dry run only, never approved; purged by retention (CR-3). */
+    public const PURPOSE_REPORT = 'report';
+
     public const OPERATION_REPLACE = 'replace';
     public const OPERATION_DELETE = 'delete';
     public const OPERATION_CREATE = 'create';
@@ -44,13 +48,14 @@ final class ReleaseStore
                 'source_environment_id' => (string) $release['source_environment_id'],
                 'source_epoch' => (string) $release['source_epoch'],
                 'state' => self::STATE_OPEN,
+                'purpose' => (string) ($release['purpose'] ?? self::PURPOSE_RELEASE) === self::PURPOSE_REPORT ? self::PURPOSE_REPORT : self::PURPOSE_RELEASE,
                 'item_count' => count($items),
                 'digest' => '',
                 'note' => mb_substr((string) ($release['note'] ?? ''), 0, 191),
                 'created_by' => (int) ($release['created_by'] ?? 0),
                 'created_at' => current_time('mysql', true),
             ],
-            ['%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%s']
+            ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%s']
         );
         if ($inserted !== 1) {
             return null;
@@ -315,6 +320,39 @@ final class ReleaseStore
     }
 
     /**
+     * Report-purpose releases created before a cutoff (CR-3 purge).
+     *
+     * @param string $before UTC datetime.
+     * @param int    $limit
+     * @return array<int, array<string, mixed>>
+     */
+    public function report_releases_before($before, $limit = 200)
+    {
+        global $wpdb;
+
+        $table = Schema::table('releases');
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE purpose = %s AND created_at < %s ORDER BY release_id LIMIT %d", self::PURPOSE_REPORT, (string) $before, max(1, (int) $limit)), ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+        return array_map([$this, 'normalize'], is_array($rows) ? $rows : []);
+    }
+
+    /**
+     * Delete one release and its items (CR-3 purge). Media blobs are content-
+     * addressed and shared, so they are reclaimed separately by MediaBlobStore::gc().
+     *
+     * @param int $release_id
+     * @return bool
+     */
+    public function delete($release_id)
+    {
+        global $wpdb;
+
+        $wpdb->delete(Schema::table('release_items'), ['release_id' => (int) $release_id], ['%d']); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+        return $wpdb->delete(Schema::table('releases'), ['release_id' => (int) $release_id], ['%d']) === 1; // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+    }
+
+    /**
      * @return array<string, int>
      */
     public function counts()
@@ -341,6 +379,7 @@ final class ReleaseStore
         $row['release_id'] = (int) $row['release_id'];
         $row['item_count'] = (int) $row['item_count'];
         $row['created_by'] = (int) $row['created_by'];
+        $row['purpose'] = (string) ($row['purpose'] ?? self::PURPOSE_RELEASE);
 
         return $row;
     }

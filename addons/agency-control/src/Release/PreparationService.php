@@ -112,6 +112,8 @@ final class PreparationService
 
     /**
      * Outstanding requests for the authenticated target, with manifest and payloads.
+     * Every pending request is built; {@see page_requests} cuts the list the
+     * route returns so one response stays within what the connector reads.
      *
      * @param array<string, mixed> $target Trusted environment row.
      * @return array<int, array<string, mixed>>
@@ -171,6 +173,37 @@ final class PreparationService
     }
 
     /**
+     * One response page of prepare requests (CR-1): whole requests only (a
+     * receipt must cover every item of its release), added in order until the
+     * item count reaches `$max_items`; the first request always fits. A single
+     * request larger than the page is returned alone. `has_more` tells the
+     * connector to poll again in the same run.
+     *
+     * @param array<int, array<string, mixed>> $requests Built requests (release.items present).
+     * @param int                              $max_items
+     * @return array{requests: array<int, array<string, mixed>>, has_more: bool}
+     */
+    public static function page_requests(array $requests, $max_items = Protocol::MAX_PAYLOAD_ITEMS)
+    {
+        $max_items = max(1, (int) $max_items);
+        $page = [];
+        $items = 0;
+        foreach ($requests as $request) {
+            $count = is_array($request['release']['items'] ?? null) ? count($request['release']['items']) : 0;
+            if ($page !== [] && $items + $count > $max_items) {
+                break;
+            }
+            $page[] = $request;
+            $items += $count;
+            if ($items >= $max_items) {
+                break;
+            }
+        }
+
+        return ['requests' => $page, 'has_more' => count($page) < count($requests)];
+    }
+
+    /**
      * Store the target's receipt once, annotated with the hub's own view.
      *
      * @param array<string, mixed> $target  Trusted environment row of the caller.
@@ -195,6 +228,10 @@ final class PreparationService
         $errors = self::validate_receipt($receipt, $release, $target);
         if ($errors !== []) {
             return new \WP_Error('dbvc_agency_invalid_receipt', 'Receipt rejected: ' . implode(', ', $errors), ['status' => 400, 'errors' => $errors]);
+        }
+        $encoded = wp_json_encode($receipt);
+        if (! is_string($encoded) || strlen($encoded) > Protocol::MAX_RECEIPT_BYTES) {
+            return new \WP_Error('dbvc_agency_receipt_too_large', 'Receipt exceeds ' . Protocol::MAX_RECEIPT_BYTES . ' bytes.', ['status' => 413]);
         }
 
         $notes = $this->annotate($release, $target, $receipt);
@@ -251,6 +288,10 @@ final class PreparationService
             foreach ($items as $index => $item) {
                 if (! is_array($item) || ! in_array($item['outcome'] ?? null, ['ready', 'noop', 'blocked'], true) || ! isset($item['domain'], $item['instance_uid'], $item['profile'], $item['after_hash'])) {
                     $errors[] = 'items.' . $index;
+                    continue;
+                }
+                if (isset($item['patch']) && $item['patch'] !== null && ! self::valid_patch($item['patch'])) {
+                    $errors[] = 'items.' . $index . '.patch';
                 }
             }
         }
@@ -259,6 +300,42 @@ final class PreparationService
         }
 
         return $errors;
+    }
+
+    /**
+     * A patch is a strategy plus a list of changed-path rows (CR-1 nested shape):
+     * each row names a dot-path, an add/remove/replace operation, a 64-hex or
+     * null hash per side and, optionally, rendered string values per side.
+     *
+     * @param mixed $patch
+     * @return bool
+     */
+    public static function valid_patch($patch)
+    {
+        if (! is_array($patch) || ! in_array($patch['strategy'] ?? null, ['replace_object', 'add_object', 'remove_object'], true)) {
+            return false;
+        }
+        $rows = $patch['changed_paths'] ?? null;
+        if (! is_array($rows) || ! array_is_list($rows)) {
+            return false;
+        }
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! isset($row['path']) || ! is_string($row['path']) || ! in_array($row['operation'] ?? null, ['add', 'remove', 'replace'], true)) {
+                return false;
+            }
+            foreach (['before_hash', 'after_hash'] as $key) {
+                if (array_key_exists($key, $row) && $row[$key] !== null && ! (is_string($row[$key]) && preg_match('/^[a-f0-9]{64}$/', $row[$key]))) {
+                    return false;
+                }
+            }
+            foreach (['before_value', 'after_value'] as $key) {
+                if (array_key_exists($key, $row) && $row[$key] !== null && ! is_string($row[$key])) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

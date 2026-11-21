@@ -201,10 +201,6 @@ final class FrameworkStatusService
      */
     public static function is_fresh(array $environment)
     {
-        if ($environment['status'] !== EnvironmentRegistry::STATUS_ENABLED || empty($environment['last_contact_at'])) {
-            return false;
-        }
-
-        return (time() - (int) strtotime((string) $environment['last_contact_at'] . ' UTC')) <= ComparisonService::freshness_seconds();
+        return EnvironmentRegistry::is_fresh($environment, ComparisonService::freshness_seconds());
     }
 }

@@ -77,6 +77,13 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         $selected_target_object = $selection_service->resolve_selected_target_object($recommended_target, $mapping_decisions, $domain);
         $field_values = $selection_service->build_field_values($recommendations, $mapping_decisions, $domain);
         $media_refs = $selection_service->build_media_refs($recommendations, $media_decisions, $domain);
+        $entity_set = DBVC_CC_V2_Contracts::has_entity_set($recommendations);
+        $selected_target_entities = $entity_set
+            ? $selection_service->resolve_selected_target_entities($recommendations, $mapping_decisions, $domain)
+            : [];
+        $entity_previews = $entity_set
+            ? $this->build_entity_previews($row, $selected_target_entities, $field_values, $media_refs)
+            : [];
         $conflict_count = count(
             $selection_service->filter_active_conflicts(
                 $recommendations,
@@ -87,6 +94,13 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         $unresolved_count = is_array($recommendations) && isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
             ? count($recommendations['unresolved_items'])
             : 0;
+        // A reviewer who decided to leave an unresolved item out has resolved it.
+        $left_unmapped_count = is_array($mapping_decisions) && isset($mapping_decisions['left_unmapped']) && is_array($mapping_decisions['left_unmapped'])
+            ? count($mapping_decisions['left_unmapped'])
+            : 0;
+        if ($left_unmapped_count > 0 && ! $selection_service->is_decision_stale($mapping_decisions, $recommendations)) {
+            $unresolved_count = max(0, $unresolved_count - $left_unmapped_count);
+        }
         $field_context_provider = is_array($recommendations) && isset($recommendations['field_context_provider']) && is_array($recommendations['field_context_provider'])
             ? $recommendations['field_context_provider']
             : [];
@@ -116,9 +130,12 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             $review_status,
             $conflict_count,
             $unresolved_count,
-            empty($field_values) && empty($media_refs),
+            $entity_set ? $entity_previews === [] : (empty($field_values) && empty($media_refs)),
             $unresolved_summary
         );
+        if ($entity_set) {
+            $this->append_entity_set_issues($warnings, $row, $artifact_relatives, $selected_target_entities, $entity_previews, $field_values, $media_refs);
+        }
         $this->append_warning_items(
             $warnings,
             $row,
@@ -193,7 +210,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             ? $selected_target_object['targetFamily'] . ':' . $selected_target_object['targetObjectKey']
             : '';
 
-        return [
+        $report = [
             'artifact_schema_version' => DBVC_CC_Contracts::ARTIFACT_SCHEMA_VERSION,
             'artifact_type' => 'qa-report.v1',
             'journey_id' => $run_id,
@@ -223,6 +240,11 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             'benchmarkGate' => $benchmark_gate,
             'transformValidation' => $transform_validation,
             'selectedTargetObject' => $selected_target_object,
+        ];
+        if ($entity_set) {
+            $report['selectedTargetEntities'] = $selected_target_entities;
+        }
+        $report += [
             'blockingIssues' => $blocking_issues,
             'warnings' => $warnings,
             'qualityScore' => $quality_score,
@@ -257,6 +279,14 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                     'transform_validation' => $transform_validation,
                 ],
             ],
+        ];
+        // D-19: the records this URL becomes. `build_records()` emits one package record per
+        // entry; absent for a single-record page, whose preview is the one it always was.
+        if ($entity_set) {
+            $report['packagePreview']['entities'] = $entity_previews;
+        }
+
+        return $report + [
             'stats' => [
                 'fieldValueCount' => count($field_values),
                 'mediaRefCount' => count($media_refs),
@@ -304,6 +334,155 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         }
 
         return $issues;
+    }
+
+    /**
+     * One package preview per included record of a page read as a set.
+     *
+     * Each record carries only the values and media bound for it, under its own identity
+     * (`DBVC_CC_V2_Contracts::entity_identity()`), so the importer's match order runs per record.
+     * A record with no value to write is dropped here and reported by `append_entity_set_issues()`.
+     *
+     * @param array<string, mixed>             $row
+     * @param array<int, array<string, mixed>> $selected_target_entities
+     * @param array<int, array<string, mixed>> $field_values
+     * @param array<int, array<string, mixed>> $media_refs
+     * @return array<int, array<string, mixed>>
+     */
+    private function build_entity_previews(array $row, array $selected_target_entities, array $field_values, array $media_refs)
+    {
+        $previews = [];
+        foreach ($selected_target_entities as $entity) {
+            if (empty($entity['included']) || $entity['targetFamily'] === '' || $entity['targetObjectKey'] === '') {
+                continue;
+            }
+
+            $entity_ref = (string) $entity['entityRef'];
+            $belongs = static function ($value) use ($entity_ref) {
+                return is_array($value) && isset($value['entity_ref']) && (string) $value['entity_ref'] === $entity_ref;
+            };
+            $entity_field_values = $this->merge_record_rich_text(array_values(array_filter($field_values, $belongs)));
+            $entity_media_refs = array_values(array_filter($media_refs, $belongs));
+            if ($entity_field_values === [] && $entity_media_refs === []) {
+                continue;
+            }
+
+            $identity = DBVC_CC_V2_Contracts::entity_identity(
+                isset($row['source_url']) ? (string) $row['source_url'] : '',
+                isset($row['path']) ? (string) $row['path'] : '',
+                (string) $entity['slug']
+            );
+            $previews[] = [
+                'entity_ref' => $entity_ref,
+                'label' => (string) $entity['label'],
+                'slug' => (string) $entity['slug'],
+                'source_url' => $identity['source_url'],
+                'path' => $identity['path'],
+                'target_entity_key' => $entity['targetFamily'] . ':' . $entity['targetObjectKey'],
+                'target_action' => (string) $entity['resolutionMode'],
+                'field_values' => $entity_field_values,
+                'media_refs' => $entity_media_refs,
+            ];
+        }
+
+        return $previews;
+    }
+
+    /**
+     * Collapse a record's several paragraphs bound for one rich-text field into one value.
+     *
+     * A biography is several paragraphs and the importer writes each mapped value with its own
+     * upsert, so without this the last paragraph would overwrite the others. Order is source
+     * order; the source refs and confidence of every paragraph travel with the merged value,
+     * the confidence being the weakest of them.
+     *
+     * @param array<int, array<string, mixed>> $field_values
+     * @return array<int, array<string, mixed>>
+     */
+    private function merge_record_rich_text(array $field_values)
+    {
+        $merged = [];
+        $position = [];
+        foreach ($field_values as $field_value) {
+            $target_ref = (string) ($field_value['target_ref'] ?? '');
+            if (($field_value['value_type'] ?? '') !== 'rich_text' || ! isset($position[$target_ref])) {
+                if (($field_value['value_type'] ?? '') === 'rich_text') {
+                    $position[$target_ref] = count($merged);
+                }
+                $merged[] = $field_value;
+                continue;
+            }
+
+            $first = &$merged[$position[$target_ref]];
+            $first['value'] = (string) $first['value'] . "\n\n" . (string) ($field_value['value'] ?? '');
+            $first['confidence'] = min((float) $first['confidence'], (float) ($field_value['confidence'] ?? 0.0));
+            $first['source_refs'] = array_values(array_merge(
+                (array) ($first['source_refs'] ?? []),
+                (array) ($field_value['source_refs'] ?? [])
+            ));
+            $first['merged_recommendation_ids'] = array_values(array_merge(
+                (array) ($first['merged_recommendation_ids'] ?? [(string) $first['recommendation_id']]),
+                [(string) ($field_value['recommendation_id'] ?? '')]
+            ));
+            unset($first);
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Values a page read as a set could not place in any record are named, never written: a value
+     * with no record would land in whichever post the importer reached first.
+     *
+     * @param array<int, array<string, mixed>> $warnings
+     * @param array<string, mixed>             $row
+     * @param array<string, mixed>             $artifact_relatives
+     * @param array<int, array<string, mixed>> $selected_target_entities
+     * @param array<int, array<string, mixed>> $entity_previews
+     * @param array<int, array<string, mixed>> $field_values
+     * @param array<int, array<string, mixed>> $media_refs
+     * @return void
+     */
+    private function append_entity_set_issues(array &$warnings, array $row, array $artifact_relatives, array $selected_target_entities, array $entity_previews, array $field_values, array $media_refs)
+    {
+        $orphaned = 0;
+        foreach (array_merge($field_values, $media_refs) as $value) {
+            if (is_array($value) && (! isset($value['entity_ref']) || (string) $value['entity_ref'] === '')) {
+                ++$orphaned;
+            }
+        }
+        if ($orphaned > 0) {
+            $warnings[] = $this->make_issue(
+                'values_without_record',
+                sprintf(
+                    /* translators: %d: number of values */
+                    __('%d approved value(s) on this page belong to no record and are left out of the package.', 'dbvc'),
+                    $orphaned
+                ),
+                'warning',
+                $this->build_issue_context($row, $artifact_relatives, 'mapping_recommendations')
+            );
+        }
+
+        $included = count(array_filter(
+            $selected_target_entities,
+            static function ($entity) {
+                return ! empty($entity['included']);
+            }
+        ));
+        if ($included > count($entity_previews)) {
+            $warnings[] = $this->make_issue(
+                'records_without_values',
+                sprintf(
+                    /* translators: 1: records packaged, 2: records included */
+                    __('%1$d of %2$d records on this page have approved values; the rest are left out of the package.', 'dbvc'),
+                    count($entity_previews),
+                    $included
+                ),
+                'warning',
+                $this->build_issue_context($row, $artifact_relatives, 'mapping_decisions')
+            );
+        }
     }
 
     /**

@@ -196,6 +196,34 @@ final class DBVC_CC_V2_Mapping_Index_Service
             }
         }
 
+        // Every interpreter answer gets an item. The section units above build one headline, one
+        // body and one CTA per section and only title and description from the head, so a second
+        // paragraph, a record's role heading or the robots directive had nowhere to land and the
+        // answer was dropped (§6.1c, counted as `unjoined_recommendation_items`). Only a model
+        // ranking does this: with the flag off, or when the boundary fell back, the item set is
+        // the one V2 has always built.
+        $unjoined_answer_ids = $this->collect_unjoined_answer_ids($interpretation, $content_items);
+        $element_sections = $unjoined_answer_ids === [] ? [] : $this->build_element_section_map($sections_artifact);
+        foreach ($unjoined_answer_ids as $answer_id) {
+            $answer_item = $this->build_interpreter_answer_item(
+                $item_order + 1,
+                $answer_id,
+                $raw_artifact,
+                $element_lookup,
+                $element_sections,
+                $interpretation
+            );
+            if ($answer_item === null) {
+                continue;
+            }
+
+            ++$item_order;
+            $content_items[] = $answer_item;
+            if (empty($answer_item['target_candidates'])) {
+                $unresolved_items[] = $this->build_unresolved_item($answer_item, $this->resolve_unresolved_reason($answer_item));
+            }
+        }
+
         $interpretation_summary = $this->build_interpretation_summary($interpretation, $content_items, $args);
 
         $best_confidences = [];
@@ -773,6 +801,8 @@ final class DBVC_CC_V2_Mapping_Index_Service
             'declined' => [],
             'recommendation_count' => 0,
             'declined_count' => 0,
+            'entities' => [],
+            'entity_by_item' => [],
         ];
 
         $object_key = sanitize_key((string) $object_key);
@@ -780,21 +810,44 @@ final class DBVC_CC_V2_Mapping_Index_Service
             ? $result['recommendations']
             : [];
 
+        // The records a page was read as (D-19). Present only when the interpreter declared a set,
+        // and only a model's set is acted on, for the same reason only a model's ranking is.
+        foreach (isset($result['entities']) && is_array($result['entities']) ? $result['entities'] : [] as $entity) {
+            if (! is_array($entity) || empty($entity['entity_id']) || empty($entity['object_key'])) {
+                continue;
+            }
+            $entity_id = sanitize_key((string) $entity['entity_id']);
+            $index['entities'][$entity_id] = [
+                'entity_id' => $entity_id,
+                'object_key' => sanitize_key((string) $entity['object_key']),
+                'label' => isset($entity['label']) ? sanitize_text_field((string) $entity['label']) : '',
+            ];
+        }
+
         foreach ($recommendations as $recommendation) {
             if (! is_array($recommendation) || empty($recommendation['item_id']) || empty($recommendation['target_ref'])) {
                 continue;
             }
 
-            // A recommendation against a different object than the one this page routes to cannot
-            // be written by the transform stage, so it is not offered as a candidate.
+            // A recommendation against a different object than the one this page routes to has no
+            // record to be written into — unless it belongs to one of the records the page was
+            // read as, which is the only way a value reaches an object the page did not route to.
             $recommendation_object = isset($recommendation['target_object_key'])
                 ? sanitize_key((string) $recommendation['target_object_key'])
                 : $object_key;
-            if ($object_key !== '' && $recommendation_object !== '' && $recommendation_object !== $object_key) {
+            $entity_id = isset($recommendation['entity_id']) ? sanitize_key((string) $recommendation['entity_id']) : '';
+            if ($entity_id !== '') {
+                if (! isset($index['entities'][$entity_id]) || $index['entities'][$entity_id]['object_key'] !== $recommendation_object) {
+                    continue;
+                }
+            } elseif ($object_key !== '' && $recommendation_object !== '' && $recommendation_object !== $object_key) {
                 continue;
             }
 
             $item_id = (string) $recommendation['item_id'];
+            if ($entity_id !== '') {
+                $index['entity_by_item'][$item_id] = $entity_id;
+            }
             $confidence = isset($recommendation['confidence']) ? (float) $recommendation['confidence'] : 0.0;
             if (! isset($index['by_item'][$item_id])) {
                 $index['by_item'][$item_id] = [];
@@ -879,6 +932,21 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'item_ids' => $item_ids,
             ];
 
+            // Which record the value belongs to. Written only on a page read as a set; an item
+            // whose joined answers span two records belongs to neither and is left for review.
+            $entity_refs = [];
+            foreach ($item_ids as $item_id) {
+                if (isset($interpretation['entity_by_item'][$item_id])) {
+                    $entity_refs[$interpretation['entity_by_item'][$item_id]] = true;
+                }
+            }
+            if (count($entity_refs) === 1) {
+                $seed['entity_ref'] = (string) key($entity_refs);
+            } elseif (count($entity_refs) > 1) {
+                $seed['entity_ref'] = '';
+                $seed['interpretation']['entity_conflict'] = array_keys($entity_refs);
+            }
+
             return [$seed, $ranked];
         }
 
@@ -916,10 +984,10 @@ final class DBVC_CC_V2_Mapping_Index_Service
     private function interpretation_item_ids(array $seed)
     {
         $source_refs = isset($seed['source_refs']) && is_array($seed['source_refs']) ? $seed['source_refs'] : [];
-        $map = [
-            'page-artifact.v1#metadata.title' => 'head:title',
-            'page-artifact.v1#metadata.description' => 'head:description',
-        ];
+        $map = [];
+        foreach (DBVC_CC_V2_Interpretation_Bridge_Service::HEAD_META_ITEMS as $metadata_key => $head_item_id) {
+            $map['page-artifact.v1#metadata.' . $metadata_key] = $head_item_id;
+        }
 
         $item_ids = [];
         foreach ($source_refs as $source_ref) {
@@ -1008,7 +1076,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
             }
         }
 
-        return [
+        $summary = [
             'artifact_type' => DBVC_CC_Interp_Contracts::RESULT_TYPE,
             'artifact_ref' => isset($args['interpretation_ref']) ? (string) $args['interpretation_ref'] : '',
             'interpreter' => isset($interpretation['interpreter']) ? (string) $interpretation['interpreter'] : '',
@@ -1022,6 +1090,168 @@ final class DBVC_CC_V2_Mapping_Index_Service
             'items_declined_by_interpreter' => $declined,
             'unjoined_recommendation_items' => $unjoined,
         ];
+
+        if (! empty($interpretation['applied']) && ! empty($interpretation['entities'])) {
+            $summary['entities'] = [];
+            foreach ($interpretation['entities'] as $entity_id => $entity) {
+                $item_count = 0;
+                foreach ($content_items as $content_item) {
+                    if (is_array($content_item) && isset($content_item['entity_ref']) && $content_item['entity_ref'] === $entity_id) {
+                        ++$item_count;
+                    }
+                }
+                $summary['entities'][] = array_merge($entity, ['item_count' => $item_count]);
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * Interpreter answers no content item joined onto, in the order the interpreter gave them.
+     *
+     * @param array<string, mixed>             $interpretation
+     * @param array<int, array<string, mixed>> $content_items
+     * @return array<int, string>
+     */
+    private function collect_unjoined_answer_ids(array $interpretation, array $content_items)
+    {
+        if (empty($interpretation['applied']) || empty($interpretation['by_item'])) {
+            return [];
+        }
+
+        $joined = [];
+        foreach ($content_items as $content_item) {
+            foreach ((array) ($content_item['interpretation']['item_ids'] ?? []) as $item_id) {
+                $joined[(string) $item_id] = true;
+            }
+        }
+
+        $unjoined = [];
+        foreach (array_keys($interpretation['by_item']) as $item_id) {
+            if (! isset($joined[(string) $item_id])) {
+                $unjoined[] = (string) $item_id;
+            }
+        }
+
+        return $unjoined;
+    }
+
+    /**
+     * @param array<string, mixed> $sections_artifact
+     * @return array<string, string> Section id by element id.
+     */
+    private function build_element_section_map(array $sections_artifact)
+    {
+        $map = [];
+        foreach (isset($sections_artifact['sections']) && is_array($sections_artifact['sections']) ? $sections_artifact['sections'] : [] as $section) {
+            if (! is_array($section) || empty($section['section_id'])) {
+                continue;
+            }
+            foreach (isset($section['element_ids']) && is_array($section['element_ids']) ? $section['element_ids'] : [] as $element_id) {
+                $map[(string) $element_id] = sanitize_key((string) $section['section_id']);
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * A content item for one interpreter answer the section units had no room for.
+     *
+     * Built from the element (or head field) the interpreter answered, carrying the same source
+     * refs a unit would, so review, transform and package read it like any other item. Its
+     * candidates are the interpreter's and nothing else: there is no lexical evidence for an item
+     * the lexical builders never made, and inventing some would be the D-3 defect again.
+     *
+     * @param int                                 $item_order
+     * @param string                              $answer_id
+     * @param array<string, mixed>                $raw_artifact
+     * @param array<string, array<string, mixed>> $element_lookup
+     * @param array<string, string>               $element_sections
+     * @param array<string, mixed>                $interpretation
+     * @return array<string, mixed>|null
+     */
+    private function build_interpreter_answer_item(
+        $item_order,
+        $answer_id,
+        array $raw_artifact,
+        array $element_lookup,
+        array $element_sections,
+        array $interpretation
+    ) {
+        $item_id = 'map_' . str_pad((string) $item_order, 3, '0', STR_PAD_LEFT);
+        $metadata_key = array_search($answer_id, DBVC_CC_V2_Interpretation_Bridge_Service::HEAD_META_ITEMS, true);
+        if ($metadata_key !== false) {
+            $value = isset($raw_artifact['metadata'][$metadata_key]) && is_scalar($raw_artifact['metadata'][$metadata_key])
+                ? trim((string) $raw_artifact['metadata'][$metadata_key])
+                : '';
+            if ($value === '') {
+                return null;
+            }
+
+            return $this->finalize_item(
+                [
+                    'item_id' => $item_id,
+                    'item_type' => 'page_head_meta',
+                    'source_refs' => ['page-artifact.v1#metadata.' . $metadata_key],
+                    'candidate_group' => 'page_head_meta',
+                    'context_tag' => sanitize_key((string) $metadata_key),
+                    'value_preview' => $value,
+                    'pattern_keys' => [sanitize_key((string) $metadata_key)],
+                    'notes' => ['Head field offered to the interpreter; no lexical builder covers it.'],
+                ],
+                [],
+                $interpretation
+            );
+        }
+
+        $element = isset($element_lookup[$answer_id]) && is_array($element_lookup[$answer_id]) ? $element_lookup[$answer_id] : null;
+        if ($element === null) {
+            return null;
+        }
+
+        $text = isset($element['text']) ? trim((string) $element['text']) : '';
+        $tag = isset($element['tag']) ? strtolower((string) $element['tag']) : '';
+        if ($text === '') {
+            return null;
+        }
+
+        // An image's home is the media channel, which sideloads the file; a field item would write
+        // its URL as text. It stays counted as unjoined until media can join to a record.
+        if ($tag === 'img' || ! empty($element['image_url'])) {
+            return null;
+        }
+
+        $section_id = isset($element_sections[$answer_id]) ? $element_sections[$answer_id] : '';
+        if (preg_match('/^h[1-6]$/', $tag)) {
+            $content_role = 'headline';
+        } elseif ($tag === 'a' || $tag === 'button') {
+            $content_role = 'cta';
+        } else {
+            $content_role = 'body';
+        }
+
+        return $this->finalize_item(
+            [
+                'item_id' => $item_id,
+                'item_type' => 'section',
+                'section_id' => $section_id,
+                'content_role' => $content_role,
+                'source_refs' => array_values(array_filter([
+                    $section_id !== '' ? 'sections.v2#' . $section_id : '',
+                    $section_id !== '' ? 'ingestion-package.v2#sections.' . $section_id : '',
+                    'elements.v2#' . $answer_id,
+                ])),
+                'candidate_group' => 'section_field',
+                'context_tag' => 'content',
+                'value_preview' => $text,
+                'pattern_keys' => [],
+                'notes' => ['Element the interpreter answered that no section unit carried.'],
+            ],
+            [],
+            $interpretation
+        );
     }
 
     /**
@@ -1043,7 +1273,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
             'context_tag' => isset($item['context_tag']) ? sanitize_key((string) $item['context_tag']) : '',
             'route_scope' => isset($item['route_scope']) ? sanitize_key((string) $item['route_scope']) : '',
             'notes' => isset($item['notes']) && is_array($item['notes']) ? array_values($item['notes']) : [],
-        ];
+        ] + (array_key_exists('entity_ref', $item) ? ['entity_ref' => (string) $item['entity_ref']] : []);
     }
 
     /**

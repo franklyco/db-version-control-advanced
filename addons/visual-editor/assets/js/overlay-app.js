@@ -50,6 +50,16 @@
 		fieldIndexOpenItems: new Set(),
 		fieldIndexSectionStateCaptured: false,
 		fieldIndexRefreshFrame: 0,
+		// Review fields text search: the raw input value (kept across tray
+		// close/reopen for the page session), the open/scroll state saved
+		// when a search starts (restored when it is cleared), a one-render
+		// "expand everything that matches" flag, and the debounced live
+		// announcement timer.
+		fieldIndexSearch: '',
+		fieldIndexSearchSnapshot: null,
+		fieldIndexSearchRestore: null,
+		fieldIndexSearchForceOpen: false,
+		fieldIndexSearchAnnounceTimer: 0,
 		panelOpen: false,
 		panelPosition: null,
 		panelDrag: null,
@@ -76,6 +86,9 @@
 	const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
 	const PERFORMANCE_PREFIX = 'dbvc.ve.';
 	const BADGE_HIDE_DELAY_MS = 500;
+	// UT6.3b: the narrowest room a host's right-edge inset may leave the
+	// panel, so a host surface on a narrow screen never squeezes it to nothing.
+	const HOST_RIGHT_MIN_ROOM = 320;
 	const BLOCK_HTML_PATTERN =
 		/<(?:p|div|h[1-6]|ul|ol|li|blockquote|pre|figure|figcaption|table|section|article|header|footer|aside|nav)\b[^>]*>/i;
 
@@ -3720,6 +3733,12 @@
 
 		updateToolbarExpandedState();
 		updateStatusBar( {} );
+
+		// Review fields opens with the search box focused (like Go To
+		// Object), its kept term selected so typing replaces it.
+		if ( expandIndex && ! wasReviewOpen ) {
+			focusFieldIndexSearchInput( true );
+		}
 	}
 
 	function getToolbarObjectSearchFilterOptions() {
@@ -5325,6 +5344,20 @@
 	}
 
 	function handleToolbarKeydown( event ) {
+		// Escape in the Review fields search box clears a term first; the
+		// next Escape (empty box) closes the popover as usual.
+		if (
+			event.key === 'Escape' &&
+			isFieldIndexSearchInput( event.target ) &&
+			state.fieldIndexSearch !== ''
+		) {
+			event.preventDefault();
+			event.stopPropagation();
+			setFieldIndexSearch( '' );
+			focusFieldIndexSearchInput( false );
+			return;
+		}
+
 		if ( ! state.toolbarOpenPanel || event.key !== 'Escape' ) {
 			return;
 		}
@@ -5354,6 +5387,223 @@
 
 		bar.dataset.fieldIndexBound = '1';
 		bar.addEventListener( 'click', handleStatusBarClick );
+		bar.addEventListener( 'input', handleFieldIndexSearchInput );
+		bar.addEventListener( 'compositionend', handleFieldIndexSearchInput );
+	}
+
+	function isFieldIndexSearchInput( node ) {
+		return Boolean(
+			node &&
+				typeof node.matches === 'function' &&
+				node.matches( '[data-dbvc-ve-field-index-search]' )
+		);
+	}
+
+	function getFieldIndexSearchInput() {
+		const bar = document.querySelector( '.dbvc-ve-statusbar' );
+
+		return bar
+			? bar.querySelector( '[data-dbvc-ve-field-index-search]' )
+			: null;
+	}
+
+	function focusFieldIndexSearchInput( selectAll ) {
+		const input = getFieldIndexSearchInput();
+
+		if ( ! input || typeof input.focus !== 'function' ) {
+			return;
+		}
+
+		input.focus( { preventScroll: true } );
+		if ( selectAll && typeof input.select === 'function' ) {
+			input.select();
+		}
+	}
+
+	function handleFieldIndexSearchInput( event ) {
+		const input = event ? event.target : null;
+
+		// Re-rendering mid-composition would break IME input; the
+		// compositionend event delivers the final value.
+		if ( ! isFieldIndexSearchInput( input ) || event.isComposing ) {
+			return;
+		}
+
+		setFieldIndexSearch( input.value );
+	}
+
+	function normalizeFieldIndexSearchText( value ) {
+		let text = String( value || '' ).toLowerCase();
+
+		if ( typeof text.normalize === 'function' ) {
+			text = text.normalize( 'NFD' ).replace( /[̀-ͯ]/g, '' );
+		}
+
+		return text;
+	}
+
+	function getFieldIndexSearchTokens() {
+		return normalizeFieldIndexSearchText( state.fieldIndexSearch )
+			.split( /\s+/ )
+			.filter( Boolean );
+	}
+
+	/**
+	 * Everything the tray shows for one field, as one lowercase string:
+	 * the row label, the source line (group path / field name), the field
+	 * name, the owner (entity / item) label, and the group, section, and
+	 * subgroup headings the row sits under.
+	 */
+	function buildFieldIndexSearchHaystack( entry ) {
+		const index = entry && entry.index ? entry.index : {};
+		const sourceSummary =
+			entry && entry.sourceSummary ? entry.sourceSummary : {};
+
+		return normalizeFieldIndexSearchText(
+			[
+				entry.label,
+				resolveFieldIndexSourceLabel( entry ),
+				index.leafFieldName,
+				index.fieldName,
+				index.parentFieldName,
+				sourceSummary.summary,
+				resolveEntityIndexLabel( entry ),
+				resolveFieldIndexItemLabel( entry ),
+				resolveFieldIndexSubGroup( entry ),
+				resolveFieldIndexSection( entry ).label,
+				resolveFieldIndexTopGroup( entry ).label,
+			]
+				.filter( Boolean )
+				.join( '\n' )
+		);
+	}
+
+	/**
+	 * Narrow entries to those matching every whitespace-separated word of
+	 * the search term (case- and accent-insensitive). No term → unchanged.
+	 */
+	function searchFieldIndexEntries( entries ) {
+		const tokens = getFieldIndexSearchTokens();
+
+		if ( ! tokens.length ) {
+			return entries;
+		}
+
+		return entries.filter( function ( entry ) {
+			const haystack = buildFieldIndexSearchHaystack( entry );
+
+			return tokens.every( function ( token ) {
+				return haystack.indexOf( token ) !== -1;
+			} );
+		} );
+	}
+
+	function snapshotFieldIndexOpenState() {
+		return {
+			sections: new Set( state.fieldIndexOpenSections || [] ),
+			captured: Boolean( state.fieldIndexSectionStateCaptured ),
+			items: new Set( state.fieldIndexOpenItems || [] ),
+			scrollTop: state.fieldIndexScrollTop || 0,
+		};
+	}
+
+	function setFieldIndexSearch( value ) {
+		const next = String( value || '' );
+		const previousTerm = state.fieldIndexSearch.trim();
+		const nextTerm = next.trim();
+
+		state.fieldIndexSearch = next;
+
+		// Whitespace-only edits do not change the result set.
+		if ( previousTerm === nextTerm ) {
+			return;
+		}
+
+		if ( ! previousTerm ) {
+			// A search is starting: remember how the tray looked so
+			// clearing the term puts it back.
+			captureFieldIndexOpenState();
+			captureFieldIndexScrollState();
+			state.fieldIndexSearchSnapshot = snapshotFieldIndexOpenState();
+		}
+
+		if ( nextTerm ) {
+			state.fieldIndexSearchForceOpen = true;
+			requestFieldIndexScrollReset();
+		} else {
+			state.fieldIndexSearchRestore =
+				state.fieldIndexSearchSnapshot ||
+				snapshotFieldIndexOpenState();
+			state.fieldIndexSearchSnapshot = null;
+			state.fieldIndexSearchForceOpen = false;
+			state.fieldIndexResetScroll = false;
+		}
+
+		updateStatusBar( {} );
+		scheduleFieldIndexSearchAnnouncement();
+	}
+
+	function getFieldIndexVisibleEntries() {
+		return searchFieldIndexEntries(
+			filterFieldIndexEntries( getSessionDescriptorEntries() )
+		);
+	}
+
+	function formatFieldIndexSearchString( template, values ) {
+		return Object.keys( values ).reduce( function ( text, key ) {
+			return text.split( `{${ key }}` ).join( String( values[ key ] ) );
+		}, String( template || '' ) );
+	}
+
+	function getFieldIndexSearchResultMessage() {
+		const term = state.fieldIndexSearch.trim();
+
+		if ( ! term ) {
+			return getToolbarString(
+				'fieldIndexSearchCleared',
+				'Search cleared.'
+			);
+		}
+
+		const count = getFieldIndexVisibleEntries().length;
+
+		if ( count === 0 ) {
+			return formatFieldIndexSearchString(
+				getToolbarString(
+					'fieldIndexSearchNoResults',
+					'No marked fields match “{term}”.'
+				),
+				{ term }
+			);
+		}
+
+		return formatFieldIndexSearchString(
+			count === 1
+				? getToolbarString(
+						'fieldIndexSearchResultsOne',
+						'1 field matches “{term}”.'
+				  )
+				: getToolbarString(
+						'fieldIndexSearchResults',
+						'{count} fields match “{term}”.'
+				  ),
+			{ count, term }
+		);
+	}
+
+	// Announced through the toolbar's polite live region, debounced so a
+	// screen reader hears the settled count, not one per keystroke.
+	function scheduleFieldIndexSearchAnnouncement() {
+		if ( state.fieldIndexSearchAnnounceTimer ) {
+			window.clearTimeout( state.fieldIndexSearchAnnounceTimer );
+		}
+
+		state.fieldIndexSearchAnnounceTimer = window.setTimeout( function () {
+			state.fieldIndexSearchAnnounceTimer = 0;
+			if ( state.fieldIndexOpen ) {
+				announceToolbar( getFieldIndexSearchResultMessage() );
+			}
+		}, 350 );
 	}
 
 	function handleStatusBarClick( event ) {
@@ -5432,7 +5682,23 @@
 		state.fieldIndexOpenSections = new Set();
 		state.fieldIndexSectionStateCaptured = false;
 		requestFieldIndexScrollReset();
+
+		// A chip change during a search re-expands the new matches, and the
+		// state restored on clear becomes the chip change's own default.
+		if ( state.fieldIndexSearch.trim() ) {
+			state.fieldIndexSearchForceOpen = true;
+			if ( state.fieldIndexSearchSnapshot ) {
+				state.fieldIndexSearchSnapshot.sections = new Set();
+				state.fieldIndexSearchSnapshot.captured = false;
+				state.fieldIndexSearchSnapshot.scrollTop = 0;
+			}
+		}
+
 		updateStatusBar( {} );
+
+		if ( state.fieldIndexSearch.trim() ) {
+			scheduleFieldIndexSearchAnnouncement();
+		}
 	}
 
 	function setFieldIndexSectionsOpen( actionNode, open ) {
@@ -6609,8 +6875,9 @@
 
 	function renderFieldIndexItemMarkup( item ) {
 		const isOpen =
-			state.fieldIndexOpenItems &&
-			state.fieldIndexOpenItems.has( item.key );
+			state.fieldIndexSearchForceOpen ||
+			( state.fieldIndexOpenItems &&
+				state.fieldIndexOpenItems.has( item.key ) );
 
 		return [
 			`<details class="dbvc-ve-field-index__item" data-item-key="${ escapeHtml(
@@ -6658,6 +6925,7 @@
 
 	function renderFieldIndexSectionMarkup( section ) {
 		const isOpen =
+			state.fieldIndexSearchForceOpen ||
 			! state.fieldIndexSectionStateCaptured ||
 			( state.fieldIndexOpenSections &&
 				state.fieldIndexOpenSections.has( section.key ) );
@@ -6709,16 +6977,66 @@
 		].join( '' );
 	}
 
+	function renderFieldIndexSearchMarkup() {
+		const label = getToolbarString(
+			'fieldIndexSearchLabel',
+			'Search fields'
+		);
+
+		return [
+			'<div class="dbvc-ve-field-index__search" role="search">',
+			`  <label class="dbvc-ve-toolbar__sr-only" for="dbvc-ve-field-index-search">${ escapeHtml(
+				label
+			) }</label>`,
+			`  <input type="search" id="dbvc-ve-field-index-search" class="dbvc-ve-field-index__search-input" data-dbvc-ve-field-index-search="1" autocomplete="off" spellcheck="false" aria-controls="dbvc-ve-field-index-list" value="${ escapeHtml(
+				state.fieldIndexSearch
+			) }" placeholder="${ escapeHtml(
+				getToolbarString(
+					'fieldIndexSearchPlaceholder',
+					'Search by label, field name, or owner…'
+				)
+			) }">`,
+			'</div>',
+		].join( '' );
+	}
+
+	function getFieldIndexEmptyResultsText() {
+		const term = state.fieldIndexSearch.trim();
+
+		if ( ! term ) {
+			return (
+				strings().fieldIndexNoFilterResults ||
+				'No marked fields match this filter.'
+			);
+		}
+
+		return formatFieldIndexSearchString(
+			normalizeFieldIndexFilter( state.fieldIndexFilter ) === 'all'
+				? getToolbarString(
+						'fieldIndexSearchNoResults',
+						'No marked fields match “{term}”.'
+				  )
+				: getToolbarString(
+						'fieldIndexSearchNoResultsFilter',
+						'No marked fields in this filter match “{term}”.'
+				  ),
+			{ term }
+		);
+	}
+
 	function renderFieldIndexMarkup() {
-		const entries = getSessionDescriptorEntries();
+		const allEntries = getSessionDescriptorEntries();
+		// Search ANDs with the category chip; the chip counts show how many
+		// search matches each category holds.
+		const entries = searchFieldIndexEntries( allEntries );
 		const groups = buildFieldIndexModel(
 			filterFieldIndexEntries( entries )
 		);
 		const filterMarkup = renderFieldIndexFilterMarkup( entries );
 
-		if ( ! entries.length ) {
+		if ( ! allEntries.length ) {
 			return [
-				'<div class="dbvc-ve-field-index" role="list">',
+				'<div class="dbvc-ve-field-index" id="dbvc-ve-field-index-list" role="list">',
 				filterMarkup,
 				`<div class="dbvc-ve-field-index__empty">${ escapeHtml(
 					strings().fieldIndexNoFields ||
@@ -6730,18 +7048,17 @@
 
 		if ( ! groups.length ) {
 			return [
-				'<div class="dbvc-ve-field-index" role="list">',
+				'<div class="dbvc-ve-field-index" id="dbvc-ve-field-index-list" role="list">',
 				filterMarkup,
 				`<div class="dbvc-ve-field-index__empty">${ escapeHtml(
-					strings().fieldIndexNoFilterResults ||
-						'No marked fields match this filter.'
+					getFieldIndexEmptyResultsText()
 				) }</div>`,
 				'</div>',
 			].join( '' );
 		}
 
 		return [
-			'<div class="dbvc-ve-field-index" role="list">',
+			'<div class="dbvc-ve-field-index" id="dbvc-ve-field-index-list" role="list">',
 			filterMarkup,
 			groups
 				.map( function ( group ) {
@@ -6774,6 +7091,31 @@
 			captureFieldIndexScrollState();
 		}
 
+		// A cleared search puts back the open sections / items and scroll
+		// position the tray had before the search started.
+		if ( state.fieldIndexSearchRestore ) {
+			const restore = state.fieldIndexSearchRestore;
+
+			state.fieldIndexSearchRestore = null;
+			state.fieldIndexOpenSections = new Set( restore.sections );
+			state.fieldIndexSectionStateCaptured = restore.captured;
+			state.fieldIndexOpenItems = new Set( restore.items );
+			state.fieldIndexScrollTop = restore.scrollTop || 0;
+			state.fieldIndexResetScroll = false;
+		}
+
+		// innerHTML replaces the search box on every render; keep the
+		// caret where the user is typing.
+		const activeSearch =
+			isFieldIndexSearchInput( document.activeElement ) &&
+			meta.contains( document.activeElement )
+				? {
+						start: document.activeElement.selectionStart,
+						end: document.activeElement.selectionEnd,
+						direction: document.activeElement.selectionDirection,
+				  }
+				: null;
+
 		const countText = getStatusBarCountText( nextState.count );
 		const hasIndex = Boolean(
 			state.session &&
@@ -6802,13 +7144,35 @@
 				  }">${ escapeHtml( toggleLabel ) }</button>`
 				: '',
 			'</div>',
+			expanded ? renderFieldIndexSearchMarkup() : '',
 			expanded ? renderFieldIndexMarkup() : '',
 		].join( '' );
 
 		if ( expanded ) {
+			state.fieldIndexSearchForceOpen = false;
 			restoreFieldIndexScrollState();
 		} else {
 			state.fieldIndexResetScroll = false;
+		}
+
+		if ( activeSearch ) {
+			const input = meta.querySelector(
+				'[data-dbvc-ve-field-index-search]'
+			);
+
+			if ( input ) {
+				input.focus( { preventScroll: true } );
+				try {
+					input.setSelectionRange(
+						activeSearch.start,
+						activeSearch.end,
+						activeSearch.direction || 'none'
+					);
+				} catch ( error ) {
+					// Selection APIs can throw on some input types; the
+					// focus is what matters.
+				}
+			}
 		}
 	}
 
@@ -8343,16 +8707,20 @@
 	 * with `vf-toolbar:insets`. Zero on any site without such a host, so the
 	 * clamp there is exactly what it was.
 	 *
+	 * UT6.3b: the same host publishes `--vf-toolbar-inset-right`, the width
+	 * its surfaces reserve on the right edge (the Design Review panel while
+	 * it is open), under the same event.
+	 *
+	 * @param {string} edge 'bottom' or 'right'.
 	 * @return {number} Inset in CSS pixels.
 	 */
-	function getHostBottomInset() {
+	function getHostInset( edge ) {
+		const name = `--vf-toolbar-inset-${ edge }`;
 		const root = document.documentElement;
-		let raw = root.style.getPropertyValue( '--vf-toolbar-inset-bottom' );
+		let raw = root.style.getPropertyValue( name );
 
 		if ( ! raw && typeof window.getComputedStyle === 'function' ) {
-			raw = window
-				.getComputedStyle( root )
-				.getPropertyValue( '--vf-toolbar-inset-bottom' );
+			raw = window.getComputedStyle( root ).getPropertyValue( name );
 		}
 
 		const value = parseFloat( String( raw || '' ).trim() );
@@ -8392,14 +8760,20 @@
 		const topInset = Math.min( getAdminBarInset(), Math.max( 0, height - 1 ) );
 		// UT6.1a: and above a host toolbar docked at the bottom edge.
 		const bottomInset = Math.min(
-			getHostBottomInset(),
+			getHostInset( 'bottom' ),
 			Math.max( 0, height - topInset - 1 )
+		);
+		// UT6.3b: and left of a host surface open on the right edge, as long
+		// as that leaves the panel room; past that the two may overlap.
+		const rightInset = Math.min(
+			getHostInset( 'right' ),
+			Math.max( 0, width - inset - HOST_RIGHT_MIN_ROOM )
 		);
 
 		return {
 			left: left + inset,
 			top: top + topInset,
-			width: Math.max( 1, width - inset ),
+			width: Math.max( 1, width - inset - rightInset ),
 			height: Math.max( 1, height - topInset - bottomInset ),
 		};
 	}

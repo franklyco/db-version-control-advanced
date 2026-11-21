@@ -6,6 +6,7 @@ These docs are historical. Do not use them as current implementation guidance un
 
 - `bricks-addon/` - historical Bricks addon handoff and recommendation.
 - `bricks-assets/` - historical Bricks assets discovery and handoff.
+- `content-migration-v3/` - delivered Content Migration V3 slice briefs.
 - `content-migration-workbench-handoff/` - historical standalone workbench handoff pack.
 - `entity-editor/` - historical Entity Editor handoff and repo review.
 - `import-identity/` - historical UID preservation implementation note.

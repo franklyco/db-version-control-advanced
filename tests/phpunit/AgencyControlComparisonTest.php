@@ -147,12 +147,21 @@ class AgencyControlComparisonTest extends WP_UnitTestCase
         // Stale contact makes every row unknown, even with equal hashes.
         $this->report('a-stage', [$this->class('class-x', 'x1')]);
         $this->assertSame('baseline_required', $this->rows_by_uid($service->compare('a-prod', 'a-stage'))['class-x']['state']);
-        (new EnvironmentRegistry())->update('a-stage', ['last_contact_at' => '2000-01-01 00:00:00']);
+        (new EnvironmentRegistry())->update('a-stage', ['last_contact_at' => '2000-01-01 00:00:00', 'last_inbox_poll_at' => null]);
         $result = $service->compare('a-prod', 'a-stage');
         $this->assertFalse($result['target']['fresh']);
         $this->assertSame('unknown', $this->rows_by_uid($result)['class-x']['state']);
         $this->assertContains('stale_target', $this->rows_by_uid($result)['class-x']['reasons']);
         $this->assertSame(0, (new BaselineService())->confirm('a-prod', 'a-stage')['confirmed']);
+
+        // CR-4d: a quiet site that still polls is alive — freshness follows the later of
+        // its last observation and its last poll, so it is NOT stale.
+        (new EnvironmentRegistry())->update('a-stage', ['last_inbox_poll_at' => gmdate('Y-m-d H:i:s')]);
+        $result = $service->compare('a-prod', 'a-stage');
+        $this->assertTrue($result['target']['fresh'], 'A recent poll keeps a site fresh even with an old last observation.');
+        $this->assertSame($result['target']['last_seen_at'], (new EnvironmentRegistry())->find('a-stage')['last_seen_at']);
+        $this->assertSame('baseline_required', $this->rows_by_uid($result)['class-x']['state']);
+        (new EnvironmentRegistry())->update('a-stage', ['last_inbox_poll_at' => null]);
 
         // Scope: cross-client and self comparisons are refused.
         $this->assertSame('dbvc_agency_scope_mismatch', $service->compare('a-prod', 'b-prod')->get_error_code());

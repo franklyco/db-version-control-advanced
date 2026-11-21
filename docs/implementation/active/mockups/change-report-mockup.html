@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site Changes Mockup</title>
+<meta name="description" content="Simplified CR-M mockup for the Connected Environments change report: a three-step setup, a live inbox of changes that appear as they are recorded, plain-language details with an optional technical view, and settings that stay simple until you open Advanced. Light and dark.">
+<style>
+  :root {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #f6f8fb;
+    --ink: #1a1d24;
+    --muted: #5b6470;
+    --faint: #8a94a6;
+    --line: #dfe3ea;
+    --line-strong: #c9d0da;
+    --accent: #3a52d6;
+    --accent-soft: #e7ebfb;
+    --ok: #1f9d55;        --ok-soft: #e2f4ea;
+    --warn: #b9770a;      --warn-soft: #fbf0da;
+    --push: #2570b8;      --push-soft: #e2eefa;
+    --protected: #6b40e0; --protected-soft: #ece5fc;
+    --stale: #7b8698;     --stale-soft: #eceff3;
+    --fail: #cf3b31;      --fail-soft: #fbe6e4;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(20,25,40,.06), 0 4px 16px rgba(20,25,40,.05);
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #12141a; --surface: #1b1e26; --surface-2: #21252f; --ink: #e8eaef; --muted: #a3acbb; --faint: #7a8496;
+      --line: #2c313d; --line-strong: #3a4150; --accent: #8098ff; --accent-soft: #23294a;
+      --ok: #48c98a; --ok-soft: #163527; --warn: #e0a94a; --warn-soft: #3a2c14; --push: #67aaf0; --push-soft: #14293f;
+      --protected: #a98cff; --protected-soft: #2a2247; --stale: #9aa4b4; --stale-soft: #262b34; --fail: #ef6d63; --fail-soft: #3a1f1d;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #12141a; --surface: #1b1e26; --surface-2: #21252f; --ink: #e8eaef; --muted: #a3acbb; --faint: #7a8496;
+    --line: #2c313d; --line-strong: #3a4150; --accent: #8098ff; --accent-soft: #23294a;
+    --ok: #48c98a; --ok-soft: #163527; --warn: #e0a94a; --warn-soft: #3a2c14; --push: #67aaf0; --push-soft: #14293f;
+    --protected: #a98cff; --protected-soft: #2a2247; --stale: #9aa4b4; --stale-soft: #262b34; --fail: #ef6d63; --fail-soft: #3a1f1d;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  h1,h2,h3 { text-wrap: balance; margin: 0; }
+  a { color: var(--accent); }
+  p { margin: 0; }
+  code, .mono { font-family: var(--mono); font-size: 12px; }
+  code { color: var(--muted); background: var(--surface-2); padding: 1px 6px; border-radius: 5px; }
+  kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
+
+  /* ---- Mock chrome (not part of the product) ---- */
+  .mockbar { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; font-size: 13px; }
+  .mockbar .tag { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: var(--warn); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); padding: 2px 8px; border-radius: 999px; }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+  .seg button { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; background: transparent; border: 0; padding: 5px 11px; border-radius: 6px; }
+  .seg button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .seg.sm button { font-size: 12px; padding: 4px 9px; }
+  .mockbar .right { margin-left: auto; display:flex; gap: 8px; align-items:center; }
+  .themebtn { font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); border-radius: 7px; padding: 5px 10px; }
+  .mocknote { font-size: 12px; color: var(--faint); }
+
+  /* ---- Product shell: one calm column ---- */
+  .shell { max-width: 760px; margin: 0 auto; padding: 26px 18px 60px; display: flex; flex-direction: column; gap: 18px; }
+  .screen[hidden] { display: none !important; }
+  .hdr { display:flex; align-items:center; gap: 12px; flex-wrap: wrap; }
+  .hdr .site { display:flex; align-items:center; gap: 10px; }
+  .hdr .site .logo { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg,var(--accent),#6b40e0); flex: 0 0 auto; }
+  .hdr h1 { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .hdr .site small { display:block; color: var(--muted); font-size: 12.5px; }
+  .hdr .acts { margin-left: auto; display:flex; gap: 8px; align-items:center; }
+  .iconbtn { font: inherit; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; font-size: 15px; }
+  .iconbtn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .status { display:flex; align-items:center; gap: 9px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+  .status .dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .status .dot.stale { background: var(--stale); box-shadow: 0 0 0 3px var(--stale-soft); }
+  .status .dot.fail { background: var(--fail); box-shadow: 0 0 0 3px var(--fail-soft); }
+  .status b { color: var(--ink); font-weight: 600; }
+  .status .sep { color: var(--line-strong); }
+  .status .tech { margin-left: auto; }
+  .tech { color: var(--faint); font-size: 11px; font-family: var(--mono); cursor: help; border-bottom: 1px dotted var(--line-strong); }
+
+  .lede { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+  .lede small { display:block; font-size: 13.5px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+
+  /* ---- Buttons / pills ---- */
+  .btn { font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 8px; padding: 7px 13px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .btn.primary, :root:not([data-theme="light"]) .btn.primary { color: #12141a; }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.big { font-size: 15px; padding: 11px 20px; border-radius: 10px; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 7px 10px; }
+  .btn.sm { padding: 4px 10px; font-size: 12.5px; }
+  .btn.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-soft); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 9px 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+  .pill.ok { color: var(--ok); background: var(--ok-soft); } .pill.warn { color: var(--warn); background: var(--warn-soft); }
+  .pill.push { color: var(--push); background: var(--push-soft); } .pill.protected { color: var(--protected); background: var(--protected-soft); }
+  .pill.stale { color: var(--stale); background: var(--stale-soft); } .pill.fail { color: var(--fail); background: var(--fail-soft); }
+  .pill.accent { color: var(--accent); background: var(--accent-soft); }
+  .pill.nodot::before { display: none; }
+
+  /* ---- Cards / notices ---- */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .card.pad { padding: 20px; }
+  .card h2 { font-size: 16px; font-weight: 700; }
+  .card .sub { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+  .notice { display: flex; gap: 11px; padding: 13px 15px; border-radius: 11px; font-size: 13.5px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); align-items: flex-start; }
+  .notice .ic { font-weight: 700; flex: 0 0 auto; font-size: 15px; }
+  .notice b { display:block; }
+  .notice p { color: var(--muted); font-size: 13px; }
+  .notice.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); } .notice.warn .ic { color: var(--warn); }
+  .notice.stale { background: var(--stale-soft); border-color: color-mix(in srgb, var(--stale) 35%, transparent); } .notice.stale .ic { color: var(--stale); }
+  .notice.fail { background: var(--fail-soft); border-color: color-mix(in srgb, var(--fail) 30%, transparent); } .notice.fail .ic { color: var(--fail); }
+  .notice.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 30%, transparent); } .notice.ok .ic { color: var(--ok); }
+  .notice .acts { margin-left: auto; display:flex; gap: 6px; flex: 0 0 auto; align-self: center; }
+
+  /* ---- Wizard ---- */
+  .wiz { display:flex; flex-direction: column; gap: 18px; }
+  .wiz .prog { display:flex; align-items:center; gap: 8px; font-size: 12.5px; color: var(--faint); }
+  .wiz .prog i { width: 26px; height: 4px; border-radius: 999px; background: var(--line); }
+  .wiz .prog i.on { background: var(--accent); }
+  .wiz h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+  .wiz .q { color: var(--muted); font-size: 14px; margin-top: 4px; max-width: 60ch; }
+  .pair { display:grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; }
+  .pairbox { border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; background: var(--surface-2); }
+  .pairbox .role { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); }
+  .pairbox b { display:block; font-size: 15px; margin-top: 2px; }
+  .pairbox small { display:block; color: var(--muted); font-size: 12.5px; }
+  .pair .arrow { color: var(--faint); font-size: 22px; text-align:center; }
+  .pair .arrow small { display:block; font-size: 10.5px; line-height: 1.1; }
+  .choices { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+  .choices label { display: block; border: 1px solid var(--line); border-radius: 11px; padding: 14px; cursor: pointer; background: var(--surface-2); position: relative; }
+  .choices label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .choices input { position: absolute; opacity: 0; pointer-events: none; }
+  .choices b { font-size: 14px; display:block; padding-right: 92px; } .choices small { display:block; color: var(--muted); margin-top: 3px; font-size: 12.5px; }
+  .choices .rec { position:absolute; top: 11px; right: 12px; font-size: 10px; font-weight: 700; letter-spacing: .05em; color: var(--ok); }
+  .wizfoot { display:flex; align-items:center; gap: 10px; }
+  .wizfoot .spacer { flex: 1; }
+  .fieldrow { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+  .input { font: inherit; font-size: 13.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 11px; min-width: 240px; }
+  .checks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 18px; }
+  .checks label { display:flex; align-items:center; gap: 8px; font-size: 13.5px; padding: 5px 0; }
+  .checks input { width: 15px; height: 15px; accent-color: var(--accent); }
+  .checks .obs { margin-left: auto; font-size: 11px; }
+  .donebox { text-align:center; padding: 30px 20px; }
+  .donebox .big { font-size: 42px; line-height: 1; margin-bottom: 10px; }
+  .donebox h2 { font-size: 22px; }
+  .donebox p { color: var(--muted); margin-top: 6px; max-width: 48ch; margin-left:auto; margin-right:auto; }
+  .bar { height: 8px; border-radius: 999px; background: var(--line); overflow:hidden; margin: 14px auto 6px; max-width: 360px; }
+  .bar i { display:block; height: 100%; width: 0; background: var(--accent); transition: width 1.2s ease; }
+
+  details.more { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  details.more > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--muted); list-style: none; display:flex; align-items:center; gap: 8px; }
+  details.more > summary::-webkit-details-marker { display:none; }
+  details.more > summary::before { content: "▸"; color: var(--faint); font-size: 12px; transition: transform .15s; }
+  details.more[open] > summary::before { transform: rotate(90deg); }
+  details.more .body { padding: 2px 14px 14px; font-size: 13px; color: var(--muted); display:flex; flex-direction: column; gap: 10px; }
+
+  /* ---- Inbox feed ---- */
+  .feedhead { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; }
+  .feedhead .seg { margin-left: auto; }
+  .day { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 6px 0 -8px; display:flex; align-items:center; gap: 10px; }
+  .day::after { content:""; flex: 1; border-top: 1px solid var(--line); }
+  .newline { display:flex; align-items:center; gap: 10px; font-size: 12px; font-weight: 600; color: var(--accent); margin: 4px 0 -8px; }
+  .newline::before, .newline::after { content:""; flex: 1; border-top: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); }
+
+  .change { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .change.new { border-left: 3px solid var(--accent); }
+  .change.conflict { border-left: 3px solid var(--warn); }
+  .change.removed { border-left: 3px solid var(--fail); }
+  .change.added { border-left: 3px solid var(--ok); }
+  .change.done { opacity: .62; }
+  .change > summary { list-style: none; cursor: pointer; display:grid; grid-template-columns: 38px 1fr auto; gap: 12px; padding: 14px 16px; align-items: start; }
+  .change > summary::-webkit-details-marker { display:none; }
+  .change .glyph { width: 38px; height: 38px; border-radius: 10px; display:flex; align-items:center; justify-content:center; font-size: 16px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+  .change .ttl { font-size: 15px; font-weight: 700; display:flex; align-items:center; gap: 8px; flex-wrap: wrap; }
+  .change .ttl .kind { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
+  .change .what { color: var(--ink); font-size: 14px; margin-top: 2px; }
+  .change .meta { color: var(--faint); font-size: 12.5px; margin-top: 3px; }
+  .change .meta b { color: var(--muted); font-weight: 600; }
+  .change .acts { display:flex; gap: 6px; align-items:center; flex-wrap: wrap; justify-content: flex-end; }
+  .change .acts .hint { font-size: 12px; color: var(--faint); }
+  .change .body { border-top: 1px solid var(--line); padding: 14px 16px 16px 66px; display:flex; flex-direction: column; gap: 12px; }
+  .change .body .h { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); display:flex; align-items:center; gap: 10px; }
+  .change .body .h .sw { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12px; color: var(--accent); cursor: pointer; background: none; border: 0; font-family: inherit; }
+  .fields { display:flex; flex-direction: column; gap: 8px; }
+  .fld { border: 1px solid var(--line); border-radius: 10px; overflow:hidden; }
+  .fld .fh { padding: 7px 12px; font-size: 13px; font-weight: 600; background: var(--surface-2); display:flex; gap: 8px; align-items:center; flex-wrap: wrap; }
+  .fld .fh .where { font-weight: 500; color: var(--muted); font-size: 12.5px; }
+  .fld .fh .path { display:none; font-family: var(--mono); font-size: 11.5px; color: var(--faint); font-weight: 400; width: 100%; }
+  .change.techmode .fld .fh .path { display:block; }
+  .fld .fh .op { margin-left:auto; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; padding: 1px 7px; border-radius: 999px; }
+  .op.chg { background: var(--push-soft); color: var(--push); } .op.add { background: var(--ok-soft); color: var(--ok); } .op.rem { background: var(--fail-soft); color: var(--fail); }
+  .vals { display: grid; grid-template-columns: 1fr 1fr; }
+  .vals > div { padding: 8px 12px; font-size: 13px; white-space: pre-wrap; word-break: break-word; min-width: 0; }
+  .vals .lab { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); display:block; margin-bottom: 2px; }
+  .vals .before { background: var(--fail-soft); color: color-mix(in srgb, var(--fail) 70%, var(--ink)); border-right: 1px solid var(--line); }
+  .vals .after { background: var(--ok-soft); color: color-mix(in srgb, var(--ok) 65%, var(--ink)); }
+  .vals .none { color: var(--faint); font-style: italic; background: var(--surface-2); }
+  .vals .side { background: var(--surface-2); color: var(--ink); }
+  .vals .side.mine { border-right: 1px solid var(--line); }
+  .change.techmode .vals > div { font-family: var(--mono); font-size: 12px; }
+  .redact { background: var(--stale-soft); color: var(--stale); padding: 0 5px; border-radius: 4px; font-style: italic; }
+  .trunc { color: var(--faint); font-style: italic; }
+  .imgval { display:flex; align-items:center; gap: 8px; }
+  .imgval i { width: 36px; height: 26px; border-radius: 5px; background: linear-gradient(135deg, #7aa7d9, #3a6aa8); display:inline-block; }
+  .imgval i.v2 { background: linear-gradient(135deg, #6fb7a0, #2f7d64); }
+  .links { display:flex; gap: 12px; font-size: 12.5px; flex-wrap: wrap; }
+  .links a { color: var(--muted); }
+  .conflictnote { font-size: 13px; color: var(--muted); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); padding: 9px 12px; border-radius: 9px; }
+  .conflictnote b { color: var(--ink); }
+  .handled { color: var(--faint); font-size: 13px; text-align:center; padding: 6px; }
+  .handled a { color: var(--muted); }
+  .quiet { text-align:center; padding: 46px 20px; }
+  .quiet .big { font-size: 40px; line-height: 1; margin-bottom: 10px; }
+  .quiet h2 { font-size: 20px; }
+  .quiet p { color: var(--muted); margin-top: 5px; }
+
+  /* ---- Settings ---- */
+  .set { display:flex; flex-direction: column; }
+  .row { display:grid; grid-template-columns: 1fr auto; gap: 8px 18px; padding: 15px 20px; border-bottom: 1px solid var(--line); align-items:center; }
+  .row:last-child { border-bottom: 0; }
+  .row b { display:block; font-size: 14.5px; }
+  .row small { display:block; color: var(--muted); font-size: 12.5px; max-width: 54ch; }
+  .row .ctl { display:flex; align-items:center; gap: 8px; justify-content:flex-end; }
+  .toggle { display:inline-flex; align-items:center; gap: 9px; font-size: 13px; cursor: pointer; }
+  .toggle .sw { width: 38px; height: 22px; border-radius: 999px; background: var(--line-strong); position: relative; flex: 0 0 auto; }
+  .toggle .sw::after { content:""; position:absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
+  .toggle.on .sw { background: var(--ok); } .toggle.on .sw::after { left: 18px; }
+  select.input { min-width: 180px; }
+  .adv { border-top: 1px dashed var(--line-strong); }
+  .adv > summary { padding: 14px 20px; cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--muted); list-style:none; display:flex; align-items:center; gap: 8px; }
+  .adv > summary::-webkit-details-marker { display:none; }
+  .adv > summary::before { content: "▸"; color: var(--faint); font-size: 12px; transition: transform .15s; }
+  .adv[open] > summary::before { transform: rotate(90deg); }
+  .adv > summary .pill { margin-left: auto; }
+  .rowmini { display:grid; grid-template-columns: 1fr auto; gap: 6px 18px; padding: 12px 20px; border-top: 1px solid var(--line); align-items:center; background: var(--surface-2); }
+  .rowmini b { display:block; font-size: 13.5px; } .rowmini small { display:block; color: var(--muted); font-size: 12px; max-width: 54ch; }
+  .rowmini .ctl { display:flex; align-items:center; gap: 8px; justify-content:flex-end; }
+  .rowmini .input { min-width: 0; width: 90px; }
+
+  /* ---- Map (reviewer page) ---- */
+  table.map { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.map th, table.map td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.map thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
+  table.map td:first-child { font-weight: 600; }
+  .owncard { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 13px 15px; background: var(--surface); }
+  .owncard.c1 { border-left-color: var(--ok); } .owncard.c2 { border-left-color: var(--protected); } .owncard.c3 { border-left-color: var(--stale); } .owncard.c4 { border-left-color: var(--warn); }
+  .owncard b { font-size: 14px; } .owncard p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+  .qlist { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .qlist li { margin: 5px 0; } .qlist b { color: var(--accent); }
+  .mailbox { border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); padding: 14px 16px; font-size: 13.5px; }
+  .mailbox .from { color: var(--faint); font-size: 12px; margin-bottom: 8px; }
+  .mailbox ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
+
+  @media (max-width: 700px) {
+    .choices { grid-template-columns: 1fr; } .pair { grid-template-columns: 1fr; } .pair .arrow { transform: rotate(90deg); }
+    .checks { grid-template-columns: 1fr; }
+    .change > summary { grid-template-columns: 38px 1fr; } .change .acts { grid-column: 1 / -1; justify-content: flex-start; }
+    .change .body { padding-left: 16px; }
+    .vals { grid-template-columns: 1fr; } .vals .before, .vals .side.mine { border-right: 0; border-bottom: 1px solid var(--line); }
+    .row, .rowmini { grid-template-columns: 1fr; } .row .ctl, .rowmini .ctl { justify-content: flex-start; }
+    .status .tech { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .screen { animation: fade .18s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+
+<!-- Mock navigation. Not part of the product; it switches between the screens being reviewed. -->
+<div class="mockbar">
+  <span class="tag">MOCKUP · SIMPLE</span>
+  <div class="seg" role="tablist" aria-label="Screens">
+    <button role="tab" data-screen="setup" aria-selected="false">1 · Setup</button>
+    <button role="tab" data-screen="inbox" aria-selected="true">2 · Changes</button>
+    <button role="tab" data-screen="settings" aria-selected="false">3 · Settings</button>
+    <button role="tab" data-screen="map" aria-selected="false">4 · How it maps</button>
+  </div>
+  <div class="right">
+    <span class="mocknote">Full console: <a href="change-report-mockup-advanced.html">advanced version</a></span>
+    <button class="themebtn" id="themebtn" type="button">Theme</button>
+  </div>
+</div>
+
+<div class="shell">
+
+  <!-- ============ 1 · SETUP ============ -->
+  <section class="screen" id="screen-setup" hidden>
+    <div class="hdr">
+      <div class="site"><div class="logo"></div><div><h1>Keep LocalWP up to date</h1><small>Butler Marina · one-time setup</small></div></div>
+    </div>
+
+    <div class="card pad wiz" id="wiz">
+      <!-- step 1 -->
+      <div data-step="1">
+        <div class="prog"><i class="on"></i><i></i><i></i> Step 1 of 3</div>
+        <h2 style="margin-top:10px">Which two copies of this site?</h2>
+        <p class="q">We found two copies of Butler Marina connected to your agency. Tell us which one gets edited and which one should hear about it.</p>
+        <div class="pair" style="margin-top:18px">
+          <div class="pairbox"><div class="role">Edits happen on</div><b>Staging</b><small>butler-staging.cloudways · last seen 2 min ago</small></div>
+          <div class="arrow">→<small>changes flow</small></div>
+          <div class="pairbox"><div class="role">Keep up to date</div><b>LocalWP</b><small>butler-local · last seen 4 min ago</small></div>
+        </div>
+        <div class="fieldrow" style="margin-top:12px"><button class="btn ghost sm" type="button">Swap them</button><span style="color:var(--faint);font-size:12.5px">·</span><button class="btn ghost sm" type="button">Pick different sites</button></div>
+        <div class="notice stale" style="margin-top:16px" data-alt="not-connected" hidden><span class="ic">!</span><div><b>LocalWP isn't connected yet</b><p>Open LocalWP, go to Site Changes, and press Connect. Come back here when it says connected. Nothing else to configure there.</p></div><div class="acts"><button class="btn sm" type="button">Check again</button></div></div>
+        <div class="wizfoot" style="margin-top:22px"><span class="mocknote">Shown automatically when only one copy is connected: <a href="#" data-togglealt="not-connected">toggle</a></span><span class="spacer"></span><button class="btn primary" type="button" data-next="2">Next</button></div>
+      </div>
+
+      <!-- step 2 -->
+      <div data-step="2" hidden>
+        <div class="prog"><i class="on"></i><i class="on"></i><i></i> Step 2 of 3</div>
+        <h2 style="margin-top:10px">What should we watch?</h2>
+        <p class="q">You can change this later. "Everything" means anything both sites are able to report, so nothing slips through.</p>
+        <div class="choices" style="margin-top:18px">
+          <label><input type="radio" name="scope" checked><span class="rec">RECOMMENDED</span><b>Everything</b><small>Pages, posts, templates, global styles, classes, colors, menus — whatever both sites can report.</small></label>
+          <label><input type="radio" name="scope"><b>Just the design</b><small>Templates, global styles, classes, colors and components. Skips page content.</small></label>
+          <label><input type="radio" name="scope" id="scope-choose"><b>Let me choose</b><small>Pick from the list of what each site can report.</small></label>
+        </div>
+        <details class="more" style="margin-top:12px" id="choose-list">
+          <summary>Choose what to watch</summary>
+          <div class="body">
+            <div class="checks">
+              <label><input type="checkbox" checked> Pages <span class="pill ok obs">both</span></label>
+              <label><input type="checkbox" checked> Posts <span class="pill ok obs">both</span></label>
+              <label><input type="checkbox" checked> Templates <span class="pill ok obs">both</span></label>
+              <label><input type="checkbox" checked> Global classes <span class="pill ok obs">both</span></label>
+              <label><input type="checkbox" checked> Global styles &amp; variables <span class="pill ok obs">both</span></label>
+              <label><input type="checkbox" checked> Colors <span class="pill ok obs">both</span></label>
+              <label><input type="checkbox" checked> Components <span class="pill ok obs">both</span></label>
+              <label><input type="checkbox" disabled> Menus <span class="pill stale obs">not yet reported</span></label>
+            </div>
+            <p>Greyed items can't be watched yet because one of the sites doesn't report them. They'll light up when it does.</p>
+          </div>
+        </details>
+        <div class="wizfoot" style="margin-top:22px"><button class="btn ghost" type="button" data-next="1">Back</button><span class="spacer"></span><button class="btn primary" type="button" data-next="3">Next</button></div>
+      </div>
+
+      <!-- step 3 -->
+      <div data-step="3" hidden>
+        <div class="prog"><i class="on"></i><i class="on"></i><i class="on"></i> Step 3 of 3</div>
+        <h2 style="margin-top:10px">How should we tell you?</h2>
+        <p class="q">Changes always show up on the Changes page. This just decides whether you also get a message.</p>
+        <div class="choices" style="margin-top:18px">
+          <label><input type="radio" name="notify" checked><span class="rec">RECOMMENDED</span><b>Daily summary</b><small>One email each morning if anything changed the day before.</small></label>
+          <label><input type="radio" name="notify"><b>As it happens</b><small>An email within the hour of a change on staging.</small></label>
+          <label><input type="radio" name="notify"><b>Only in the dashboard</b><small>No email. You'll check in yourself.</small></label>
+        </div>
+        <div class="fieldrow" style="margin-top:14px"><label for="em" style="font-weight:600">Send to</label><input class="input" id="em" value="you@example.com"><span style="color:var(--faint);font-size:12.5px">You can add Slack later in Settings.</span></div>
+
+        <div class="notice" style="margin-top:18px"><span class="ic">i</span><div><b>When you press Start, we take a snapshot of both sites.</b><p>From that moment on, only things that change on staging show up here. If you copy the site again later, press "Start over" in Settings so the snapshot matches the new copy.</p></div></div>
+
+        <details class="more" style="margin-top:12px">
+          <summary>What this sets up behind the scenes</summary>
+          <div class="body">
+            <p>Both sites stay connected to your agency hub as they are now. Pressing Start: confirms the agreed starting point for the pair (<span class="tech" title="baseline confirm">baseline</span>), creates a report-only watch that checks every hour (<span class="tech" title="sync policy, mode=report, cadence hourly">policy</span>), watches every domain both sites report, keeps LocalWP's values in the details (you can turn that off in Settings), and sends a daily summary. Nothing is ever applied to either site.</p>
+          </div>
+        </details>
+        <div class="wizfoot" style="margin-top:22px"><button class="btn ghost" type="button" data-next="2">Back</button><span class="spacer"></span><button class="btn primary big" type="button" data-next="done" id="startbtn">Start watching</button></div>
+      </div>
+
+      <!-- done -->
+      <div data-step="done" hidden>
+        <div class="donebox" id="snap">
+          <div class="big">⏳</div>
+          <h2>Taking the first snapshot…</h2>
+          <p>Reading both sites. This usually takes a minute or two and only happens once.</p>
+          <div class="bar"><i id="snapbar"></i></div>
+          <small class="mocknote" id="snapmsg">Staging · Pages 118 of 118 · Templates 14 of 14</small>
+        </div>
+        <div class="donebox" id="snapdone" hidden>
+          <div class="big">✓</div>
+          <h2>All set. We're watching.</h2>
+          <p>We check staging every hour. Edits usually show up on the Changes page within the hour, and you'll get a summary each morning there's something new.</p>
+          <div class="wizfoot" style="justify-content:center;margin-top:18px"><button class="btn primary" type="button" data-goto="inbox">Go to Changes</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 · CHANGES (inbox) ============ -->
+  <section class="screen" id="screen-inbox">
+    <div class="hdr">
+      <div class="site"><div class="logo"></div><div><h1>Site Changes</h1><small>Butler Marina · staging → LocalWP</small></div></div>
+      <div class="acts"><button class="btn ghost sm" type="button" id="checknow">Check now</button><button class="btn sm" type="button" data-goto="settings">Settings</button></div>
+    </div>
+
+    <div class="status" data-hide="offline" data-hide2="problem">
+      <span class="dot"></span><b>Watching</b><span class="sep">·</span><span id="stattext">checked 4 min ago · next check in 56 min</span>
+      <span class="tech" title="policy pol_7f2a · mode=report · both sites fresh · baseline 2026-11-04 16:20">details</span>
+    </div>
+
+    <!-- variant switcher (mock only) -->
+    <div class="feedhead">
+      <span class="mocknote">State:</span>
+      <div class="seg sm" role="tablist" aria-label="Inbox state" style="margin-left:0">
+        <button role="tab" data-variant="normal" aria-selected="true">New changes</button>
+        <button role="tab" data-variant="quiet" aria-selected="false">All caught up</button>
+        <button role="tab" data-variant="offline" aria-selected="false">LocalWP is closed</button>
+        <button role="tab" data-variant="problem" aria-selected="false">Trouble reading</button>
+        <button role="tab" data-variant="first" aria-selected="false">First snapshot</button>
+      </div>
+    </div>
+
+    <!-- state: offline -->
+    <div class="notice stale" data-only="offline"><span class="ic">!</span><div><b>LocalWP hasn't checked in since yesterday, 5:10 pm.</b><p>Usually this just means LocalWP is closed. Changes from staging still show up; we only can't show LocalWP's side of them until it's back.</p></div><div class="acts"><button class="btn sm" type="button">I've opened it</button></div></div>
+
+    <!-- state: problem -->
+    <div class="notice warn" data-only="problem"><span class="ic">!</span><div><b>Staging kept changing while we were reading it.</b><p>We tried three times this morning. We'll try again next hour. If this keeps happening, someone may be running a bulk import or a plugin that rewrites content on a schedule.</p></div><div class="acts"><button class="btn sm" type="button">Try again</button></div></div>
+
+    <!-- state: first -->
+    <div class="card pad quiet" data-only="first">
+      <div class="big">⏳</div><h2>Getting the first snapshot</h2><p>This takes a minute or two and only happens once. Nothing to do yet.</p>
+      <div class="bar"><i style="width:62%"></i></div>
+    </div>
+
+    <!-- state: quiet -->
+    <div class="card pad quiet" data-only="quiet">
+      <div class="big">☕</div><h2>Nothing new</h2><p>Last change was Tuesday — the Header template. Checked 4 min ago.</p>
+      <div class="handled" style="margin-top:10px">12 handled in the last 30 days · <a href="#">show them</a></div>
+    </div>
+
+    <!-- normal + offline + problem share the feed -->
+    <div id="feed" data-hide="quiet" data-hide2="first" style="display:flex;flex-direction:column;gap:14px">
+      <p class="lede">4 changes on staging since Tuesday.<small>2 need a look · 2 are just so you know</small></p>
+
+      <div class="newline">2 new since you last looked</div>
+
+      <div class="day">Today</div>
+
+      <!-- conflict -->
+      <details class="change conflict new" id="c-hero">
+        <summary>
+          <div class="glyph">◈</div>
+          <div>
+            <div class="ttl">.hero-title <span class="kind">Global class</span> <span class="pill warn nodot">Changed on both sites</span></div>
+            <div class="what">The font size was changed on staging <b>and</b> on LocalWP since the snapshot.</div>
+            <div class="meta">Staging · 10:41 by <b>Dana</b> (Design Review round 3) · LocalWP · 09:30</div>
+          </div>
+          <div class="acts"><span class="hint">Open to compare</span></div>
+        </summary>
+        <div class="body">
+          <div class="conflictnote"><b>Both copies differ from the snapshot.</b> Pick the one you want by hand on LocalWP, then press "Sorted". We'll check on the next pass that the two match.</div>
+          <div class="h">What changed <button class="sw" type="button" data-tech>Show technical names</button></div>
+          <div class="fields">
+            <div class="fld">
+              <div class="fh">Font size <span class="where">· desktop</span><span class="path">settings._typography.font-size</span><span class="op chg">BOTH</span></div>
+              <div class="vals"><div class="side mine"><span class="lab">On LocalWP (yours)</span>48px</div><div class="side"><span class="lab">On staging (Dana)</span>44px</div></div>
+              <div class="vals" style="border-top:1px solid var(--line)"><div class="none" style="grid-column:1/-1"><span class="lab">At the snapshot</span>52px</div></div>
+            </div>
+          </div>
+          <div class="links"><a href="#">Open on staging</a><a href="#">Open on LocalWP</a><a href="#">Copy details</a></div>
+          <div class="acts"><button class="btn ok" type="button" data-done>Sorted — they match now</button><button class="btn ghost" type="button" data-later>Remind me tomorrow</button></div>
+        </div>
+      </details>
+
+      <!-- updated page -->
+      <details class="change new" id="c-services">
+        <summary>
+          <div class="glyph">▤</div>
+          <div>
+            <div class="ttl">Services <span class="kind">Page</span></div>
+            <div class="what">Title, a heading and an image changed on staging.</div>
+            <div class="meta">10:41 by <b>Dana</b> (Design Review round 3) · 3 things changed</div>
+          </div>
+          <div class="acts"><button class="btn ok sm" type="button" data-done>Done</button></div>
+        </summary>
+        <div class="body">
+          <div class="h">What changed <button class="sw" type="button" data-tech>Show technical names</button></div>
+          <div class="fields">
+            <div class="fld">
+              <div class="fh">Page title<span class="path">title</span><span class="op chg">CHANGED</span></div>
+              <div class="vals"><div class="before"><span class="lab">LocalWP</span>Services</div><div class="after"><span class="lab">Staging</span>Services &amp; Pricing</div></div>
+            </div>
+            <div class="fld">
+              <div class="fh">Heading <span class="where">· in the "Slip rentals" section</span><span class="path">content[2].settings.text · Heading #brxe-4f1a2b</span><span class="op chg">CHANGED</span></div>
+              <div class="vals"><div class="before"><span class="lab">LocalWP</span>Slip rentals</div><div class="after"><span class="lab">Staging</span>Slip rentals, moorings &amp; winter storage</div></div>
+            </div>
+            <div class="fld">
+              <div class="fh">Image <span class="where">· in the "About the marina" section</span><span class="path">content[7].settings.image.id · Image #brxe-9c02e1</span><span class="op chg">CHANGED</span></div>
+              <div class="vals"><div class="before"><span class="lab">LocalWP</span><span class="imgval"><i></i>marina-aerial.jpg</span></div><div class="after"><span class="lab">Staging</span><span class="imgval"><i class="v2"></i>marina-aerial-v2.jpg</span></div></div>
+            </div>
+          </div>
+          <div class="links"><a href="#">Open on staging</a><a href="#">Open on LocalWP</a><a href="#">Copy details</a></div>
+          <div class="acts"><button class="btn ok" type="button" data-done>Done — I've updated LocalWP</button><button class="btn ghost" type="button" data-ignore>Leave LocalWP as it is</button></div>
+        </div>
+      </details>
+
+      <div class="day">Yesterday</div>
+
+      <!-- removed -->
+      <details class="change removed">
+        <summary>
+          <div class="glyph">▤</div>
+          <div>
+            <div class="ttl">Old pricing <span class="kind">Page</span> <span class="pill fail nodot">Removed on staging</span></div>
+            <div class="what">Moved to the trash on staging. It still exists on LocalWP.</div>
+            <div class="meta">Yesterday 09:55 by <b>Dana</b></div>
+          </div>
+          <div class="acts"><button class="btn ok sm" type="button" data-done>Done</button></div>
+        </summary>
+        <div class="body">
+          <p style="color:var(--muted);font-size:13.5px">Nothing to compare — the whole page went. If you trash it on LocalWP too, press Done. If you want to keep it there, press "Keep it".</p>
+          <div class="links"><a href="#">Open on LocalWP</a><a href="#">See it in staging's trash</a></div>
+          <div class="acts"><button class="btn ok" type="button" data-done>Done — trashed on LocalWP</button><button class="btn ghost" type="button" data-ignore>Keep it on LocalWP</button></div>
+        </div>
+      </details>
+
+      <!-- added -->
+      <details class="change added">
+        <summary>
+          <div class="glyph">▣</div>
+          <div>
+            <div class="ttl">Winter storage FAQ <span class="kind">Page</span> <span class="pill ok nodot">New on staging</span></div>
+            <div class="what">A new page that doesn't exist on LocalWP yet.</div>
+            <div class="meta">Yesterday 16:12 by <b>Dana</b> · draft</div>
+          </div>
+          <div class="acts"><button class="btn ok sm" type="button" data-done>Done</button></div>
+        </summary>
+        <div class="body">
+          <div class="h">What it contains</div>
+          <div class="fields">
+            <div class="fld"><div class="fh">Page title<span class="path">title</span><span class="op add">NEW</span></div><div class="vals"><div class="none"><span class="lab">LocalWP</span>— nothing yet</div><div class="after"><span class="lab">Staging</span>Winter storage FAQ</div></div></div>
+            <div class="fld"><div class="fh">Content <span class="where">· 6 sections</span><span class="path">content[0..5]</span><span class="op add">NEW</span></div><div class="vals"><div class="none"><span class="lab">LocalWP</span>— nothing yet</div><div class="after"><span class="lab">Staging</span>Heading, text, accordion ×3, button<span class="trunc"> · full content on staging</span></div></div></div>
+          </div>
+          <div class="links"><a href="#">Open on staging</a><a href="#">Copy details</a></div>
+          <div class="acts"><button class="btn ok" type="button" data-done>Done — created on LocalWP</button><button class="btn ghost" type="button" data-ignore>Don't need it on LocalWP</button></div>
+        </div>
+      </details>
+
+      <div class="day">Just so you know</div>
+
+      <!-- info: local only -->
+      <details class="change" style="opacity:.85">
+        <summary>
+          <div class="glyph">▤</div>
+          <div>
+            <div class="ttl">Contact <span class="kind">Page</span> <span class="pill push nodot">Changed on LocalWP only</span></div>
+            <div class="what">You changed this on LocalWP; staging hasn't. Nothing to do — just so the two don't drift apart silently.</div>
+            <div class="meta">Tuesday 14:02 · you</div>
+          </div>
+          <div class="acts"><span class="hint">No action needed</span></div>
+        </summary>
+        <div class="body"><p style="color:var(--muted);font-size:13.5px">We don't show the details for LocalWP-only edits — you made them. If staging later changes the same page you'll see a "Changed on both sites" item instead.</p><div class="links"><a href="#">Hide LocalWP-only items (Settings)</a></div></div>
+      </details>
+
+      <!-- done example -->
+      <details class="change done">
+        <summary>
+          <div class="glyph">▧</div>
+          <div>
+            <div class="ttl">Header — main <span class="kind">Template</span> <span class="pill ok">Done · verified</span></div>
+            <div class="what">Button label changed. You marked it done Tuesday; both sites matched on the next check.</div>
+            <div class="meta">Tuesday 10:38 by <b>Dana</b> · handled by you Tuesday 15:20</div>
+          </div>
+          <div class="acts"><span class="hint">Moves to Handled tonight</span></div>
+        </summary>
+        <div class="body"><div class="fields"><div class="fld"><div class="fh">Button text<span class="path">content[3].settings.text · Button #brxe-77a0c3</span><span class="op chg">CHANGED</span></div><div class="vals"><div class="before"><span class="lab">LocalWP (then)</span>Book a slip</div><div class="after"><span class="lab">Staging</span>Reserve a slip</div></div></div></div></div>
+      </details>
+
+      <div class="handled">12 handled in the last 30 days · <a href="#">show them</a> · <a href="#">export this week as a list</a></div>
+    </div>
+  </section>
+
+  <!-- ============ 3 · SETTINGS ============ -->
+  <section class="screen" id="screen-settings" hidden>
+    <div class="hdr">
+      <div class="site"><div class="logo"></div><div><h1>Settings</h1><small>Butler Marina · Site Changes</small></div></div>
+      <div class="acts"><button class="btn ghost sm" type="button" data-goto="inbox">← Back to Changes</button></div>
+    </div>
+
+    <div class="card set">
+      <div class="row"><div><b>Watching</b><small>Turn off to pause. Nothing is lost; we pick up where we left off when you turn it back on.</small></div><div class="ctl"><span class="toggle on"><span class="sw"></span>On</span></div></div>
+      <div class="row"><div><b>Sites</b><small>Edits happen on <b style="display:inline">Staging</b>, LocalWP is kept up to date.</small></div><div class="ctl"><button class="btn sm" type="button">Swap</button><button class="btn sm" type="button">Change</button></div></div>
+      <div class="row"><div><b>Check how often</b><small>Hourly is plenty for design feedback rounds. Edits appear within the hour either way.</small></div><div class="ctl"><select class="input"><option>Every hour (recommended)</option><option>Every 15 minutes</option><option>Twice a day</option><option>Once a day</option></select></div></div>
+      <div class="row"><div><b>Tell me</b><small>Changes always appear on the Changes page.</small></div><div class="ctl"><select class="input"><option>Daily summary email</option><option>As it happens</option><option>Only in the dashboard</option></select><input class="input" value="you@example.com" style="min-width:200px"></div></div>
+      <div class="row"><div><b>Show LocalWP's values in the details</b><small>Lets you see "before → after" side by side. The LocalWP values are kept on your agency hub. Turn off for sites with sensitive content; you'll still see what changed on staging.</small></div><div class="ctl"><span class="toggle on" id="valtoggle"><span class="sw"></span>On</span></div></div>
+      <div class="row"><div><b>Show "Changed on LocalWP only" items</b><small>Heads-up items when you edit LocalWP and staging doesn't. Never need action.</small></div><div class="ctl"><span class="toggle on"><span class="sw"></span>On</span></div></div>
+
+      <details class="adv">
+        <summary>Advanced <span class="pill stale nodot">defaults are fine for most sites</span></summary>
+        <div class="rowmini"><div><b>What to watch</b><small>Everything both sites report (7 kinds). Menus aren't reported yet.</small></div><div class="ctl"><button class="btn sm" type="button">Choose…</button></div></div>
+        <div class="rowmini"><div><b>Objects per check</b><small>How many changed objects we read in one pass. Bigger runs catch up faster after a busy day but take longer.</small></div><div class="ctl"><input class="input" value="25"></div></div>
+        <div class="rowmini"><div><b>Treat a site as "closed" after</b><small>How long without hearing from a site before we stop comparing against it.</small></div><div class="ctl"><select class="input" style="min-width:0"><option>24 hours</option><option>6 hours</option><option>3 days</option></select></div></div>
+        <div class="rowmini"><div><b>Keep handled items for</b><small>Older handled items are removed from the Changes page and the hub.</small></div><div class="ctl"><select class="input" style="min-width:0"><option>90 days</option><option>30 days</option><option>1 year</option></select></div></div>
+        <div class="rowmini"><div><b>Also tell me about problems</b><small>LocalWP closed for a day, trouble reading staging.</small></div><div class="ctl"><span class="toggle on"><span class="sw"></span>On</span></div></div>
+        <div class="rowmini"><div><b>Technical names by default</b><small>Show field paths and element ids in every item without pressing "Show technical names".</small></div><div class="ctl"><span class="toggle"><span class="sw"></span>Off</span></div></div>
+        <div class="rowmini"><div><b>Start over from now</b><small>Take a fresh snapshot of both sites. Use this after you copy the site again (new staging from LocalWP, or the other way around). Open items are cleared.</small></div><div class="ctl"><button class="btn sm" type="button">Start over…</button></div></div>
+        <div class="rowmini"><div><b>Full console</b><small>Every report run, the raw comparison, releases and approvals — the agency-level view with every control.</small></div><div class="ctl"><a class="btn sm" href="change-report-mockup-advanced.html">Open full console</a></div></div>
+      </details>
+    </div>
+
+    <div class="card pad">
+      <h2>What the daily summary looks like</h2>
+      <div class="mailbox" style="margin-top:12px">
+        <div class="from">From: Site Changes · Subject: Butler Marina — 4 changes on staging yesterday</div>
+        <p>Dana made 4 changes on staging yesterday. 2 need a look on LocalWP.</p>
+        <ul>
+          <li><b>.hero-title</b> (global class) — changed on both sites, needs your decision</li>
+          <li><b>Services</b> (page) — title, a heading and an image</li>
+          <li><b>Old pricing</b> (page) — removed on staging</li>
+          <li><b>Winter storage FAQ</b> (page) — new on staging</li>
+        </ul>
+        <p style="margin-top:8px"><a href="#">Open Site Changes</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4 · HOW IT MAPS (reviewers) ============ -->
+  <section class="screen" id="screen-map" hidden>
+    <div class="hdr">
+      <div class="site"><div class="logo"></div><div><h1>How the simple version maps to the engine</h1><small>For reviewers and engineering · not a product screen</small></div></div>
+    </div>
+
+    <div class="card pad">
+      <h2>Design rules</h2>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+        <div class="owncard c1"><b>Smart by default.</b><p>Three questions at setup, every default already chosen (everything both sites report, hourly, report-only, values on, daily summary). Nothing technical is required to get a working watch.</p></div>
+        <div class="owncard"><b>Changes appear as they are recorded, not as "reports".</b><p>The product surface is an inbox of objects. Each hourly pass adds items to it; a "new since you last looked" line marks arrivals. Runs, cycles and report ids exist only in the full console.</p></div>
+        <div class="owncard c2"><b>One decision per item, in words.</b><p>"Done" and "Leave it" replace reconciled / ignored. Verification is automatic and silent; only "still differs" or "changed again" bring an item back.</p></div>
+        <div class="owncard c3"><b>Drill-down is always one click away, never in the way.</b><p>"Show technical names" per item, the Advanced block in Settings, and "Open full console" to the agency view. The simple view hides; it never removes.</p></div>
+        <div class="owncard c4"><b>Never applies anything.</b><p>No "use staging's version" button. The user edits LocalWP themselves, then says Done. Releases and approvals stay in the full console (publisher role).</p></div>
+      </div>
+    </div>
+
+    <div class="card pad">
+      <h2>Term map</h2>
+      <table class="map" style="margin-top:10px">
+        <thead><tr><th>Simple view</th><th>Full console</th><th>Engine</th></tr></thead>
+        <tbody>
+          <tr><td>Start watching</td><td>Confirm baseline + save policy (Report only, hourly)</td><td><code>baseline-confirm</code> → <code>sync-policy</code> mode=report, cadence 3600</td></tr>
+          <tr><td>Edits happen on / Keep up to date</td><td>Source / Target</td><td>policy <code>source_env</code> / <code>target_env</code></td></tr>
+          <tr><td>Snapshot</td><td>Baseline</td><td>baseline projections per domain</td></tr>
+          <tr><td>Check (hourly)</td><td>Report run (cycle)</td><td>tracked release purpose=report → prepare dry run → ingest</td></tr>
+          <tr><td>Item in the inbox</td><td>Report item row</td><td><code>dbvc_ac_change_report_items</code> row, deduped by object across runs</td></tr>
+          <tr><td>Changed on staging</td><td>Updated</td><td><code>outgoing</code> with diff receipt</td></tr>
+          <tr><td>Removed on staging</td><td>Removed</td><td><code>outgoing</code> + source absent → <code>remove_object</code></td></tr>
+          <tr><td>New on staging</td><td>Created</td><td>target absent → <code>add_object</code></td></tr>
+          <tr><td>Changed on both sites</td><td>Conflict</td><td><code>conflict</code>, baseline value shown from the stored body</td></tr>
+          <tr><td>Changed on LocalWP only</td><td>LocalWP only (info)</td><td><code>incoming</code>, hash-level, no receipt</td></tr>
+          <tr><td>Done</td><td>Mark reconciled → verified on next tick</td><td>decision=reconciled → next run compares → verified / still_differs</td></tr>
+          <tr><td>Sorted — they match now (conflict)</td><td>Mark reconciled (conflict) + confirm baseline for the object</td><td>decision=reconciled with <code>rebaseline_object=true</code> (review question b resolved: implicit for conflicts)</td></tr>
+          <tr><td>Leave it / Keep it / Don't need it</td><td>Ignore (intentional)</td><td>decision=ignored → reopens as "changed again" if the hash moves</td></tr>
+          <tr><td>Remind me tomorrow</td><td>— (new)</td><td>decision=snoozed until +24h (new, tiny; or drop and keep the item open)</td></tr>
+          <tr><td>LocalWP is closed</td><td>Stale / not reporting</td><td><code>unknown</code> beyond freshness window; items keep staging values only</td></tr>
+          <tr><td>Trouble reading staging</td><td>Unstable source</td><td>3 payload mismatches → <code>unstable_source</code></td></tr>
+          <tr><td>Show LocalWP's values</td><td>Values on target (LocalWP-side setting)</td><td><code>dbvc_connected_receipt_values</code> — set from the hub via a connector command, or linked to the LocalWP page</td></tr>
+          <tr><td>Start over from now</td><td>Re-confirm baseline + purge open items</td><td>baseline-confirm + <code>change-report-purge --open</code></td></tr>
+          <tr><td>Handled (30 days)</td><td>Resolved items</td><td>decided items; purged by retention</td></tr>
+          <tr><td>Open full console</td><td>Hub admin Reports section</td><td>the advanced mockup</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card pad">
+      <h2>What's deliberately hidden here, and where it lives</h2>
+      <table class="map" style="margin-top:10px">
+        <thead><tr><th>Hidden in simple</th><th>Why</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr><td>Report runs, cycle counts, partial/complete per run</td><td>The user cares about objects, not passes</td><td>Full console → Reports list</td></tr>
+          <tr><td>Six count tiles, filters, bulk bar, group-by</td><td>At the volumes design rounds produce (a handful a day), a list with day headers is enough</td><td>Full console → Report detail</td></tr>
+          <tr><td>Create release from selection, approvals, freeze</td><td>Apply is a different job with a different role</td><td>Full console (publisher)</td></tr>
+          <tr><td>Hub / connector / policy / domain vocabulary</td><td>Replaced by site names and plain kinds</td><td>Hover "details" and "Show technical names"</td></tr>
+          <tr><td>Redaction and truncation markers</td><td>Still shown inline when they occur ([hidden], "full content on staging"), just not explained up front</td><td>Item details</td></tr>
+          <tr><td>LocalWP-side Reports tab</td><td>Dropped as a separate surface: this page is the same for either site, because it's hub-served and keyed to the pair. Resolves review question (a) as "decisions anywhere, one UI"</td><td>Both sites link here</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card pad">
+      <h2>Review questions for this version</h2>
+      <ol class="qlist" style="margin-top:8px">
+        <li><b>(e)</b> Inbox-first (objects accumulate, runs are invisible) versus the run-based Reports list — is there any case where an operator needs "what did the 11:00 pass find" in the simple view?</li>
+        <li><b>(f)</b> Wording of the two decisions: "Done" / "Leave it" — or "Updated" / "Ignore"?</li>
+        <li><b>(g)</b> "Remind me tomorrow" adds a snooze state. Keep (tiny) or drop (the item just stays open)?</li>
+        <li><b>(h)</b> Setup pairs both sites from the hub. Should the LocalWP plugin page instead be the entry point ("Connect this site to staging") for a studio user who never opens the hub?</li>
+        <li><b>(i)</b> Conflicts: "Sorted" implies the user re-aligned LocalWP by hand and re-baselines the object silently. Acceptable, or should it ask "which one is right?" first?</li>
+      </ol>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  (function () {
+    // ---- mock navigation ----
+    var screens = { setup: 'screen-setup', inbox: 'screen-inbox', settings: 'screen-settings', map: 'screen-map' };
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.mockbar [data-screen]'));
+    function show(name) {
+      Object.keys(screens).forEach(function (k) { document.getElementById(screens[k]).hidden = (k !== name); });
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.screen === name)); });
+      try { window.scrollTo({ top: 0 }); } catch (e) {}
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.dataset.screen); }); });
+    document.querySelectorAll('[data-goto]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); show(b.dataset.goto); }); });
+
+    // ---- theme ----
+    var root = document.documentElement;
+    document.getElementById('themebtn').addEventListener('click', function () {
+      var cur = root.getAttribute('data-theme');
+      var dark = cur === 'dark' || (!cur && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    });
+
+    // ---- wizard ----
+    var wiz = document.getElementById('wiz');
+    function step(n) {
+      wiz.querySelectorAll('[data-step]').forEach(function (s) { s.hidden = (s.dataset.step !== n); });
+      if (n === 'done') {
+        var bar = document.getElementById('snapbar'), msg = document.getElementById('snapmsg');
+        document.getElementById('snap').hidden = false; document.getElementById('snapdone').hidden = true;
+        bar.style.width = '0';
+        setTimeout(function () { bar.style.width = '55%'; msg.textContent = 'Staging · Pages 118 of 118 · Templates 14 of 14'; }, 50);
+        setTimeout(function () { bar.style.width = '100%'; msg.textContent = 'LocalWP · Pages 118 of 118 · Templates 14 of 14'; }, 1300);
+        setTimeout(function () { document.getElementById('snap').hidden = true; document.getElementById('snapdone').hidden = false; }, 2600);
+      }
+    }
+    wiz.querySelectorAll('[data-next]').forEach(function (b) { b.addEventListener('click', function () { step(b.dataset.next); }); });
+    document.querySelectorAll('[data-togglealt]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); var el = wiz.querySelector('[data-alt="' + a.dataset.togglealt + '"]'); el.hidden = !el.hidden; });
+    });
+    var chooseList = document.getElementById('choose-list');
+    document.querySelectorAll('input[name=scope]').forEach(function (r) { r.addEventListener('change', function () { chooseList.open = (document.getElementById('scope-choose').checked); }); });
+
+    // ---- inbox variants ----
+    var vtabs = Array.prototype.slice.call(document.querySelectorAll('[data-variant]'));
+    function variant(v) {
+      vtabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.variant === v)); });
+      document.querySelectorAll('[data-only]').forEach(function (el) { el.hidden = (el.dataset.only !== v); });
+      document.querySelectorAll('[data-hide]').forEach(function (el) { el.hidden = (el.dataset.hide === v || el.dataset.hide2 === v); });
+      var st = document.querySelector('#screen-inbox .status');
+      var dot = st.querySelector('.dot');
+      dot.className = 'dot' + (v === 'offline' ? ' stale' : v === 'problem' ? ' warn' : v === 'first' ? ' warn' : '');
+      st.hidden = false;
+      var txt = { normal: 'checked 4 min ago · next check in 56 min', quiet: 'checked 4 min ago · next check in 56 min', offline: 'staging checked 4 min ago · LocalWP last seen yesterday 5:10 pm', problem: 'last good check 3 h ago · retrying next hour', first: 'first snapshot in progress' }[v];
+      st.querySelector('b').textContent = v === 'first' ? 'Setting up' : v === 'offline' ? 'Watching staging only' : v === 'problem' ? 'Watching (retrying)' : 'Watching';
+      document.getElementById('stattext').textContent = txt;
+      // offline: LocalWP values become unknown in the feed
+      document.querySelectorAll('#feed .vals .before, #feed .vals .side.mine').forEach(function (el) {
+        if (v === 'offline') { if (!el.dataset.orig) { el.dataset.orig = el.innerHTML; } el.innerHTML = '<span class="lab">LocalWP</span><span class="trunc">not available — LocalWP is closed</span>'; el.classList.add('none'); }
+        else if (el.dataset.orig) { el.innerHTML = el.dataset.orig; el.classList.remove('none'); }
+      });
+    }
+    vtabs.forEach(function (t) { t.addEventListener('click', function () { variant(t.dataset.variant); }); });
+    variant('normal');
+
+    // ---- item actions ----
+    document.querySelectorAll('[data-tech]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var card = b.closest('.change'); card.classList.toggle('techmode');
+        b.textContent = card.classList.contains('techmode') ? 'Hide technical names' : 'Show technical names';
+      });
+    });
+    function settle(btn, label, pillCls) {
+      var card = btn.closest('.change');
+      card.classList.add('done'); card.classList.remove('new', 'conflict', 'removed', 'added'); card.open = false;
+      var ttl = card.querySelector('.ttl'); var old = ttl.querySelector('.pill'); if (old) old.remove();
+      var p = document.createElement('span'); p.className = 'pill ' + pillCls; p.textContent = label; ttl.appendChild(p);
+      var acts = card.querySelector('summary .acts'); acts.innerHTML = '<span class="hint">Moves to Handled tonight</span>';
+      card.querySelector('.body .acts') && (card.querySelector('.body .acts').innerHTML = '<span class="hint" style="color:var(--faint);font-size:12.5px">Undo is available until tonight.</span>');
+    }
+    document.querySelectorAll('[data-done]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); settle(b, 'Done · checking next pass', 'push'); }); });
+    document.querySelectorAll('[data-ignore]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); settle(b, 'Left as is', 'stale'); }); });
+    document.querySelectorAll('[data-later]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); settle(b, 'Snoozed until tomorrow', 'stale'); }); });
+    // keep summary buttons from toggling the details
+    document.querySelectorAll('.change > summary .btn').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); }); });
+
+    // ---- check now (mock) ----
+    var cn = document.getElementById('checknow');
+    cn.addEventListener('click', function () { cn.textContent = 'Checking…'; cn.disabled = true; setTimeout(function () { cn.textContent = 'Checked just now'; setTimeout(function () { cn.textContent = 'Check now'; cn.disabled = false; }, 1500); }, 1200); });
+
+    // ---- toggles ----
+    document.querySelectorAll('.toggle').forEach(function (t) { t.addEventListener('click', function () { t.classList.toggle('on'); t.lastChild.nodeValue = t.classList.contains('on') ? 'On' : 'Off'; }); });
+  })();
+</script>
+</body>
+</html>

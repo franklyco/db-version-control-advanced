@@ -214,9 +214,16 @@ class AgencyControlEnrollmentReceiptTest extends WP_UnitTestCase
         $summary = (new EventStore())->sequence_summary();
         $this->assertSame(['environment_id' => 'a-prod', 'installation_epoch' => $a['epoch'], 'received' => 3, 'max_sequence' => 12, 'gaps' => 9, 'pending_routing' => 0], $summary[0]);
 
+        (new EnvironmentRegistry())->update('a-prod', ['last_inbox_poll_at' => null]);
         $capabilities = rest_do_request(new WP_REST_Request('GET', '/dbvc-agency/v1/capabilities'));
         $this->assertSame(200, $capabilities->get_status());
         $this->assertSame('a-prod', $capabilities->get_data()['environment_id']);
+        // CR-4d: any authenticated machine call is a heartbeat; a second call inside the
+        // throttle window writes nothing.
+        $touched = (new EnvironmentRegistry())->find('a-prod');
+        $this->assertNotEmpty($touched['last_inbox_poll_at'], 'The poll time is recorded on a non-inbox route.');
+        $this->assertSame($touched['last_inbox_poll_at'], $touched['last_seen_at']);
+        $this->assertFalse((new EnvironmentRegistry())->touch_poll($touched), 'Throttled: no second write within a minute.');
         $this->assertSame(['receipt' => true, 'inbox' => true, 'release_payloads' => true, 'prepare' => true, 'apply' => true], $capabilities->get_data()['capabilities']);
     }
 

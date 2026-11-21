@@ -43,6 +43,13 @@ final class Protocol
     public const MAX_PULL_FILE_BYTES = 26214400;
     /** A prepare receipt describes target state at one moment; it expires and is never permission to write. */
     public const PREPARE_RECEIPT_TTL_SECONDS = 3600;
+    /**
+     * Largest prepare receipt the hub stores (CR-1). A receipt that carries
+     * rendered before/after values can grow with the objects it describes; the
+     * connector drops the values (keeping hashes and paths) rather than send a
+     * receipt over this bound, and the hub rejects anything larger with 413.
+     */
+    public const MAX_RECEIPT_BYTES = 1048576;
 
     public const OUTCOME_ACCEPTED = 'accepted';
     public const OUTCOME_DUPLICATE = 'duplicate';
@@ -72,6 +79,7 @@ final class Protocol
                 'max_media_file_bytes' => self::MAX_MEDIA_FILE_BYTES,
                 'max_media_total_bytes' => self::MAX_MEDIA_TOTAL_BYTES,
                 'prepare_receipt_ttl_seconds' => self::PREPARE_RECEIPT_TTL_SECONDS,
+                'max_receipt_bytes' => self::MAX_RECEIPT_BYTES,
             ],
             'domains' => ObservationEvent::DOMAINS,
             'canonicalizer_version' => Canonicalizer::VERSION,

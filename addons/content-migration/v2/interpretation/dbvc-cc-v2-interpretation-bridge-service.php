@@ -32,6 +32,19 @@ if (! defined('WPINC')) {
 final class DBVC_CC_V2_Interpretation_Bridge_Service
 {
     /**
+     * Head fields offered to the interpreter, by `page-artifact.v1#metadata` key, under the fixed
+     * item ids the mapping index joins on. Every scalar head field a page carries is mappable
+     * content; offering only title and description is why `meta:_seo_robots` could never be
+     * reached (V3 guide §6.1c).
+     */
+    public const HEAD_META_ITEMS = [
+        'title' => 'head:title',
+        'description' => 'head:description',
+        'robots' => 'head:robots',
+        'canonical' => 'head:canonical',
+    ];
+
+    /**
      * Core post fields every post-type object can receive, with the purpose text the interpreter
      * reads. The purposes are written for a model, not for a UI: they say what the field is FOR,
      * because that is the signal lexical overlap could not use.
@@ -128,7 +141,18 @@ final class DBVC_CC_V2_Interpretation_Bridge_Service
             );
         }
 
-        $schema = $this->build_target_schema($catalog, $object_key);
+        $collection_keys = isset($options['collection_object_keys']) && is_array($options['collection_object_keys'])
+            ? $options['collection_object_keys']
+            : [];
+        $schema = $this->build_target_schema($catalog, $object_key, $collection_keys);
+        $options['collection_object_keys'] = array_values(array_filter(
+            array_map(
+                static function ($object) {
+                    return (string) ($object['object_key'] ?? '');
+                },
+                array_slice($schema['objects'] ?? [], 1)
+            )
+        ));
         $schema_errors = DBVC_CC_Interp_Contracts::validate_schema($schema);
         if ($schema_errors !== []) {
             return new WP_Error(
@@ -179,17 +203,71 @@ final class DBVC_CC_V2_Interpretation_Bridge_Service
     /**
      * Adapt `target-field-catalog.v2` into `corpus-target-schema.v1`.
      *
-     * Only the object the page routes to is included. Handing the interpreter every object on the
-     * site would inflate the prompt, and the budget ceiling in the model client exists precisely
-     * because a 150-page run must not quietly become a five-figure bill.
+     * The object the page routes to comes first, as one record per URL. After it come the
+     * collection objects the caller offers — the classifier's other post-type candidates — each
+     * declared `one_or_many_per_source_url`, because the catalog knows an object's fields but not
+     * how often it appears on a page (D-19). Handing the interpreter every object on the site
+     * would inflate the prompt, and the budget ceiling in the model client exists precisely
+     * because a 150-page run must not quietly become a five-figure bill; the classifier's short
+     * list is the bound.
+     *
+     * A hierarchical object is never a collection: a page is the URL it lives at.
      *
      * @param array<string, mixed> $catalog
      * @param string               $object_key
+     * @param array<int, string>   $collection_keys
      * @return array<string, mixed>
      */
-    public function build_target_schema(array $catalog, $object_key)
+    public function build_target_schema(array $catalog, $object_key, array $collection_keys = [])
     {
         $object_key = sanitize_key((string) $object_key);
+        $object_catalog = isset($catalog['object_catalog']) && is_array($catalog['object_catalog'])
+            ? $catalog['object_catalog']
+            : [];
+
+        $objects = [$this->build_schema_object($catalog, $object_key, DBVC_CC_Interp_Contracts::CARDINALITY_ONE_PER_SOURCE_URL)];
+        foreach ($collection_keys as $collection_key) {
+            $collection_key = sanitize_key((string) $collection_key);
+            $entry = isset($object_catalog[$collection_key]) && is_array($object_catalog[$collection_key])
+                ? $object_catalog[$collection_key]
+                : null;
+            if ($entry === null || $collection_key === $object_key || $collection_key === 'page' || ! empty($entry['hierarchical'])) {
+                continue;
+            }
+            if (($entry['type_family'] ?? 'post_type') !== 'post_type') {
+                continue;
+            }
+            $objects[$collection_key] = $this->build_schema_object(
+                $catalog,
+                $collection_key,
+                DBVC_CC_Interp_Contracts::CARDINALITY_ONE_OR_MANY_PER_SOURCE_URL
+            );
+        }
+
+        return [
+            'schema' => DBVC_CC_Interp_Contracts::SCHEMA_TYPE,
+            'name' => isset($catalog['domain']) ? (string) $catalog['domain'] : '',
+            'generated_at' => gmdate('c'),
+            'field_ref_format' => 'core:<wp_field> | acf:<group>:<field> | meta:post:<subtype>:<key>',
+            'source' => [
+                'artifact_type' => isset($catalog['artifact_type']) ? (string) $catalog['artifact_type'] : '',
+                'catalog_fingerprint' => isset($catalog['catalog_fingerprint'])
+                    ? (string) $catalog['catalog_fingerprint']
+                    : '',
+            ],
+            'objects' => array_values($objects),
+            'taxonomies' => [],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $catalog
+     * @param string               $object_key
+     * @param string               $cardinality
+     * @return array<string, mixed>
+     */
+    private function build_schema_object(array $catalog, $object_key, $cardinality)
+    {
         $object_catalog = isset($catalog['object_catalog']) && is_array($catalog['object_catalog'])
             ? $catalog['object_catalog']
             : [];
@@ -216,28 +294,13 @@ final class DBVC_CC_V2_Interpretation_Bridge_Service
         );
 
         return [
-            'schema' => DBVC_CC_Interp_Contracts::SCHEMA_TYPE,
-            'name' => isset($catalog['domain']) ? (string) $catalog['domain'] : '',
-            'generated_at' => gmdate('c'),
-            'field_ref_format' => 'core:<wp_field> | acf:<group>:<field> | meta:post:<subtype>:<key>',
-            'source' => [
-                'artifact_type' => isset($catalog['artifact_type']) ? (string) $catalog['artifact_type'] : '',
-                'catalog_fingerprint' => isset($catalog['catalog_fingerprint'])
-                    ? (string) $catalog['catalog_fingerprint']
-                    : '',
-            ],
-            'objects' => [
-                [
-                    'object_key' => $object_key,
-                    'type_family' => isset($entry['type_family']) ? (string) $entry['type_family'] : 'post_type',
-                    'label' => isset($entry['label']) ? (string) $entry['label'] : $object_key,
-                    'content_model' => isset($entry['content_model']) ? (string) $entry['content_model'] : '',
-                    'entity_role' => isset($entry['entity_role']) ? (string) $entry['entity_role'] : '',
-                    'cardinality' => 'one_per_source_url',
-                    'fields' => $fields,
-                ],
-            ],
-            'taxonomies' => [],
+            'object_key' => $object_key,
+            'type_family' => isset($entry['type_family']) ? (string) $entry['type_family'] : 'post_type',
+            'label' => isset($entry['label']) ? (string) $entry['label'] : $object_key,
+            'content_model' => isset($entry['content_model']) ? (string) $entry['content_model'] : '',
+            'entity_role' => isset($entry['entity_role']) ? (string) $entry['entity_role'] : '',
+            'cardinality' => (string) $cardinality,
+            'fields' => $fields,
         ];
     }
 
@@ -364,7 +427,7 @@ final class DBVC_CC_V2_Interpretation_Bridge_Service
         $metadata = isset($raw['metadata']) && is_array($raw['metadata']) ? $raw['metadata'] : [];
         $items = [];
 
-        foreach (['title' => 'head:title', 'description' => 'head:description'] as $key => $item_id) {
+        foreach (self::HEAD_META_ITEMS as $key => $item_id) {
             $value = isset($metadata[$key]) ? trim((string) $metadata[$key]) : '';
             if ($value === '') {
                 continue;
@@ -479,14 +542,28 @@ final class DBVC_CC_V2_Interpretation_Bridge_Service
      */
     private function field_purpose(array $entry)
     {
-        // `description` is last because it is the least curated of the five, but it is the only
-        // one a plainly registered post meta key or an ACF field description ever carries, and
-        // the live catalog is full of both. Without it those fields reach the model with a label
-        // and nothing else, which is the lexical signal the slice exists to stop relying on.
-        foreach (['resolved_purpose', 'effective_purpose', 'purpose', 'default_purpose', 'description'] as $key) {
-            if (! empty($entry[$key]) && is_string($entry[$key])) {
-                return (string) $entry[$key];
+        // An ACF field entry carries its resolved purpose under `field_context`, where the catalog
+        // writes it; a meta entry carries it at the top level. Reading only the top level was
+        // D-27: every ACF field reached the model as a bare label, on every target.
+        $sources = [$entry];
+        if (isset($entry['field_context']) && is_array($entry['field_context'])) {
+            $sources[] = $entry['field_context'];
+        }
+
+        foreach (['resolved_purpose', 'effective_purpose', 'purpose', 'default_purpose'] as $key) {
+            foreach ($sources as $source) {
+                if (! empty($source[$key]) && is_string($source[$key])) {
+                    return (string) $source[$key];
+                }
             }
+        }
+
+        // `description` is last because it is the least curated, but it is the only one a plainly
+        // registered post meta key carries, and the live catalog is full of them. Without it those
+        // fields reach the model with a label and nothing else, which is the lexical signal the
+        // slice exists to stop relying on.
+        if (! empty($entry['description']) && is_string($entry['description'])) {
+            return (string) $entry['description'];
         }
 
         return '';
@@ -499,9 +576,19 @@ final class DBVC_CC_V2_Interpretation_Bridge_Service
      */
     private function group_matches_object(array $group, $object_key)
     {
+        // The catalog records a group's location rules as `object_context`. Reading only the
+        // top-level keys, which nothing writes, was D-27: every group was offered to every object.
+        $context = isset($group['object_context']) && is_array($group['object_context']) ? $group['object_context'] : [];
         $objects = isset($group['object_keys']) && is_array($group['object_keys'])
             ? $group['object_keys']
-            : (isset($group['post_types']) && is_array($group['post_types']) ? $group['post_types'] : []);
+            : (isset($group['post_types']) && is_array($group['post_types'])
+                ? $group['post_types']
+                : (isset($context['post_types']) && is_array($context['post_types']) ? $context['post_types'] : []));
+
+        if ($objects === [] && (! empty($context['taxonomies']) || ! empty($context['options_pages']))) {
+            // Located, but on a taxonomy or an options page: not a field of any post-type object.
+            return false;
+        }
 
         if ($objects === []) {
             // A group with no recorded location is offered rather than hidden. A field the
