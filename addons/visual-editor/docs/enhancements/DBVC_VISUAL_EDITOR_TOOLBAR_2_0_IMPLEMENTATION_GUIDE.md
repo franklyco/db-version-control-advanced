@@ -32,7 +32,9 @@ Existing frontend status UI:
   - `state.fieldIndexOpenSections`
   - `state.fieldIndexOpenItems`
   - `state.fieldIndexScrollTop`
-- `renderStatusBarMeta()` renders marker count, `Review fields`, filters, grouped field index rows, `Locate`, and `Open`
+  - `state.fieldIndexSearch` (text search term; the open/scroll state from before a search is held in `state.fieldIndexSearchSnapshot` and restored when it is cleared)
+- `renderStatusBarMeta()` renders marker count, `Review fields`, the field search box, filters, grouped field index rows, `Locate`, and `Open`
+- Review fields search (post-2.4.0): a labelled `type="search"` box above the scrolling list, focused on open, ANDed with the category chip (chip counts are per-chip search matches); matches label, source line, field name, owner, and group/section/subgroup headings, case- and accent-insensitively, every word required; a term change expands matching sections and items, clearing restores the earlier state; the term persists across close/reopen for the page; `Escape` in the box clears a term before it closes the popover; the settled result count goes to the toolbar live region
 - statusbar click actions use `data-dbvc-ve-statusbar-action`
 - `.dbvc-ve-panel` remains the actual field editor and collection editor
 - connected-items search currently depends on descriptor-scoped `ReferenceSearchController`
@@ -353,7 +355,7 @@ Required:
 - active/toggled buttons use `aria-pressed` or `aria-expanded`
 - popovers have heading text and `role="dialog"` or a documented non-modal pattern
 - focus moves into search popovers on open and returns to the triggering button on close
-- `Escape` closes popovers before it clears selected markers
+- `Escape` closes popovers before it clears selected markers (in the Review fields search box, a non-empty term is cleared first)
 - keyboard users can reach field index rows, object search rows, and global collection controls
 - reduced-motion users do not get animated dock/panel movement
 
