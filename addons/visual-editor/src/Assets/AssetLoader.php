@@ -861,6 +861,17 @@ final class AssetLoader
                     'fieldIndexFilterRelated' => __('Related', 'dbvc'),
                     'fieldIndexFilterInspect' => __('Inspect-only', 'dbvc'),
                     'fieldIndexNoFilterResults' => __('No marked fields match this filter.', 'dbvc'),
+                    'fieldIndexSearchLabel' => __('Search fields', 'dbvc'),
+                    'fieldIndexSearchPlaceholder' => __('Search by label, field name, or owner…', 'dbvc'),
+                    /* translators: {count}: number of matching fields; {term}: the search text. */
+                    'fieldIndexSearchResults' => __('{count} fields match “{term}”.', 'dbvc'),
+                    /* translators: {term}: the search text. */
+                    'fieldIndexSearchResultsOne' => __('1 field matches “{term}”.', 'dbvc'),
+                    /* translators: {term}: the search text. */
+                    'fieldIndexSearchNoResults' => __('No marked fields match “{term}”.', 'dbvc'),
+                    /* translators: {term}: the search text. */
+                    'fieldIndexSearchNoResultsFilter' => __('No marked fields in this filter match “{term}”.', 'dbvc'),
+                    'fieldIndexSearchCleared' => __('Search cleared.', 'dbvc'),
                     'fieldIndexLocate' => __('Locate', 'dbvc'),
                     'fieldIndexOpen' => __('Open', 'dbvc'),
                     'fieldIndexNoFields' => __('No marked fields are available to review.', 'dbvc'),

@@ -881,6 +881,23 @@
   outline: none;
 }
 
+.dbvc-ve-field-index__search {
+  margin-top: 10px;
+}
+
+/* Outside the scrolling list, so the box never scrolls away. */
+.dbvc-ve-field-index__search-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-text-dark);
+  font: inherit;
+  box-sizing: border-box;
+}
+
 .dbvc-ve-field-index {
   max-height: min(48vh, 420px);
   margin-top: 10px;
@@ -1159,7 +1176,8 @@
 .dbvc-ve-panel {
   box-sizing: border-box;
   position: fixed;
-  right: 16px;
+  /* UT6.3b: left of a host surface reserved on the right edge. */
+  right: calc(var(--vf-toolbar-inset-right, 0px) + 16px);
   /* 108px without a host toolbar: the strip plus a 32px gap. The script
      positions the open panel; this is its place before that. */
   bottom: calc(var(--dbvc-ve-bottom-clearance) + 32px);
@@ -2960,6 +2978,7 @@ body.dbvc-ve-active .media-modal {
 }
 
 .dbvc-ve-toolbar-object__search,
+.dbvc-ve-field-index__search-input,
 .dbvc-ve-panel__input,
 .dbvc-ve-panel__richtext,
 .dbvc-ve-panel__wysiwyg-host {
@@ -2970,6 +2989,7 @@ body.dbvc-ve-active .media-modal {
 }
 
 .dbvc-ve-toolbar-object__search:focus,
+.dbvc-ve-field-index__search-input:focus,
 .dbvc-ve-panel__input:focus,
 .dbvc-ve-panel__richtext:focus,
 .dbvc-ve-panel__wysiwyg-host:focus-within {
