@@ -537,7 +537,7 @@ final class DBVC_CC_V2_Mapping_Assignment_Service
             'selected_target_ref' => isset($selected_candidate['target_ref']) ? (string) $selected_candidate['target_ref'] : '',
             'selection' => $selection,
             'notes' => isset($content_item['notes']) && is_array($content_item['notes']) ? array_values($content_item['notes']) : [],
-        ];
+        ] + (array_key_exists('entity_ref', $content_item) ? ['entity_ref' => (string) $content_item['entity_ref']] : []);
     }
 
     /**

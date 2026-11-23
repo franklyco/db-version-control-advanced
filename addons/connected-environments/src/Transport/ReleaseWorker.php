@@ -29,6 +29,9 @@ use Dbvc\ConnectedProtocol\Protocol;
  */
 final class ReleaseWorker
 {
+    /** Upper bound on prepare-request pages read in one run (each page is whole requests; see PreparationService::page_requests). */
+    public const MAX_PREPARE_PAGES = 10;
+
     /**
      * @var ObjectStore
      */
@@ -411,13 +414,44 @@ final class ReleaseWorker
      */
     private function serve_prepare_requests($hub_url, array $auth, array $state, array &$summary)
     {
-        $response = HubClient::get_json($hub_url, '/releases/prepare-requests', [], $auth);
-        $summary['http_status'] = $response['status'];
-        if (! $response['ok']) {
-            return $this->transport_failure($response, $summary);
+        // CR-1: the hub pages prepare requests by item count and says `has_more`; a page
+        // carries whole release bodies (plus inline media), so read it with the pull
+        // ceiling rather than the 1 MiB default, and keep polling within one run.
+        $options = ['limit_response_size' => Protocol::MAX_PULL_FILE_BYTES];
+        $summary['prepare_requests'] = 0;
+        for ($page = 0; $page < self::MAX_PREPARE_PAGES; $page++) {
+            $response = HubClient::get_json($hub_url, '/releases/prepare-requests', [], $auth, $options);
+            $summary['http_status'] = $response['status'];
+            if (! $response['ok']) {
+                return $this->transport_failure($response, $summary);
+            }
+            $requests = isset($response['body']['requests']) && is_array($response['body']['requests']) ? $response['body']['requests'] : [];
+            $summary['prepare_requests'] += count($requests);
+            $stored_before = (int) ($summary['receipts_stored'] ?? 0);
+            $error = $this->serve_prepare_page($requests, $hub_url, $auth, $state, $summary);
+            if ($error !== null) {
+                return $error;
+            }
+            // Stop when the hub says so, or when a page produced nothing new (every request on
+            // it was already prepared locally) — the next page would be the same requests again.
+            if (empty($response['body']['has_more']) || $requests === [] || (int) ($summary['receipts_stored'] ?? 0) === $stored_before) {
+                break;
+            }
         }
-        $requests = isset($response['body']['requests']) && is_array($response['body']['requests']) ? $response['body']['requests'] : [];
-        $summary['prepare_requests'] = count($requests);
+
+        return null;
+    }
+
+    /**
+     * @param array<int, mixed>    $requests
+     * @param string               $hub_url
+     * @param array<string, mixed> $auth
+     * @param array<string, mixed> $state
+     * @param array<string, mixed> $summary
+     * @return string|null
+     */
+    private function serve_prepare_page(array $requests, $hub_url, array $auth, array $state, array &$summary)
+    {
         foreach ($requests as $request) {
             if (! is_array($request) || empty($request['operation_id']) || ! is_array($request['release'] ?? null)) {
                 continue;

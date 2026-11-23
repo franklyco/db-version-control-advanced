@@ -136,7 +136,7 @@ class AgencyControlFrameworkTest extends WP_UnitTestCase
         $this->assertSame('dbvc_agency_projection_absent', $service->publish($from)->get_error_code());
 
         $this->report('a-prod', [$this->class('class-x', 'x1')]);
-        (new EnvironmentRegistry())->update('a-prod', ['last_contact_at' => '2000-01-01 00:00:00']);
+        (new EnvironmentRegistry())->update('a-prod', ['last_contact_at' => '2000-01-01 00:00:00', 'last_inbox_poll_at' => null]);
         $this->assertSame('dbvc_agency_environment_stale', $service->publish($from)->get_error_code());
 
         $this->report('a-prod', [$this->class('class-x', 'x1')]);
@@ -240,7 +240,7 @@ class AgencyControlFrameworkTest extends WP_UnitTestCase
         $service->adopt_version($subscription_id, '1.1');
         $this->report('a-prod', [$this->class('class-x', 'v11')]);
         $this->assertSame('clean', $this->row($status->status('a-prod'))['drift']);
-        (new EnvironmentRegistry())->update('a-prod', ['last_contact_at' => '2000-01-01 00:00:00']);
+        (new EnvironmentRegistry())->update('a-prod', ['last_contact_at' => '2000-01-01 00:00:00', 'last_inbox_poll_at' => null]);
         $row = $this->row($status->status('a-prod'));
         $this->assertSame('unknown', $row['drift']);
         $this->assertContains('stale', $row['reasons']);

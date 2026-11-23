@@ -35,7 +35,7 @@ final class BricksComponentObserver extends BricksOptionCollectionObserver
      */
     protected function project_member(array $entry, array $volatile)
     {
-        $tokenized = ReferenceTokens::tokenize($entry, $this->bricks_class_id_to_name(), $this->bricks_component_id_to_name());
+        $tokenized = ReferenceTokens::tokenize($entry, $this->bricks_class_id_to_name(), $this->bricks_component_id_to_name(), $this->bricks_template_id_to_uid());
 
         return Canonicalizer::project($tokenized, $volatile);
     }
@@ -63,7 +63,7 @@ final class BricksComponentObserver extends BricksOptionCollectionObserver
      */
     public function prepare_body_for_apply(array $after)
     {
-        return ReferenceTokens::detokenize($after, $this->bricks_class_name_to_id(), $this->bricks_component_name_to_id());
+        return ReferenceTokens::detokenize($after, $this->bricks_class_name_to_id(), $this->bricks_component_name_to_id(), $this->bricks_template_uid_to_id());
     }
 
     /**

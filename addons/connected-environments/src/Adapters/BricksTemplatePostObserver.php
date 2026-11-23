@@ -77,7 +77,9 @@ final class BricksTemplatePostObserver extends PostTypeObserver
         // content-hash token (its bytes ride the media channel; see collect_transport_media).
         $data = BricksMediaReferences::tokenize($data);
 
-        return ReferenceTokens::tokenize($data, $this->bricks_class_id_to_name(), $this->bricks_component_id_to_name());
+        // Template elements reference another template by local post id (the 2026-11-20
+        // real-pair report: `settings.template: 84292 → 84306`); key them by vf_object_uid.
+        return ReferenceTokens::tokenize($data, $this->bricks_class_id_to_name(), $this->bricks_component_id_to_name(), $this->bricks_template_id_to_uid());
     }
 
     /**
@@ -91,7 +93,7 @@ final class BricksTemplatePostObserver extends PostTypeObserver
     {
         $body = BricksMediaReferences::detokenize($body);
 
-        return ReferenceTokens::detokenize($body, $this->bricks_class_name_to_id(), $this->bricks_component_name_to_id());
+        return ReferenceTokens::detokenize($body, $this->bricks_class_name_to_id(), $this->bricks_component_name_to_id(), $this->bricks_template_uid_to_id());
     }
 
     /**
@@ -104,7 +106,7 @@ final class BricksTemplatePostObserver extends PostTypeObserver
      */
     public function collect_transport_media(array $body)
     {
-        $base = MediaReferences::collect_for_transport($body);
+        $base = parent::collect_transport_media($body);
         $bricks = BricksMediaReferences::collect_for_transport($body);
         $media = $base['media'];
         $seen = [];
@@ -125,19 +127,26 @@ final class BricksTemplatePostObserver extends PostTypeObserver
     }
 
     /**
-     * Recursively remove the Bricks builder preview keys from any node.
+     * Recursively remove the Bricks builder preview keys from any node, and the
+     * query-loop cache stamp (`settings.query.signature` / `.time`) Bricks rewrites
+     * on every builder save: both are per-site editor state, not design (the
+     * 2026-11-20 real-pair dry run showed the stamp on 44 of 87 "changed" templates).
      *
      * @param array<string, mixed> $data
+     * @param string|int           $parent The key this node sits under.
      * @return array<string, mixed>
      */
-    private static function strip_editor_preview(array $data)
+    private static function strip_editor_preview(array $data, $parent = '')
     {
         $out = [];
         foreach ($data as $key => $value) {
             if ($key === 'templatePreviewPostId' || $key === 'templatePreviewType') {
                 continue;
             }
-            $out[$key] = is_array($value) ? self::strip_editor_preview($value) : $value;
+            if ($parent === 'query' && ($key === 'signature' || $key === 'time')) {
+                continue;
+            }
+            $out[$key] = is_array($value) ? self::strip_editor_preview($value, $key) : $value;
         }
 
         return $out;

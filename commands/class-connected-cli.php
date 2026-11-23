@@ -108,6 +108,142 @@ if (! class_exists('DBVC_Connected_CLI_Inspector')) {
 		}
 
 		/**
+		 * CR-5 hubless file mode, export half: this site's recorded objects as one JSON bundle.
+		 *
+		 * @param array $assoc_args domains (csv), out (path), force (bool)
+		 * @return array|WP_Error
+		 */
+		public static function objects_export(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$bundle = (new \Dbvc\Connected\Inspection\FileComparison())->export(self::csv_list($assoc_args['domains'] ?? ''));
+			if (is_wp_error($bundle)) {
+				return $bundle;
+			}
+			$out = (string) ($assoc_args['out'] ?? '');
+			if ($out === '') {
+				return $bundle;
+			}
+			$written = self::write_file($out, (string) wp_json_encode($bundle, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), ! empty($assoc_args['force']));
+			if (is_wp_error($written)) {
+				return $written;
+			}
+
+			return [
+				'written' => $out,
+				'bytes' => $written,
+				'objects' => count($bundle['objects']),
+				'skipped' => (int) $bundle['skipped'],
+				'domains' => $bundle['domains'],
+				'exported_at' => $bundle['exported_at'],
+			];
+		}
+
+		/**
+		 * CR-5 hubless file mode, compare half: an exported bundle against this site's recorded objects.
+		 *
+		 * @param array $assoc_args file (path, required), domains (csv), values (bool, default on), max_paths
+		 * @return array|WP_Error The comparison; `markdown` holds the rendered report.
+		 */
+		public static function compare_file(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$file = (string) ($assoc_args['file'] ?? '');
+			if ($file === '') {
+				return new WP_Error('dbvc_connected_file_missing', 'Name the export file to compare.');
+			}
+			if (! is_file($file) || ! is_readable($file)) {
+				return new WP_Error('dbvc_connected_file_missing', 'Export file not found or unreadable: ' . $file);
+			}
+			$decoded = json_decode((string) file_get_contents($file), true);
+			if (! is_array($decoded)) {
+				return new WP_Error('dbvc_connected_file_format', 'Export file is not valid JSON: ' . $file);
+			}
+			$options = ['domains' => self::csv_list($assoc_args['domains'] ?? ''), 'values' => ! array_key_exists('values', $assoc_args) || self::truthy($assoc_args['values'])];
+			if (isset($assoc_args['max_paths'])) {
+				$options['max_paths'] = self::bounded_integer($assoc_args['max_paths'], 1, \Dbvc\ConnectedProtocol\BodyDiff::DEFAULT_MAX_PATHS);
+			}
+			$result = (new \Dbvc\Connected\Inspection\FileComparison())->compare($decoded, $options);
+			if (is_wp_error($result)) {
+				return $result;
+			}
+			if ((string) ($assoc_args['design_review'] ?? '') !== '') {
+				// CR-6: a Design Review export annotates the rows it knows about; ids resolve here.
+				$review = self::read_design_review((string) $assoc_args['design_review']);
+				if (is_wp_error($review)) {
+					return $review;
+				}
+				$annotated = \Dbvc\ConnectedProtocol\DesignReviewAnnotation::annotate($result['items'], $review, (new \Dbvc\Connected\Inspection\DesignReviewResolver())->uid_map($review));
+				$result['items'] = $annotated['items'];
+				$result['design_review'] = $annotated['summary'];
+			}
+			$result['markdown'] = \Dbvc\Connected\Inspection\FileComparison::render_markdown($result);
+
+			return $result;
+		}
+
+		/**
+		 * Read a `vf-design-review/1` export file (CR-6).
+		 *
+		 * @param string $file
+		 * @return array|WP_Error
+		 */
+		public static function read_design_review($file) {
+			if (! is_file($file) || ! is_readable($file)) {
+				return new WP_Error('dbvc_connected_design_review_missing', 'Design Review export not found or unreadable: ' . $file);
+			}
+			$decoded = json_decode((string) file_get_contents($file), true);
+			$review = is_array($decoded) ? \Dbvc\ConnectedProtocol\DesignReviewAnnotation::read($decoded) : null;
+			if ($review === null) {
+				return new WP_Error('dbvc_connected_design_review_format', 'Not a ' . \Dbvc\ConnectedProtocol\DesignReviewAnnotation::FORMAT . ' export: ' . $file);
+			}
+
+			return $review;
+		}
+
+		/**
+		 * @param mixed $value
+		 * @return array<int, string>
+		 */
+		private static function csv_list($value) {
+			return array_values(array_filter(array_map('trim', explode(',', (string) $value)), 'strlen'));
+		}
+
+		/**
+		 * @param mixed $value
+		 * @return bool
+		 */
+		private static function truthy($value) {
+			return $value === true || in_array(strtolower((string) $value), ['1', 'true', 'yes', 'on'], true);
+		}
+
+		/**
+		 * @param string $path
+		 * @param string $contents
+		 * @param bool $force Overwrite an existing file.
+		 * @return int|WP_Error Bytes written.
+		 */
+		private static function write_file($path, $contents, $force) {
+			if (file_exists($path) && ! $force) {
+				return new WP_Error('dbvc_connected_file_exists', 'Refusing to overwrite ' . $path . ' (pass --force).');
+			}
+			$dir = dirname($path);
+			if (! is_dir($dir) || ! is_writable($dir)) {
+				return new WP_Error('dbvc_connected_file_unwritable', 'Directory not writable: ' . $dir);
+			}
+			$bytes = file_put_contents($path, $contents);
+			if ($bytes === false) {
+				return new WP_Error('dbvc_connected_file_unwritable', 'Could not write ' . $path);
+			}
+
+			return (int) $bytes;
+		}
+
+		/**
 		 * @param array $assoc_args
 		 * @return array|WP_Error
 		 */
@@ -565,6 +701,121 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function objects($args, $assoc_args) {
 			unset($args);
 			$this->emit_rows(DBVC_Connected_CLI_Inspector::objects($assoc_args), 'objects', ['domain', 'profile', 'instance_uid', 'storage_key', 'display_name', 'exists', 'complete', 'position', 'observed_sequence', 'semantic_hash'], $assoc_args);
+		}
+
+		/**
+		 * Write this site's recorded objects (canonical bodies from dbvc_ce_objects) as one JSON bundle for a hubless comparison elsewhere (CR-5).
+		 *
+		 * Read-only; nothing leaves the site except the file you move. Run `wp dbvc connected process` first if observations may be pending.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--domains=<domains>]
+		 * : Comma-separated registered domains. Default: every registered domain.
+		 *
+		 * [--out=<path>]
+		 * : Write the bundle to this file (refuses to overwrite without --force). Default: print JSON to stdout.
+		 *
+		 * [--force]
+		 * : Overwrite an existing --out file.
+		 *
+		 * ## EXAMPLES
+		 *
+		 * wp dbvc connected objects-export --out=/tmp/staging-objects.json
+		 * wp dbvc connected objects-export --domains=bricks.global_class,bricks.variable > staging.json
+		 *
+		 * @subcommand objects-export
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function objects_export($args, $assoc_args) {
+			unset($args);
+			$result = DBVC_Connected_CLI_Inspector::objects_export($assoc_args);
+			if (is_wp_error($result)) {
+				WP_CLI::error($result->get_error_message());
+			}
+			if (isset($result['written'])) {
+				WP_CLI::success(sprintf('Wrote %d object(s) to %s (%d bytes%s).', (int) $result['objects'], (string) $result['written'], (int) $result['bytes'], (int) $result['skipped'] > 0 ? sprintf(', %d incomplete or absent row(s) skipped', (int) $result['skipped']) : ''));
+				return;
+			}
+			WP_CLI::line(wp_json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+		}
+
+		/**
+		 * Compare an objects-export bundle from another site against this site's recorded objects and print the change report (CR-5 hubless file mode).
+		 *
+		 * Read-only, no hub, no transport. Objects pair by portable UID, then by display name; each pair is diffed path by path like a prepare receipt. Values are redacted and truncated like receipt values. There is no baseline: a difference says the sites differ, not which one changed.
+		 *
+		 * ## OPTIONS
+		 *
+		 * <file>
+		 * : Path to a bundle written by `wp dbvc connected objects-export`.
+		 *
+		 * [--domains=<domains>]
+		 * : Comma-separated domains to compare. Default: every domain in the file.
+		 *
+		 * [--values=<bool>]
+		 * : Include rendered before/after values (this site → the export). Default: true.
+		 *
+		 * [--max-paths=<number>]
+		 * : Diff rows per object before truncation. Default: 1000.
+		 *
+		 * [--design-review=<file>]
+		 * : A VerticalFramework Design Review export (vf-design-review/1 JSON) whose pin counts and approvals annotate the page and template rows it covers (CR-6). Pages match by this site's UID (ids resolved here), then by title.
+		 *
+		 * [--format=<format>]
+		 * : markdown or json. Default: markdown.
+		 *
+		 * [--out=<path>]
+		 * : Write the report to this file instead of stdout (refuses to overwrite without --force).
+		 *
+		 * [--force]
+		 * : Overwrite an existing --out file.
+		 *
+		 * ## EXAMPLES
+		 *
+		 * wp dbvc connected compare-file /tmp/staging-objects.json
+		 * wp dbvc connected compare-file staging.json --format=json --values=false
+		 *
+		 * @subcommand compare-file
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function compare_file($args, $assoc_args) {
+			$assoc_args['file'] = (string) ($args[0] ?? '');
+			if (isset($assoc_args['max-paths'])) {
+				$assoc_args['max_paths'] = $assoc_args['max-paths'];
+			}
+			if (isset($assoc_args['design-review'])) {
+				$assoc_args['design_review'] = $assoc_args['design-review'];
+			}
+			$format = sanitize_key((string) ($assoc_args['format'] ?? 'markdown'));
+			if (! in_array($format, ['markdown', 'json'], true)) {
+				WP_CLI::error('Format must be markdown or json.');
+			}
+			$result = DBVC_Connected_CLI_Inspector::compare_file($assoc_args);
+			if (is_wp_error($result)) {
+				WP_CLI::error($result->get_error_message());
+			}
+			$markdown = (string) $result['markdown'];
+			unset($result['markdown']);
+			$output = $format === 'json' ? (string) wp_json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : $markdown;
+			$out = (string) ($assoc_args['out'] ?? '');
+			if ($out !== '') {
+				if (file_exists($out) && empty($assoc_args['force'])) {
+					WP_CLI::error('Refusing to overwrite ' . $out . ' (pass --force).');
+				}
+				if (file_put_contents($out, $output) === false) {
+					WP_CLI::error('Could not write ' . $out);
+				}
+				WP_CLI::success(sprintf('%s Report written to %s.', (string) $result['summary'], $out));
+				return;
+			}
+			WP_CLI::line($output);
 		}
 
 		/**

@@ -177,6 +177,22 @@ export default function ExceptionsTable( {
 										item.targetObject?.key ||
 										'Unknown target' }
 								</p>
+								{ item.recordCount ? (
+									<p
+										className="dbvc-cc-v2-table__meta"
+										data-testid="dbvc-cc-v2-exception-record-count"
+										title={ ( item.records || [] )
+											.map( ( record ) => record.label )
+											.join( ', ' ) }
+									>
+										{ item.recordCount } records:{ ' ' }
+										{ ( item.records || [] )
+											.slice( 0, 3 )
+											.map( ( record ) => record.label )
+											.join( ', ' ) }
+										{ item.recordCount > 3 ? '…' : '' }
+									</p>
+								) : null }
 								<p className="dbvc-cc-v2-table__meta">
 									Resolution{ ' ' }
 									{ item.resolutionMode || 'pending' }

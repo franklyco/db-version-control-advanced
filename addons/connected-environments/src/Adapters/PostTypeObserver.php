@@ -3,6 +3,7 @@
 namespace Dbvc\Connected\Adapters;
 
 use Dbvc\Connected\Preparation\MediaReferences;
+use Dbvc\Connected\Preparation\MetaMediaReferences;
 use Dbvc\ConnectedProtocol\Canonicalizer;
 use Dbvc\ConnectedProtocol\DomainObserver;
 
@@ -177,7 +178,21 @@ class PostTypeObserver implements DomainObserver
      */
     public function collect_transport_media(array $body)
     {
-        return MediaReferences::collect_for_transport($body);
+        return MediaReferences::collect_for_hashes(self::post_media_hashes($body));
+    }
+
+    /**
+     * Every content hash a tokenized post body references as media: the string
+     * forms ({@see MediaReferences}) and the id-bearing meta fields
+     * ({@see MetaMediaReferences}). Shared by transport collection and the
+     * dependency ledger so both see the same set.
+     *
+     * @param array<string, mixed> $body Tokenized canonical body.
+     * @return array<int, string> Distinct sha256 hex.
+     */
+    public static function post_media_hashes(array $body)
+    {
+        return array_values(array_unique(array_merge(MediaReferences::tokens_in_body($body), MetaMediaReferences::tokens_in_body($body))));
     }
 
     /**
@@ -406,6 +421,11 @@ class PostTypeObserver implements DomainObserver
         foreach ($ignored as $key) {
             unset($raw_meta[$key]);
         }
+        foreach (array_keys($raw_meta) as $key) {
+            if (self::is_ignored_meta_prefix((string) $key)) {
+                unset($raw_meta[$key]);
+            }
+        }
         // A per-type allow-list narrows the projection to named keys; the excluded
         // keys are out of the sync contract entirely (like ignored keys), not masked,
         // so the projection stays complete.
@@ -454,6 +474,12 @@ class PostTypeObserver implements DomainObserver
         // with content-hash tokens so the projection hash is site-independent
         // (M7). Apply reverses this to local references before writing.
         $data = MediaReferences::tokenize($data);
+
+        // Meta that stores an attachment BY ID (ACF image/file/gallery fields, or
+        // keys the `dbvc_connected_post_media_meta_keys` filter names) is tokenized
+        // the same way, so a re-uploaded-but-identical image does not read as a
+        // content change (2026-11-20 real-pair dry run).
+        $data = MetaMediaReferences::tokenize($data, MetaMediaReferences::media_meta_keys($data['meta'], $this->post_type()));
 
         // Portable cross-object references (M9 slice 6d): a Bricks-aware subclass
         // rewrites embedded global-class/component ids in the element-tree meta to
@@ -509,6 +535,9 @@ class PostTypeObserver implements DomainObserver
         // left as-is so the guarded re-snapshot fails rather than storing a broken
         // reference. Attachments are materialized before this point (M7 step 3b).
         $body = MediaReferences::detokenize($body);
+        // Id-bearing meta tokens are self-describing: resolve them by content hash
+        // with no field knowledge; an unresolvable one stays literal (fails closed).
+        $body = MetaMediaReferences::detokenize($body);
 
         // Reverse cross-object reference tokens to this site's local class/component
         // ids (M9 slice 6d); base: no-op. Runs on every write (apply/compensate/rollback).
@@ -572,13 +601,13 @@ class PostTypeObserver implements DomainObserver
             $ignored = array_values(array_unique($ignored));
         }
         foreach (array_keys($current) as $key) {
-            if (in_array($key, $ignored, true) || ($allow_active && ! isset($allow_lookup[(string) $key])) || array_key_exists($key, $target_meta)) {
+            if (in_array($key, $ignored, true) || self::is_ignored_meta_prefix((string) $key) || ($allow_active && ! isset($allow_lookup[(string) $key])) || array_key_exists($key, $target_meta)) {
                 continue;
             }
             delete_post_meta($post_id, $key);
         }
         foreach ($target_meta as $key => $values) {
-            if (in_array($key, $ignored, true) || ($allow_active && ! isset($allow_lookup[(string) $key]))) {
+            if (in_array($key, $ignored, true) || self::is_ignored_meta_prefix((string) $key) || ($allow_active && ! isset($allow_lookup[(string) $key]))) {
                 continue;
             }
             delete_post_meta($post_id, (string) $key);
@@ -605,6 +634,19 @@ class PostTypeObserver implements DomainObserver
      *
      * @return array<int, string>
      */
+    /**
+     * Meta keys ignored by prefix rather than by name: WordPress's oEmbed cache
+     * (`_oembed_<hash>`, `_oembed_time_<hash>`) is per-site derived state whose
+     * hashed keys cannot be listed (2026-11-20 real-pair dry run: on every page).
+     *
+     * @param string $key
+     * @return bool
+     */
+    public static function is_ignored_meta_prefix($key)
+    {
+        return strpos($key, '_oembed_') === 0;
+    }
+
     public function ignored_meta_keys()
     {
         $ignored = array_merge(self::DEFAULT_IGNORED_META, (array) apply_filters('dbvc_skip_meta_keys', ['_edit_lock', '_edit_last']));

@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change Report Mockups</title>
+<meta name="description" content="Interactive CR-M design mockups for the Connected Environments change report: pair setup, reports list, report detail with the object diff drawer, review decisions, the LocalWP-side tab, notifications and the plain-language label map. Light and dark.">
+<style>
+  :root {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #f6f8fb;
+    --ink: #1a1d24;
+    --muted: #5b6470;
+    --faint: #8a94a6;
+    --line: #dfe3ea;
+    --line-strong: #c9d0da;
+    --accent: #3a52d6;
+    --accent-soft: #e7ebfb;
+    --ok: #1f9d55;        --ok-soft: #e2f4ea;
+    --warn: #b9770a;      --warn-soft: #fbf0da;
+    --push: #2570b8;      --push-soft: #e2eefa;
+    --protected: #6b40e0; --protected-soft: #ece5fc;
+    --stale: #7b8698;     --stale-soft: #eceff3;
+    --fail: #cf3b31;      --fail-soft: #fbe6e4;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(20,25,40,.06), 0 4px 16px rgba(20,25,40,.05);
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #12141a; --surface: #1b1e26; --surface-2: #21252f; --ink: #e8eaef; --muted: #a3acbb; --faint: #7a8496;
+      --line: #2c313d; --line-strong: #3a4150; --accent: #8098ff; --accent-soft: #23294a;
+      --ok: #48c98a; --ok-soft: #163527; --warn: #e0a94a; --warn-soft: #3a2c14; --push: #67aaf0; --push-soft: #14293f;
+      --protected: #a98cff; --protected-soft: #2a2247; --stale: #9aa4b4; --stale-soft: #262b34; --fail: #ef6d63; --fail-soft: #3a1f1d;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #12141a; --surface: #1b1e26; --surface-2: #21252f; --ink: #e8eaef; --muted: #a3acbb; --faint: #7a8496;
+    --line: #2c313d; --line-strong: #3a4150; --accent: #8098ff; --accent-soft: #23294a;
+    --ok: #48c98a; --ok-soft: #163527; --warn: #e0a94a; --warn-soft: #3a2c14; --push: #67aaf0; --push-soft: #14293f;
+    --protected: #a98cff; --protected-soft: #2a2247; --stale: #9aa4b4; --stale-soft: #262b34; --fail: #ef6d63; --fail-soft: #3a1f1d;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  h1,h2,h3 { text-wrap: balance; margin: 0; }
+  a { color: var(--accent); }
+  .mono { font-family: var(--mono); }
+  .tnum { font-variant-numeric: tabular-nums; }
+  code { font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--surface-2); padding: 1px 6px; border-radius: 5px; }
+
+  /* ---- App shell ---- */
+  .app { display: grid; grid-template-columns: 216px 1fr; min-height: 100%; }
+  .rail { background: var(--surface); border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 2px;
+    position: sticky; top: 0; align-self: start; height: 100vh; }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; }
+  .brand .dot { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,var(--accent),#6b40e0); flex: 0 0 auto; }
+  .brand b { font-weight: 700; letter-spacing: -.01em; }
+  .brand small { display:block; color: var(--faint); font-size: 11px; font-weight: 500; }
+  .navitem { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px; color: var(--muted); font-weight: 500; font-size: 13px; cursor: default; border: 1px solid transparent; }
+  .navitem .ic { width: 15px; text-align: center; opacity: .8; }
+  .navitem.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .navitem .new { margin-left: auto; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 999px; }
+  :root[data-theme="dark"] .navitem.active .new, :root:not([data-theme="light"]) .navitem.active .new { color: #12141a; }
+  .rail hr { border: none; border-top: 1px solid var(--line); margin: 10px 4px; }
+  .rail .rolechip { margin-top: auto; font-size: 11px; color: var(--faint); padding: 8px 10px; border-top: 1px solid var(--line); }
+  .rail .rolechip b { color: var(--muted); display: block; font-size: 11.5px; }
+
+  .main { min-width: 0; display: flex; flex-direction: column; }
+  .topbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 22px; border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+  .topbar .env { display:flex; align-items:center; gap:8px; color: var(--muted); font-size: 12.5px; }
+  .topbar .env b { color: var(--ink); font-weight: 600; }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+  .seg button { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; background: transparent; border: 0; padding: 6px 12px; border-radius: 6px; }
+  .seg button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .seg.sm button { font-size: 12px; padding: 4px 10px; }
+  .mockchip { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--warn); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); padding: 3px 9px; border-radius: 999px; }
+  .themebtn { font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); border-radius: 7px; padding: 5px 10px; }
+
+  .wrap { padding: 22px; display: flex; flex-direction: column; gap: 18px; max-width: 1240px; }
+  .screen[hidden] { display: none !important; }
+  .head { display:flex; align-items:flex-start; gap: 14px; flex-wrap: wrap; }
+  .head > div { flex: 1; min-width: 260px; }
+  .head h1 { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+  .head p { margin: 4px 0 0; color: var(--muted); max-width: 72ch; }
+  .head .acts { display:flex; gap: 8px; align-items:center; flex-wrap: wrap; }
+
+  /* ---- Tiles ---- */
+  .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 14px; box-shadow: var(--shadow); cursor: pointer; border-bottom-width: 3px; }
+  .tile[aria-pressed="true"] { border-color: var(--accent); }
+  .tile .n { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .tile .l { font-size: 11.5px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .tile .l span { display:block; color: var(--faint); font-size: 10.5px; }
+  .tile.hl-ok .n { color: var(--ok); } .tile.hl-warn .n { color: var(--warn); } .tile.hl-push .n { color: var(--push); }
+  .tile.hl-protected .n { color: var(--protected); } .tile.hl-stale .n { color: var(--stale); } .tile.hl-fail .n { color: var(--fail); }
+
+  /* ---- Filters / chips ---- */
+  .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .filters .lbl { font-size: 12px; color: var(--faint); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-right: 2px; }
+  .chip { font-size: 12.5px; font-weight: 500; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+  .filters .grow { flex: 1; }
+  .search { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; color: var(--muted); font-size: 12.5px; min-width: 150px; }
+
+  /* ---- Cards / tables ---- */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .card.pad { padding: 18px; }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
+  .card .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .tablewrap { overflow-x: auto; }
+  table.fleet { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 760px; }
+  table.fleet th, table.fleet td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.fleet thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 600; background: var(--surface-2); position: sticky; top: 0; }
+  table.fleet tbody tr:last-child td { border-bottom: 0; }
+  table.fleet tbody tr:hover { background: var(--surface-2); }
+  table.fleet tbody tr.muted td { opacity: .55; }
+  table.fleet tbody tr.sel td { background: var(--accent-soft); }
+  table.fleet td input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
+  .site b { font-weight: 600; }
+  .site small { display:block; color: var(--faint); font-size: 11.5px; }
+  .site .kind { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: middle; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 9px 3px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+  .pill.ok { color: var(--ok); background: var(--ok-soft); }
+  .pill.warn { color: var(--warn); background: var(--warn-soft); }
+  .pill.push { color: var(--push); background: var(--push-soft); }
+  .pill.protected { color: var(--protected); background: var(--protected-soft); }
+  .pill.stale { color: var(--stale); background: var(--stale-soft); }
+  .pill.fail { color: var(--fail); background: var(--fail-soft); }
+  .pill.accent { color: var(--accent); background: var(--accent-soft); }
+  .pill.hollow { background: transparent; border: 1px dashed var(--line-strong); color: var(--faint); }
+  .tech { color: var(--faint); font-size: 11px; font-family: var(--mono); cursor: help; border-bottom: 1px dotted var(--line-strong); }
+
+  .rowact { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  .btn { font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 7px; padding: 6px 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .btn.primary, :root:not([data-theme="light"]) .btn.primary { color: #12141a; }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 9px; }
+  .btn.sm { padding: 4px 9px; font-size: 12px; }
+  .btn.danger { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 40%, transparent); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ---- Notices ---- */
+  .notice { display: flex; gap: 10px; padding: 11px 13px; border-radius: 10px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); align-items: flex-start; }
+  .notice .ic { font-weight: 700; flex: 0 0 auto; }
+  .notice.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); } .notice.warn .ic { color: var(--warn); }
+  .notice.stale { background: var(--stale-soft); border-color: color-mix(in srgb, var(--stale) 35%, transparent); } .notice.stale .ic { color: var(--stale); }
+  .notice.fail { background: var(--fail-soft); border-color: color-mix(in srgb, var(--fail) 30%, transparent); } .notice.fail .ic { color: var(--fail); }
+  .notice.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 30%, transparent); } .notice.ok .ic { color: var(--ok); }
+  .notice.protected { background: var(--protected-soft); border-color: color-mix(in srgb, var(--protected) 25%, transparent); } .notice.protected .ic { color: var(--protected); }
+  .notice .acts { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; }
+  .coverage { display:flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .coverage .k { font-weight: 600; color: var(--ink); }
+
+  /* ---- Forms (policy editor) ---- */
+  .form { display: grid; grid-template-columns: 180px 1fr; gap: 14px 18px; align-items: start; }
+  .form label.k { font-weight: 600; font-size: 13px; padding-top: 7px; }
+  .form label.k small { display:block; font-weight: 500; color: var(--faint); font-size: 11.5px; }
+  .field { display:flex; flex-direction: column; gap: 6px; }
+  .input, select.input { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 10px; max-width: 420px; }
+  .help { color: var(--faint); font-size: 12px; }
+  .pairline { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; }
+  .pairline .arrow { color: var(--faint); font-size: 18px; }
+  .envbox { border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; background: var(--surface-2); min-width: 220px; }
+  .envbox b { display:block; font-size: 13px; } .envbox small { color: var(--muted); font-size: 12px; display:block; }
+  .radios { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; max-width: 720px; }
+  .radios label { display: block; border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; cursor: pointer; background: var(--surface-2); position: relative; }
+  .radios label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .radios input { position: absolute; opacity: 0; pointer-events: none; }
+  .radios b { font-size: 13.5px; display:block; } .radios small { display:block; color: var(--muted); margin-top: 3px; font-size: 12px; }
+  .radios .rec { position:absolute; top: 9px; right: 10px; font-size: 10px; font-weight: 700; letter-spacing: .05em; color: var(--ok); }
+  .checks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 18px; max-width: 720px; }
+  .checks label { display:flex; align-items:center; gap: 8px; font-size: 13px; padding: 5px 0; }
+  .checks input { width: 15px; height: 15px; accent-color: var(--accent); }
+  .checks .obs { margin-left: auto; font-size: 11px; }
+  .toggle { display:inline-flex; align-items:center; gap: 9px; font-size: 13px; }
+  .toggle .sw { width: 34px; height: 20px; border-radius: 999px; background: var(--line-strong); position: relative; flex: 0 0 auto; }
+  .toggle .sw::after { content:""; position:absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
+  .toggle.on .sw { background: var(--ok); } .toggle.on .sw::after { left: 16px; }
+  .formfoot { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--line); }
+  .formfoot .spacer { flex: 1; }
+  .steps { display:grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+  .stepc { border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; background: var(--surface-2); font-size: 12.5px; }
+  .stepc b { display:block; font-size: 13px; } .stepc small { color: var(--muted); }
+  .stepc.done { border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .stepc.done b::before { content: "✓ "; color: var(--ok); }
+  .stepc.todo b::before { content: "○ "; color: var(--faint); }
+
+  /* ---- Bulk bar ---- */
+  .bulk { position: sticky; bottom: 12px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--accent); box-shadow: var(--shadow); z-index: 4; }
+  .bulk b { color: var(--accent); }
+  .bulk .spacer { flex: 1; }
+  .bulk[hidden] { display: none !important; }
+
+  /* ---- Drawer ---- */
+  .layout { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  .layout.open { grid-template-columns: minmax(0,1fr) 480px; }
+  .drawer { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); position: sticky; top: 76px; align-self: start; max-height: calc(100vh - 100px); display: flex; flex-direction: column; }
+  .drawer[hidden] { display: none !important; }
+  .drawer .dhd { padding: 14px 16px; border-bottom: 1px solid var(--line); display:flex; gap: 10px; align-items: flex-start; }
+  .drawer .dhd .t { flex: 1; min-width: 0; }
+  .drawer .dhd h3 { font-size: 15px; font-weight: 700; }
+  .drawer .dhd small { color: var(--muted); font-size: 12px; display:block; }
+  .drawer .dbody { overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .drawer .dfoot { padding: 12px 16px; border-top: 1px solid var(--line); display:flex; gap: 6px; flex-wrap: wrap; }
+  .kv { display:grid; grid-template-columns: 110px 1fr; gap: 4px 10px; font-size: 12.5px; }
+  .kv .k { color: var(--faint); } .kv .v { color: var(--ink); }
+  .hist { font-size: 12px; color: var(--muted); border-left: 2px solid var(--line-strong); padding-left: 10px; }
+  .hist b { color: var(--ink); }
+
+  /* ---- Path diff ---- */
+  .diff { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 12.5px; }
+  .diff .dh { background: var(--surface-2); padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+  .diff .dh .spacer { flex: 1; }
+  .path { border-bottom: 1px solid var(--line); }
+  .path:last-child { border-bottom: 0; }
+  .path .ph { display:flex; align-items:center; gap: 8px; padding: 7px 12px; font-family: var(--mono); font-size: 12px; background: var(--surface); }
+  .path .ph .op { font-family: var(--sans); font-size: 10.5px; font-weight: 700; letter-spacing: .04em; padding: 1px 7px; border-radius: 999px; }
+  .op.chg { background: var(--push-soft); color: var(--push); } .op.add { background: var(--ok-soft); color: var(--ok); } .op.rem { background: var(--fail-soft); color: var(--fail); }
+  .crumbs { display:flex; align-items:center; gap: 4px; flex-wrap: wrap; font-family: var(--sans); font-size: 11.5px; color: var(--muted); }
+  .crumbs .el { background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
+  .crumbs .sep { color: var(--faint); }
+  .vals { display: grid; grid-template-columns: 1fr 1fr; }
+  .vals > div { padding: 7px 12px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; min-width: 0; }
+  .vals .lab { font-family: var(--sans); font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); display:block; margin-bottom: 2px; }
+  .vals .before { background: var(--fail-soft); color: color-mix(in srgb, var(--fail) 70%, var(--ink)); border-right: 1px solid var(--line); }
+  .vals .after { background: var(--ok-soft); color: color-mix(in srgb, var(--ok) 65%, var(--ink)); }
+  .vals .none { color: var(--faint); font-style: italic; background: var(--surface-2); }
+  .redact { background: var(--stale-soft); color: var(--stale); padding: 0 5px; border-radius: 4px; font-style: italic; }
+  .trunc { color: var(--faint); font-style: italic; } .trunc a { font-style: normal; }
+
+  /* ---- Decision badges ---- */
+  .dec { display:inline-flex; align-items:center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
+  .dec.open { color: var(--muted); border-color: var(--line-strong); }
+  .dec.rec { color: var(--push); background: var(--push-soft); }
+  .dec.ver { color: var(--ok); background: var(--ok-soft); }
+  .dec.ign { color: var(--stale); background: var(--stale-soft); }
+  .dec.pro { color: var(--protected); background: var(--protected-soft); }
+  .dec.again { color: var(--warn); background: var(--warn-soft); }
+  .dec.still { color: var(--fail); background: var(--fail-soft); }
+
+  /* ---- Flow diagram ---- */
+  .flows { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  .flow { display:flex; align-items:center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .flow .st { border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 11px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; min-width: 120px; }
+  .flow .st small { display:block; font-weight: 500; color: var(--muted); font-size: 11px; }
+  .flow .st.auto { border-style: dashed; }
+  .flow .ar { color: var(--faint); font-size: 16px; }
+  .flow .ar small { display:block; font-size: 10.5px; color: var(--faint); text-align: center; line-height: 1.1; }
+  .flow .ttl { width: 100%; font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+  .flow .ttl small { font-weight: 500; color: var(--muted); }
+
+  /* ---- Legend ---- */
+  .legend-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; align-items: start; }
+  table.map { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.map th, table.map td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.map thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
+  .own { display: flex; flex-direction: column; gap: 10px; }
+  .owncard { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 13px 14px; background: var(--surface); }
+  .owncard.c1 { border-left-color: var(--ok); } .owncard.c2 { border-left-color: var(--protected); } .owncard.c3 { border-left-color: var(--stale); } .owncard.c4 { border-left-color: var(--warn); }
+  .owncard b { font-size: 13.5px; } .owncard p { margin: 5px 0 0; color: var(--muted); font-size: 12.5px; }
+  .note { font-size: 12px; color: var(--faint); }
+  .qlist { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink); }
+  .qlist li { margin: 4px 0; }
+  .qlist b { color: var(--accent); }
+  .chan { display:grid; grid-template-columns: 1fr auto auto auto; gap: 8px 14px; align-items:center; font-size: 13px; }
+  .chan .h { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 600; }
+  .chan input { width: 15px; height: 15px; accent-color: var(--accent); }
+  .mdbox { font-family: var(--mono); font-size: 12px; white-space: pre; overflow:auto; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--muted); }
+
+  @media (max-width: 1000px) { .layout.open { grid-template-columns: 1fr; } .drawer { position: static; max-height: none; } }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
+    .rail hr, .brand small, .rail .rolechip { display: none; }
+    .tiles { grid-template-columns: repeat(3, 1fr); }
+    .form { grid-template-columns: 1fr; } .radios { grid-template-columns: 1fr; } .checks { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: repeat(2,1fr); } .legend-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 16px; } .tiles { grid-template-columns: repeat(2, 1fr); } .topbar { padding: 12px 16px; }
+    .vals { grid-template-columns: 1fr; } .vals .before { border-right: 0; border-bottom: 1px solid var(--line); }
+    .steps { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .screen { animation: fade .18s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail" aria-label="Hub navigation (illustrative)">
+    <div class="brand"><span class="dot"></span><span><b>DBVC Hub</b><small>Agency control</small></span></div>
+    <div class="navitem"><span class="ic">▤</span> Overview</div>
+    <div class="navitem"><span class="ic">◈</span> Environments</div>
+    <div class="navitem"><span class="ic">⇄</span> Sync</div>
+    <div class="navitem"><span class="ic">≋</span> Compare</div>
+    <div class="navitem"><span class="ic">◇</span> Framework</div>
+    <div class="navitem"><span class="ic">▦</span> Fleet</div>
+    <div class="navitem active"><span class="ic">▣</span> Reports <span class="new">NEW</span></div>
+    <hr>
+    <div class="navitem"><span class="ic">↗</span> Releases</div>
+    <div class="navitem"><span class="ic">⛭</span> Rollouts</div>
+    <div class="navitem"><span class="ic">☰</span> Activity</div>
+    <div class="navitem"><span class="ic">⚙</span> Settings</div>
+    <div class="rolechip"><b>Hub: flourish-hub</b>you are an approver + publisher</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="env">Client <b>Butler Marina</b> · pair <b>butler-staging → butler-local</b></span>
+      <div class="seg" role="tablist" aria-label="Mockup screen">
+        <button role="tab" aria-selected="false" data-screen="setup">1 · Pair setup</button>
+        <button role="tab" aria-selected="false" data-screen="list">2 · Reports</button>
+        <button role="tab" aria-selected="true" data-screen="detail">3 · Report detail</button>
+        <button role="tab" aria-selected="false" data-screen="flows">4 · Decision flows</button>
+        <button role="tab" aria-selected="false" data-screen="local">5 · LocalWP tab</button>
+        <button role="tab" aria-selected="false" data-screen="legend">6 · Labels &amp; settings</button>
+      </div>
+      <button class="themebtn" id="themebtn" type="button">◐ Theme</button>
+      <span class="mockchip">Design mockup · CR-M</span>
+    </div>
+
+    <!-- ========================= SCREEN 1: PAIR SETUP ========================= -->
+    <div class="wrap screen" id="screen-setup" hidden>
+      <div class="head">
+        <div>
+          <h1>Sync policy — Report only</h1>
+          <p>Extends the existing Sync policy editor. One new mode, one explainer, and the clone-setup checklist that must be green before the first report can run.</p>
+        </div>
+        <div class="acts"><button class="btn">Run now</button><button class="btn primary">Save policy</button></div>
+      </div>
+
+      <div class="steps" aria-label="Setup checklist">
+        <div class="stepc done"><b>Staging enrolled on its own</b><small>butler-staging · Cloudways · fresh 4 min ago</small></div>
+        <div class="stepc done"><b>LocalWP enrolled</b><small>butler-local · LocalWP · fresh 18 min ago</small></div>
+        <div class="stepc done"><b>Baseline confirmed</b><small>2026-11-04 16:20 · "copied to staging" · 2,979 objects</small></div>
+        <div class="stepc todo"><b>Values on LocalWP</b><small>off — set on the LocalWP site (see screen 5)</small></div>
+      </div>
+
+      <div class="card pad">
+        <h2>Pair</h2>
+        <div class="sub">Compare always reads the source against the target. For a change report the source is the site being edited.</div>
+        <div class="pairline">
+          <div class="envbox"><b>butler-staging</b><small>source · Cloudways · https://butler.flourishstaging.com</small></div>
+          <span class="arrow">→</span>
+          <div class="envbox"><b>butler-local</b><small>target · LocalWP · https://butler.local</small></div>
+          <button class="btn sm ghost">Swap</button>
+        </div>
+      </div>
+
+      <div class="card pad">
+        <h2>Policy</h2>
+        <div class="sub">Same fields as today; Report only hides the apply-side switches because nothing applies.</div>
+        <div class="form">
+          <label class="k">Mode<small>what the hub does with differences</small></label>
+          <div class="field">
+            <div class="radios" role="radiogroup">
+              <label><input type="radio" name="mode"><b>Manual</b><small>Compare only. You create releases yourself.</small></label>
+              <label><input type="radio" name="mode" checked><span class="rec">RECOMMENDED</span><b>Report only</b><small>Tell me what changed on staging, with the values, every hour. Never apply.</small><span class="tech" title="mode=report">report</span></label>
+              <label><input type="radio" name="mode"><b>Automatic</b><small>Propose, prepare, approve and apply through the guarded pipeline.</small></label>
+            </div>
+            <div class="notice protected"><span class="ic">i</span><span>Report only never approves a release and never writes to butler-local. The LocalWP apply gate stays off. To push a change for real, select items in a report and <b>Create release</b>; that goes through prepare → approve → apply like any other release.</span></div>
+          </div>
+
+          <label class="k">Cadence<small>parity tick</small></label>
+          <div class="field"><select class="input"><option>Hourly (recommended)</option><option>Every 15 minutes</option><option>Daily</option><option>Manual (Run now only)</option></select><span class="help">The hub scheduler runs reports in the same tick as parity. Under plain WP-Cron the notification can lag one tick.</span></div>
+
+          <label class="k">Domains<small>what to include</small></label>
+          <div class="field">
+            <div class="checks">
+              <label><input type="checkbox" checked> Pages <span class="tech">wp.post:page</span> <span class="obs pill ok">observed on both</span></label>
+              <label><input type="checkbox" checked> Bricks templates <span class="tech">wp.post:bricks_template</span> <span class="obs pill ok">observed on both</span></label>
+              <label><input type="checkbox" checked> Global classes <span class="tech">bricks.global_class</span> <span class="obs pill ok">always on</span></label>
+              <label><input type="checkbox" checked> Variables <span class="tech">bricks.variable</span> <span class="obs pill ok">always on</span></label>
+              <label><input type="checkbox" checked> Components <span class="tech">wp.bricks:components</span> <span class="obs pill ok">observed on both</span></label>
+              <label><input type="checkbox"> Posts <span class="tech">wp.post:post</span> <span class="obs pill warn">not opted in on butler-local</span></label>
+              <label><input type="checkbox" checked> Colour palette <span class="tech">wp.bricks:color_palette</span> <span class="obs pill ok">observed on both</span></label>
+              <label><input type="checkbox" disabled> ACF options pages <span class="obs pill hollow">not observable yet</span></label>
+            </div>
+            <span class="help">A domain only reports when both sites observe it. Opt-in lists live on each site's Connected Environments settings.</span>
+          </div>
+
+          <label class="k">Batch size<small>objects per cycle</small></label>
+          <div class="field"><input class="input" value="50" style="max-width:120px"><span class="help">Larger deltas span several cycles; the report shows "n cycles remaining" until complete.</span></div>
+
+          <label class="k">Values in reports<small>set on the target</small></label>
+          <div class="field">
+            <div class="notice warn"><span class="ic">!</span><span><b>Off on butler-local.</b> Reports will show which paths changed and the staging value, but not the LocalWP value. The switch lives on the LocalWP site so the site owner decides what leaves it. <a href="#" data-goto="local">Open on butler-local →</a></span></div>
+          </div>
+
+          <label class="k">Notify<small>channels</small></label>
+          <div class="field"><div class="checks" style="max-width:420px"><label><input type="checkbox" checked> Slack #butler-build (webhook)</label><label><input type="checkbox"> studio@example.com (email)</label></div><span class="help">Per-event toggles are on screen 6.</span></div>
+        </div>
+        <div class="formfoot"><span class="note">Policy revision 3 · last run 11:00 · last note <span class="tech">report_generated</span></span><span class="spacer"></span><button class="btn ghost">Disable</button><button class="btn">Run now</button><button class="btn primary">Save policy</button></div>
+      </div>
+    </div>
+
+    <!-- ========================= SCREEN 2: REPORTS LIST ========================= -->
+    <div class="wrap screen" id="screen-list" hidden>
+      <div class="head">
+        <div><h1>Reports</h1><p>One row per run. A run is "what changed on staging since the agreed starting point", minus anything you already resolved.</p></div>
+        <div class="acts"><button class="btn">Export latest as Markdown</button><button class="btn primary">Run now</button></div>
+      </div>
+      <div class="filters">
+        <span class="lbl">Pair</span><button class="chip" aria-pressed="true">butler-staging → butler-local</button><button class="chip">all pairs</button>
+        <span class="lbl" style="margin-left:10px">State</span><button class="chip" aria-pressed="true">any</button><button class="chip">needs review</button><button class="chip">stale</button><button class="chip">no change</button>
+        <span class="grow"></span><span class="search">Search report…</span>
+      </div>
+      <div class="card"><div class="tablewrap">
+        <table class="fleet">
+          <thead><tr><th>Generated</th><th>Changed on staging</th><th>Both changed</th><th>LocalWP only</th><th>Resolved</th><th>State</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="site"><b>Today 11:00</b><small>run #14 · since baseline 2026-11-04 · 2 releases</small></td><td><b>4</b> <span class="note">2 updated · 1 added · 1 removed</span></td><td><b>1</b></td><td><b>1</b></td><td class="tnum">2 / 8</td><td><span class="pill warn">Needs review</span></td><td><div class="rowact"><button class="btn sm primary" data-goto="detail">Open</button></div></td></tr>
+            <tr><td class="site"><b>Today 10:00</b><small>run #13</small></td><td><b>3</b></td><td><b>0</b></td><td><b>1</b></td><td class="tnum">3 / 4</td><td><span class="pill push">Superseded</span></td><td><div class="rowact"><button class="btn sm">Open</button></div></td></tr>
+            <tr><td class="site"><b>Today 09:00</b><small>run #12 · source re-proposed 2×</small></td><td><b>3</b></td><td><b>0</b></td><td><b>0</b></td><td class="tnum">—</td><td><span class="pill fail">Unstable source</span> <span class="tech" title="staging changed while the payload was uploading, 3 cycles in a row">unstable_source</span></td><td><div class="rowact"><button class="btn sm ghost">Details</button></div></td></tr>
+            <tr><td class="site"><b>Yesterday 23:00</b><small>run #11</small></td><td colspan="3"><span class="note">No comparison — butler-local last seen 03:40, outside the 24 h window</span></td><td class="tnum">—</td><td><span class="pill stale">LocalWP not reporting</span></td><td><div class="rowact"><button class="btn sm ghost">Details</button></div></td></tr>
+            <tr class="muted"><td class="site"><b>Yesterday 18:00</b><small>run #10</small></td><td><b>0</b></td><td><b>0</b></td><td><b>0</b></td><td class="tnum">—</td><td><span class="pill ok">No change</span></td><td></td></tr>
+            <tr><td class="site"><b>Yesterday 17:00</b><small>run #9 · 4 releases · 183 objects</small></td><td><b>180</b></td><td><b>2</b></td><td><b>1</b></td><td class="tnum">183 / 183</td><td><span class="pill ok">Complete</span></td><td><div class="rowact"><button class="btn sm">Open</button></div></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+      <div class="note">Rows are kept for the last 20 runs per pair; the staging bodies behind them are purged 7 days after a run completes. Resolved items are carried forward, so the newest run is always the to-do list.</div>
+    </div>
+
+    <!-- ========================= SCREEN 3: REPORT DETAIL ========================= -->
+    <div class="wrap screen" id="screen-detail">
+      <div class="head">
+        <div>
+          <h1>Report · today 11:00 <span class="tech" title="report_uid">rpt_7f3a…</span></h1>
+          <p>Changes made on <b>butler-staging</b> since the agreed starting point (2026-11-04 16:20), compared with <b>butler-local</b>. Nothing here has been applied anywhere.</p>
+        </div>
+        <div class="acts">
+          <div class="seg sm" role="tablist" aria-label="State variant (mockup only)">
+            <button role="tab" aria-selected="true" data-variant="normal">normal</button>
+            <button role="tab" aria-selected="false" data-variant="stale">stale</button>
+            <button role="tab" aria-selected="false" data-variant="partial">partial</button>
+            <button role="tab" aria-selected="false" data-variant="empty">empty</button>
+            <button role="tab" aria-selected="false" data-variant="error">error</button>
+          </div>
+          <button class="btn">Copy as Markdown</button><button class="btn">Download JSON</button>
+        </div>
+      </div>
+
+      <div class="notice stale" data-only="stale" hidden><span class="ic">◌</span><span><b>butler-local has not reported since 03:40</b> (24 h window). This run made no comparison. Open LocalWP so its connector can deliver, then <b>Run now</b>. The previous complete report is still below.</span><span class="acts"><button class="btn sm">Run now</button></span></div>
+      <div class="notice warn" data-only="partial" hidden><span class="ic">!</span><span><b>Partial — 2 cycles remaining.</b> 50 of 112 changed objects have their diff so far; the rest arrive on the next ticks (batch size 50). Counts below are for the whole comparison; rows without a diff show <i>awaiting diff</i>.</span></div>
+      <div class="notice fail" data-only="error" hidden><span class="ic">×</span><span><b>Unstable source.</b> butler-staging changed while its bodies were uploading, three cycles in a row. The hub withdrew the release each time and will try again next tick. If someone is mid-edit on staging, wait; otherwise check the staging connector's outbox.</span><span class="acts"><button class="btn sm">View outbox</button><button class="btn sm">Run now</button></span></div>
+
+      <div class="tiles" data-hide="empty">
+        <div class="tile hl-push" aria-pressed="true" title="filter"><div class="n tnum">2</div><div class="l">Updated on staging<span>outgoing</span></div></div>
+        <div class="tile hl-ok"><div class="n tnum">1</div><div class="l">Added on staging<span>create</span></div></div>
+        <div class="tile hl-fail"><div class="n tnum">1</div><div class="l">Removed on staging<span>delete</span></div></div>
+        <div class="tile hl-warn"><div class="n tnum">1</div><div class="l">Changed on both<span>conflict</span></div></div>
+        <div class="tile hl-stale"><div class="n tnum">1</div><div class="l">LocalWP only<span>incoming · info</span></div></div>
+        <div class="tile hl-protected"><div class="n tnum">1</div><div class="l">Protected on LocalWP<span>locked · info</span></div></div>
+      </div>
+
+      <div class="coverage" data-hide="empty">
+        <span class="k">As of</span> staging 11:00 (4 min ago) · LocalWP 10:52 (18 min ago)
+        <span class="k" style="margin-left:8px">Coverage</span> <span class="pill ok">pages</span> <span class="pill ok">templates</span> <span class="pill ok">classes</span> <span class="pill ok">variables</span> <span class="pill ok">components</span> <span class="pill warn" title="only staging opted in">posts: staging only</span>
+        <span class="k" style="margin-left:8px">Values</span> <span class="pill warn" title="dbvc_connected_receipt_values off on butler-local">staging only</span>
+        <span class="k" style="margin-left:8px">Decisions</span> 2 of 8 resolved
+      </div>
+
+      <div class="filters" data-hide="empty">
+        <span class="lbl">Show</span><button class="chip" aria-pressed="true">open</button><button class="chip">resolved</button><button class="chip">all</button>
+        <span class="lbl" style="margin-left:10px">Domain</span><button class="chip" aria-pressed="true">all</button><button class="chip">pages</button><button class="chip">templates</button><button class="chip">classes</button><button class="chip">components</button>
+        <span class="grow"></span><span class="search">Search objects…</span>
+        <select class="input" style="padding:5px 9px;font-size:12.5px"><option>Group by: label</option><option>Group by: domain</option><option>Group by: decision</option><option>Sort: changed at</option></select>
+      </div>
+
+      <div class="card pad" data-only="empty" hidden style="text-align:center;padding:40px">
+        <h2>Nothing to review</h2>
+        <div class="sub">butler-staging and butler-local agree on every observed object since the baseline, and no decisions are pending. Next check at 12:00.</div>
+        <button class="btn">Run now</button>
+      </div>
+
+      <div class="layout open" id="layout" data-hide="empty">
+        <div class="card"><div class="tablewrap">
+          <table class="fleet" id="items">
+            <thead><tr><th style="width:34px"><input type="checkbox" aria-label="select all"></th><th>Object</th><th>What happened</th><th>Paths</th><th>Changed at</th><th>Decision</th><th></th></tr></thead>
+            <tbody>
+              <tr class="sel" data-row="services"><td><input type="checkbox" checked aria-label="select"></td><td class="site"><b>Services</b><span class="kind">PAGE</span><small>wp.post:page · <span class="tech" title="instance_uid">9c1e…a4</span> · paired by uid</small></td><td><span class="pill push">Updated on staging</span></td><td class="tnum">7</td><td class="tnum">10:41 <small class="note">by rhett (human)</small></td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm primary" data-drawer="services">Open diff</button><button class="btn sm">Reconciled</button><button class="btn sm ghost">Ignore</button></div></td></tr>
+              <tr data-row="header"><td><input type="checkbox" aria-label="select"></td><td class="site"><b>Header — main</b><span class="kind">TEMPLATE</span><small>wp.post:bricks_template · <span class="tech">f02b…77</span></small></td><td><span class="pill push">Updated on staging</span></td><td class="tnum">3</td><td class="tnum">10:38</td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm primary" data-drawer="header">Open diff</button><button class="btn sm">Reconciled</button><button class="btn sm ghost">Ignore</button></div></td></tr>
+              <tr><td><input type="checkbox" aria-label="select"></td><td class="site"><b>Testimonial card</b><span class="kind">COMPONENT</span><small>wp.bricks:components · <span class="tech">tcard</span> · not on LocalWP</small></td><td><span class="pill ok">Added on staging</span></td><td class="tnum">all</td><td class="tnum">10:12</td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm primary">Open</button><button class="btn sm">Reconciled</button><button class="btn sm ghost">Ignore</button></div></td></tr>
+              <tr><td><input type="checkbox" aria-label="select"></td><td class="site"><b>Old pricing</b><span class="kind">PAGE</span><small>wp.post:page · <span class="tech">31aa…c9</span> · trashed on staging</small></td><td><span class="pill fail">Removed on staging</span></td><td class="tnum">—</td><td class="tnum">09:55</td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm primary">Open</button><button class="btn sm">Reconciled</button><button class="btn sm ghost">Ignore</button></div></td></tr>
+              <tr><td><input type="checkbox" aria-label="select"></td><td class="site"><b>.hero-title</b><span class="kind">CLASS</span><small>bricks.global_class · paired by name</small></td><td><span class="pill warn">Changed on both</span></td><td class="tnum">2</td><td class="tnum">10:20 <small class="note">LocalWP 09:10</small></td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm primary" data-drawer="hero">Open diff</button><button class="btn sm">Reconciled</button><button class="btn sm ghost">Ignore</button></div></td></tr>
+              <tr><td><input type="checkbox" disabled aria-label="not selectable"></td><td class="site"><b>Launch announcement</b><span class="kind">POST</span><small>wp.post:post · staging never had it</small></td><td><span class="pill stale">LocalWP only</span> <span class="note">info · no diff transported</span></td><td class="tnum">—</td><td class="tnum">—</td><td><span class="dec open">Info</span></td><td><div class="rowact"><button class="btn sm ghost">Dismiss</button></div></td></tr>
+              <tr><td><input type="checkbox" disabled aria-label="not selectable"></td><td class="site"><b>Theme style — Default</b><span class="kind">SINGLETON</span><small>wp.bricks:theme_styles</small></td><td><span class="pill protected">Protected on LocalWP</span> <span class="note">approved override</span></td><td class="tnum">1</td><td class="tnum">10:30</td><td><span class="dec open">Info</span></td><td><div class="rowact"><button class="btn sm ghost">View override</button></div></td></tr>
+              <tr class="muted"><td><input type="checkbox" disabled aria-label="resolved"></td><td class="site"><b>About</b><span class="kind">PAGE</span><small>wp.post:page</small></td><td><span class="pill push">Updated on staging</span></td><td class="tnum">2</td><td class="tnum">yesterday</td><td><span class="dec ver">✓ Reconciled · verified 10:00</span></td><td><div class="rowact"><button class="btn sm ghost">History</button></div></td></tr>
+              <tr class="muted"><td><input type="checkbox" disabled aria-label="resolved"></td><td class="site"><b>Contact</b><span class="kind">PAGE</span><small>wp.post:page</small></td><td><span class="pill push">Updated on staging</span></td><td class="tnum">1</td><td class="tnum">yesterday</td><td><span class="dec ign">Ignored · "staging-only form key"</span></td><td><div class="rowact"><button class="btn sm ghost">Reopen</button></div></td></tr>
+            </tbody>
+          </table>
+        </div></div>
+
+        <!-- Drawer -->
+        <aside class="drawer" id="drawer" aria-label="Object diff">
+          <div class="dhd">
+            <div class="t"><h3 id="dr-title">Services <span class="kind" style="font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);padding:1px 6px;border-radius:5px;vertical-align:middle">PAGE</span></h3><small>wp.post:page · <span class="tech">9c1e4b2a-…-a4</span> · paired by uid · <span class="pill push" style="font-size:11px">Updated on staging</span></small></div>
+            <button class="btn sm ghost" id="dr-close" aria-label="Close">✕</button>
+          </div>
+          <div class="dbody">
+            <div class="kv"><span class="k">Staging</span><span class="v">changed 10:41 by rhett · <span class="tech">hash 8e1f…</span></span><span class="k">LocalWP</span><span class="v">unchanged since baseline · <span class="tech">hash 2c90…</span></span><span class="k">Decision</span><span class="v"><span class="dec open">Open</span></span></div>
+            <div class="hist"><b>History</b> · appeared in run #12 (09:00) · diff refreshed run #14</div>
+
+            <div class="diff" id="diff-services">
+              <div class="dh"><b>7 paths</b> changed · <span class="pill warn" style="font-size:11px" title="dbvc_connected_receipt_values is off on butler-local">LocalWP values not included</span><span class="spacer"></span><label class="toggle on" style="font-size:12px"><span class="sw"></span>show unchanged</label></div>
+
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>title</div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>(not included — values off on butler-local)</div><div class="after"><span class="lab">staging</span>Services &amp; Pricing</div></div></div>
+
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>content[2].settings.text <span class="crumbs"><span class="sep">·</span><span class="el">Section</span><span class="sep">›</span><span class="el">Container</span><span class="sep">›</span><span class="el">Heading</span><span class="tech">#brxe-4f1a2b</span></span></div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>(not included)</div><div class="after"><span class="lab">staging</span>Slip rentals, winter storage and a full-service yard — all in one place.</div></div></div>
+
+              <div class="path"><div class="ph"><span class="op add">ADDED</span>content[5] <span class="crumbs"><span class="sep">·</span><span class="el">Section</span><span class="sep">›</span><span class="el">Testimonial card</span><span class="tech">component tcard</span></span></div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>—</div><div class="after"><span class="lab">staging</span>{"name":"component","cid":"dbvc-ref:component:tcard","settings":{…}} <span class="trunc">· 1.4 KB · <a href="#">open on staging</a></span></div></div></div>
+
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>content[7].settings.image.id <span class="crumbs"><span class="sep">·</span><span class="el">Image</span><span class="tech">#brxe-9a0c11</span></span></div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>(not included)</div><div class="after"><span class="lab">staging</span>dbvc-bmedia:3f9c…e2 <span class="trunc">· marina-aerial-v2.jpg · 1.9 MB</span></div></div></div>
+
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>meta.rank_math_description</div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>(not included)</div><div class="after"><span class="lab">staging</span>Butler Marina offers slip rentals, winter storage and a full-service yard on Lake… <span class="trunc">(212 chars)</span></div></div></div>
+
+              <div class="path"><div class="ph"><span class="op rem">REMOVED</span>excerpt</div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>(not included)</div><div class="after none"><span class="lab">staging</span>(absent)</div></div></div>
+
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>meta.booking_api_key</div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>(not included)</div><div class="after"><span class="lab">staging</span><span class="redact">[redacted]</span> <span class="trunc">· key matches the secret pattern</span></div></div></div>
+            </div>
+
+            <div class="diff" id="diff-header" hidden>
+              <div class="dh"><b>3 paths</b> changed · <span class="pill ok" style="font-size:11px">both values</span></div>
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>content[0].settings._cssGlobalClasses[1] <span class="crumbs"><span class="sep">·</span><span class="el">Header</span><span class="sep">›</span><span class="el">Container</span></span></div>
+                <div class="vals"><div class="before"><span class="lab">LocalWP</span>dbvc-ref:class:container-wide</div><div class="after"><span class="lab">staging</span>dbvc-ref:class:container-xl</div></div></div>
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>content[3].settings.text <span class="crumbs"><span class="sep">·</span><span class="el">Nav</span><span class="sep">›</span><span class="el">Button</span><span class="tech">#brxe-c01d3e</span></span></div>
+                <div class="vals"><div class="before"><span class="lab">LocalWP</span>Book a slip</div><div class="after"><span class="lab">staging</span>Reserve a slip</div></div></div>
+              <div class="path"><div class="ph"><span class="op rem">REMOVED</span>content[4] <span class="crumbs"><span class="sep">·</span><span class="el">Nav</span><span class="sep">›</span><span class="el">Text link "Careers"</span></span></div>
+                <div class="vals"><div class="before"><span class="lab">LocalWP</span>{"name":"text-link","settings":{"text":"Careers","link":{…}}}</div><div class="after none"><span class="lab">staging</span>(absent)</div></div></div>
+            </div>
+
+            <div class="diff" id="diff-hero" hidden>
+              <div class="dh"><b>2 paths</b> · <span class="pill warn" style="font-size:11px">changed on both sites</span> · baseline value shown for context</div>
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>settings._typography.font-size</div>
+                <div class="vals"><div class="before"><span class="lab">LocalWP (09:10)</span>clamp(2rem, 4vw, 3.2rem)</div><div class="after"><span class="lab">staging (10:20)</span>clamp(2.2rem, 5vw, 3.6rem)</div></div>
+                <div class="vals"><div class="none" style="grid-column:1/-1"><span class="lab">baseline (agreed 11-04)</span>clamp(2rem, 4vw, 3rem)</div></div></div>
+              <div class="path"><div class="ph"><span class="op chg">CHANGED</span>settings._typography.letter-spacing</div>
+                <div class="vals"><div class="before none"><span class="lab">LocalWP</span>(unchanged) -0.01em</div><div class="after"><span class="lab">staging</span>-0.02em</div></div></div>
+              <div class="notice warn" style="margin:10px 12px"><span class="ic">!</span><span>Both sites edited this class. Pick a side by hand, then mark it <b>Reconciled</b>; or <b>Create release</b> to push staging's version through approve → apply (overwrites LocalWP's edit).</span></div>
+            </div>
+          </div>
+          <div class="dfoot">
+            <button class="btn sm primary" id="dr-rec">Mark reconciled</button>
+            <label class="toggle" style="font-size:12px"><span class="sw"></span>also confirm baseline for this object</label>
+            <span style="flex-basis:100%"></span>
+            <button class="btn sm">Ignore (intentional)</button><button class="btn sm">Select for release</button><button class="btn sm ghost">Copy as Markdown</button><button class="btn sm ghost">Open on staging ↗</button><button class="btn sm ghost">Open on LocalWP ↗</button>
+          </div>
+        </aside>
+      </div>
+
+      <div class="bulk" id="bulk" data-hide="empty"><b>1 selected</b><span class="note">Services</span><span class="spacer"></span><button class="btn sm">Mark reconciled</button><button class="btn sm">Ignore</button><button class="btn sm primary" title="publisher only">Create release from 1 object →</button><button class="btn sm ghost">Clear</button></div>
+      <div class="notice" data-hide="empty"><span class="ic">i</span><span><b>Create release</b> is the only way out of this screen that writes anything, and it only creates an <i>open</i> release in Releases. It still needs the staging connector to seal it, a prepare receipt from butler-local, your approval, and the LocalWP apply gate on. <span class="tech">purpose=release</span>, not <span class="tech">report</span>.</span></div>
+    </div>
+
+    <!-- ========================= SCREEN 4: DECISION FLOWS ========================= -->
+    <div class="wrap screen" id="screen-flows" hidden>
+      <div class="head"><div><h1>Decision flows</h1><p>Every item has a way to leave the list without a merge engine. Dashed boxes are automatic (next parity tick); solid boxes are the operator. Decisions persist per pair + object across runs.</p></div></div>
+
+      <div class="flows">
+        <div class="flow"><div class="ttl">Reconciled <small>— "I ported this to LocalWP by hand"</small></div>
+          <span class="st">Open<small>in report</small></span><span class="ar">→<small>Mark reconciled</small></span>
+          <span class="st"><span class="dec rec">Reconciled</span><small>pending verification</small></span><span class="ar">→<small>next tick compares</small></span>
+          <span class="st auto"><span class="dec ver">✓ Verified</span><small>hashes converged · hidden from "open"</small></span>
+          <span class="ar">or<small>still differs</small></span><span class="st auto"><span class="dec still">Still differs</span><small>reopened with a hint: "3 paths still differ"</small></span>
+        </div>
+        <div class="flow"><div class="ttl">Reconciled + confirm baseline <small>— optional toggle on the same button</small></div>
+          <span class="st">Open</span><span class="ar">→</span><span class="st"><span class="dec rec">Reconciled</span></span><span class="ar">→<small>verified</small></span><span class="st auto"><span class="dec ver">✓ Verified</span><small>+ baseline re-confirmed for this one object</small></span>
+          <span class="note" style="width:100%">Review question (b): is a per-object baseline understandable, or should baseline stay a pair-level operator action in Compare? Mock both; default <b>off</b>.</span>
+        </div>
+        <div class="flow"><div class="ttl">Ignored <small>— "this difference is intentional"</small></div>
+          <span class="st">Open</span><span class="ar">→<small>Ignore + note</small></span>
+          <span class="st"><span class="dec ign">Ignored</span><small>muted in every later run</small></span><span class="ar">→<small>staging hash changes again</small></span>
+          <span class="st auto"><span class="dec again">Changed again</span><small>reopened · note kept</small></span>
+        </div>
+        <div class="flow"><div class="ttl">Promoted <small>— "push staging's version for real"</small></div>
+          <span class="st">Open</span><span class="ar">→<small>Select → Create release</small></span>
+          <span class="st"><span class="dec pro">Promoted</span><small>open release rel_… (existing Releases screen)</small></span><span class="ar">→<small>seal · prepare · approve</small></span>
+          <span class="st">Approve<small>existing approval step · apply gate must be on</small></span><span class="ar">→<small>applied · next tick</small></span>
+          <span class="st auto"><span class="dec ver">✓ Verified</span></span>
+          <span class="ar">or<small>withdrawn / blocked</small></span><span class="st auto"><span class="dec again">Back to open</span></span>
+        </div>
+        <div class="flow"><div class="ttl">Conflict <small>— changed on both</small></div>
+          <span class="st">Open<small>both values + baseline shown</small></span><span class="ar">→</span><span class="st">edit one side by hand</span><span class="ar">→</span><span class="st"><span class="dec rec">Reconciled</span></span><span class="ar">→</span><span class="st auto"><span class="dec ver">✓ Verified</span></span>
+          <span class="note" style="width:100%">Promote on a conflict is allowed but the composer warns: "overwrites LocalWP's edit".</span>
+        </div>
+        <div class="flow"><div class="ttl">Info rows <small>— LocalWP only · Protected</small></div>
+          <span class="st">Info<small>hash-level, no diff transported</small></span><span class="ar">→<small>Dismiss</small></span><span class="st"><span class="dec ign">Dismissed</span><small>until the LocalWP hash changes</small></span>
+        </div>
+      </div>
+
+      <div class="card pad">
+        <h2>Who can do what</h2>
+        <div class="sub">Mirrors the existing route capability map.</div>
+        <table class="map"><thead><tr><th>Action</th><th>Capability</th><th>Writes</th></tr></thead><tbody>
+          <tr><td>View reports, open diffs, export</td><td>approver or publisher</td><td>none</td></tr>
+          <tr><td>Reconciled / Ignore / Dismiss / Reopen (+ optional baseline)</td><td>approver <span class="tech">dbvc_agency_approve</span></td><td>decision row; baseline row when toggled</td></tr>
+          <tr><td>Create release from selection</td><td>publisher <span class="tech">dbvc_agency_publish</span></td><td>an open release (<span class="tech">purpose=release</span>)</td></tr>
+          <tr><td>Run now / policy edit</td><td>publisher</td><td>policy state</td></tr>
+          <tr><td>Values in reports switch</td><td>LocalWP site admin (on LocalWP)</td><td>connector option</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <!-- ========================= SCREEN 5: LOCALWP TAB ========================= -->
+    <div class="wrap screen" id="screen-local" hidden>
+      <div class="notice"><span class="ic">i</span><span>This screen is the <b>connector</b> page on <b>butler-local</b> (DBVC Export → Connected Environments), not the hub. Review question (a): read-only, or with decisions? Both variants below.</span></div>
+      <div class="head">
+        <div><h1>Reports <span class="tech">connector · butler-local</span></h1><p>What changed on butler-staging since the copy, as the hub last computed it (11:00). Fetched read-only from the hub with this site's enrolment.</p></div>
+        <div class="acts"><label class="toggle" id="valtoggle"><span class="sw"></span>Include this site's values in reports</label></div>
+      </div>
+      <div class="notice warn" id="valnotice"><span class="ic">!</span><span><b>Values are off.</b> Reports show which paths changed and the staging value only. Turning this on sends this site's current values for changed paths to the hub inside prepare receipts — redacted here first (DBVC mask list + secret-key patterns, 200 chars per value, 1 MB per receipt). <a href="#">What leaves this site →</a></span></div>
+      <div class="notice ok" id="valnotice-on" hidden><span class="ic">✓</span><span><b>Values are on.</b> Changed paths will show LocalWP and staging side by side from the next report. Masked fields never leave this site.</span></div>
+
+      <div class="tiles">
+        <div class="tile hl-push"><div class="n tnum">2</div><div class="l">Updated on staging</div></div>
+        <div class="tile hl-ok"><div class="n tnum">1</div><div class="l">Added on staging</div></div>
+        <div class="tile hl-fail"><div class="n tnum">1</div><div class="l">Removed on staging</div></div>
+        <div class="tile hl-warn"><div class="n tnum">1</div><div class="l">Changed on both</div></div>
+        <div class="tile hl-stale"><div class="n tnum">1</div><div class="l">Only here</div></div>
+        <div class="tile"><div class="n tnum">2/8</div><div class="l">Resolved</div></div>
+      </div>
+
+      <div class="card"><div class="tablewrap">
+        <table class="fleet">
+          <thead><tr><th>Object</th><th>What happened</th><th>Paths</th><th>Decision</th><th>Read-only variant</th><th>With decisions (variant)</th></tr></thead>
+          <tbody>
+            <tr><td class="site"><b>Services</b><span class="kind">PAGE</span></td><td><span class="pill push">Updated on staging</span></td><td class="tnum">7</td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm">Open diff</button><button class="btn sm ghost">Edit here ↗</button><button class="btn sm ghost">Open on hub ↗</button></div></td><td><div class="rowact"><button class="btn sm">Open diff</button><button class="btn sm ghost">Edit here ↗</button><button class="btn sm primary">Reconciled</button></div></td></tr>
+            <tr><td class="site"><b>Header — main</b><span class="kind">TEMPLATE</span></td><td><span class="pill push">Updated on staging</span></td><td class="tnum">3</td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm">Open diff</button><button class="btn sm ghost">Edit in Bricks ↗</button></div></td><td><div class="rowact"><button class="btn sm">Open diff</button><button class="btn sm ghost">Edit in Bricks ↗</button><button class="btn sm primary">Reconciled</button></div></td></tr>
+            <tr><td class="site"><b>.hero-title</b><span class="kind">CLASS</span></td><td><span class="pill warn">Changed on both</span></td><td class="tnum">2</td><td><span class="dec open">Open</span></td><td><div class="rowact"><button class="btn sm">Open diff</button></div></td><td><div class="rowact"><button class="btn sm">Open diff</button><button class="btn sm primary">Reconciled</button><button class="btn sm ghost">Ignore</button></div></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+      <div class="card pad">
+        <h2>Trade-off for review question (a)</h2>
+        <div class="own">
+          <div class="owncard c1"><b>Read-only (recommended for CR-3c)</b><p>One new machine-REST read (<span class="tech">GET /reports?target=me</span>, enrolled principal). No connector-originated writes to hub governance state — keeps the "connectors only observe and poll" invariant. Decisions happen on the hub; the LocalWP operator opens the hub in another tab.</p></div>
+          <div class="owncard c2"><b>With decisions</b><p>Adds a machine-REST write from an enrolled site into approver state. Convenient, but it means a connector's application password can resolve review items — a new trust edge that roles (7b) did not anticipate. If chosen, decisions from a connector are recorded with <span class="tech">decided_by=env:butler-local</span>.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================= SCREEN 6: LABELS & SETTINGS ========================= -->
+    <div class="wrap screen" id="screen-legend" hidden>
+      <div class="head"><div><h1>Labels, notifications, accessibility</h1><p>Plain-language labels in the UI; the technical term stays in code, CLI and on hover. Notification toggles reuse the existing channel editor.</p></div></div>
+      <div class="legend-grid">
+        <div class="card"><div class="tablewrap">
+          <table class="map">
+            <thead><tr><th>UI label</th><th>Technical</th><th>Meaning (source = staging, target = LocalWP)</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill push">Updated on staging</span></td><td><code>outgoing</code> + replace</td><td>Staging changed, LocalWP still equals the agreed starting point</td></tr>
+              <tr><td><span class="pill ok">Added on staging</span></td><td><code>baseline_required</code> + create</td><td>Exists on staging, absent on LocalWP (domain coverage complete)</td></tr>
+              <tr><td><span class="pill fail">Removed on staging</span></td><td><code>outgoing</code> + source absent</td><td>Staging trashed/deleted it; LocalWP still has it</td></tr>
+              <tr><td><span class="pill warn">Changed on both</span></td><td><code>conflict</code></td><td>Both sides moved away from the baseline to different values</td></tr>
+              <tr><td><span class="pill stale">LocalWP only</span></td><td><code>incoming</code></td><td>LocalWP changed, staging did not — information only</td></tr>
+              <tr><td><span class="pill ok">Both changed, now equal</span></td><td><code>converged</code></td><td>Same value on both; confirm baseline to close</td></tr>
+              <tr><td><span class="pill protected">Protected on LocalWP</span></td><td><code>locked</code> / approved override</td><td>LocalWP holds an approved override; shown, never transported</td></tr>
+              <tr><td><span class="pill stale">Not reporting since …</span></td><td><code>unknown</code> · <code>stale_target</code></td><td>A side has not contacted the hub inside the freshness window</td></tr>
+              <tr><td><span class="pill hollow">No agreed starting point</span></td><td><code>baseline_required</code></td><td>Confirm baseline first (setup step 3)</td></tr>
+              <tr><td><span class="pill fail">Unstable source</span></td><td><code>unstable_source</code></td><td>Staging changed during upload 3 cycles running; auto-retry continues</td></tr>
+              <tr><td><span class="dec rec">Reconciled</span> · <span class="dec ver">Verified</span> · <span class="dec still">Still differs</span></td><td><code>decision=reconciled</code> · <code>verify_state</code></td><td>Operator claim, then the tick checks it</td></tr>
+              <tr><td><span class="dec ign">Ignored</span> · <span class="dec again">Changed again</span></td><td><code>decision=ignored</code></td><td>Intentional divergence; reopens when staging's hash moves</td></tr>
+              <tr><td><span class="dec pro">Promoted</span></td><td><code>decision=promoted</code> + release uid</td><td>In a real release; tracked until applied or withdrawn</td></tr>
+            </tbody>
+          </table>
+        </div></div>
+
+        <div class="own">
+          <div class="card pad">
+            <h2>Notifications</h2>
+            <div class="sub">Per-channel event toggles — rows added to the existing channel editor.</div>
+            <div class="chan">
+              <span class="h">Event</span><span class="h">Slack</span><span class="h">Email</span><span class="h">Key</span>
+              <span>Report ready <small class="note">report.generated</small></span><input type="checkbox" checked><input type="checkbox"><span class="tech">report_uid</span>
+              <span>Pair not reporting <small class="note">report.stale</small></span><input type="checkbox" checked><input type="checkbox" checked><span class="tech">pair|side|since</span>
+              <span>Unstable source <small class="note">report.unstable_source</small></span><input type="checkbox" checked><input type="checkbox"><span class="tech">pair|release</span>
+              <span>Reconciled item still differs <small class="note">report.still_differs</small></span><input type="checkbox"><input type="checkbox"><span class="tech">pair|object|hash</span>
+            </div>
+            <div class="note" style="margin-top:10px">Payloads carry counts and a link, never values.</div>
+          </div>
+          <div class="card pad">
+            <h2>Markdown export (what "Copy as Markdown" produces)</h2>
+<div class="mdbox"># Change report · butler-staging → butler-local · 2026-11-05 11:00
+Since baseline 2026-11-04 16:20 · 8 objects · 2 resolved
+
+## Updated on staging (2)
+- **Services** (page) · 7 paths · 10:41
+  - title: → "Services &amp; Pricing"
+  - content[2].settings.text (Heading #brxe-4f1a2b): → "Slip rentals, …"
+  - content[7].settings.image.id: → marina-aerial-v2.jpg
+- **Header — main** (template) · 3 paths · 10:38
+  - content[3].settings.text: "Book a slip" → "Reserve a slip"
+
+## Removed on staging (1)
+- **Old pricing** (page) · trashed 09:55</div>
+          </div>
+          <div class="owncard c4"><b>Accessibility &amp; density</b><p>Keyboard: tab order table → row actions → drawer; <kbd>Esc</kbd> closes the drawer; arrow keys move between paths. No colour-only state (every pill has text; ops have letters). Drawer 480 px, collapses under 1000 px. Badge contrast on both themes uses the remediated token set from the admin-page plan §5.4. Tables are server-paged (50 rows) with group-by done server side.</p></div>
+          <div class="owncard c3"><b>Open review questions for this mockup</b>
+            <ol class="qlist">
+              <li><b>(a)</b> LocalWP tab: read-only, or with decisions? (screen 5)</li>
+              <li><b>(b)</b> Per-object "also confirm baseline" on Mark reconciled: keep, or baseline stays pair-level in Compare? (screens 3, 4)</li>
+              <li><b>(c)</b> Does "Create release from selection" belong in the report, or only in Compare? (screen 3 bulk bar)</li>
+              <li><b>(d)</b> Are the six tiles the right split, or should "LocalWP only" and "Protected" be a secondary strip?</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var screens = { setup: 'screen-setup', list: 'screen-list', detail: 'screen-detail', flows: 'screen-flows', local: 'screen-local', legend: 'screen-legend' };
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.topbar .seg [data-screen]'));
+    function show(name) {
+      Object.keys(screens).forEach(function (k) { var el = document.getElementById(screens[k]); if (el) el.hidden = (k !== name); });
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.screen === name)); });
+      try { window.scrollTo({ top: 0 }); } catch (e) {}
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.dataset.screen); }); });
+    document.querySelectorAll('[data-goto]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); show(b.dataset.goto); }); });
+
+    // Theme toggle
+    var root = document.documentElement, tb = document.getElementById('themebtn');
+    tb.addEventListener('click', function () {
+      var cur = root.getAttribute('data-theme');
+      var dark = cur === 'dark' || (!cur && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    });
+
+    // Detail variants
+    var vtabs = Array.prototype.slice.call(document.querySelectorAll('[data-variant]'));
+    function variant(v) {
+      vtabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.variant === v)); });
+      document.querySelectorAll('[data-only]').forEach(function (el) { el.hidden = (el.dataset.only !== v); });
+      document.querySelectorAll('[data-hide]').forEach(function (el) { el.hidden = (el.dataset.hide === v); });
+      var layout = document.getElementById('layout');
+      if (v === 'stale') { document.querySelectorAll('#items tbody tr').forEach(function (r) { r.classList.add('muted'); }); }
+      else { document.querySelectorAll('#items tbody tr').forEach(function (r, i) { r.classList.toggle('muted', i >= 7); }); }
+    }
+    vtabs.forEach(function (t) { t.addEventListener('click', function () { variant(t.dataset.variant); }); });
+
+    // Drawer
+    var drawer = document.getElementById('drawer'), layout = document.getElementById('layout');
+    var titles = { services: 'Services', header: 'Header — main', hero: '.hero-title' };
+    var kinds = { services: 'PAGE', header: 'TEMPLATE', hero: 'CLASS' };
+    document.querySelectorAll('[data-drawer]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var k = b.dataset.drawer;
+        ['services','header','hero'].forEach(function (n) { document.getElementById('diff-' + n).hidden = (n !== k); });
+        document.getElementById('dr-title').firstChild.nodeValue = titles[k] + ' ';
+        document.querySelector('#dr-title .kind').textContent = kinds[k];
+        document.querySelectorAll('#items tbody tr').forEach(function (r) { r.classList.toggle('sel', r.dataset.row === k); });
+        drawer.hidden = false; layout.classList.add('open');
+      });
+    });
+    document.getElementById('dr-close').addEventListener('click', function () { drawer.hidden = true; layout.classList.remove('open'); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !drawer.hidden) { drawer.hidden = true; layout.classList.remove('open'); } });
+    var rec = document.getElementById('dr-rec');
+    rec.addEventListener('click', function () { rec.textContent = '✓ Reconciled — verifies next tick'; rec.disabled = true; });
+
+    // Toggles (mock)
+    document.querySelectorAll('.toggle').forEach(function (t) { t.addEventListener('click', function () { t.classList.toggle('on'); }); });
+    var vt = document.getElementById('valtoggle');
+    vt.addEventListener('click', function () {
+      var on = vt.classList.contains('on');
+      document.getElementById('valnotice').hidden = on; document.getElementById('valnotice-on').hidden = !on;
+    });
+  })();
+</script>
+</body>
+</html>

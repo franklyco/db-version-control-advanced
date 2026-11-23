@@ -561,6 +561,7 @@ final class DBVC_CC_Target_Field_Catalog_Service
             'has_sub_fields' => ! empty($field['sub_fields']) && is_array($field['sub_fields']),
             'vf_field_context' => $this->sanitize_context_meta(isset($field['vf_field_context']) ? $field['vf_field_context'] : []),
             'gardenai_field_purpose' => isset($field['gardenai_field_purpose']) ? sanitize_text_field((string) $field['gardenai_field_purpose']) : '',
+            'instructions' => isset($field['instructions']) ? sanitize_text_field((string) $field['instructions']) : '',
         ];
 
         $next_ancestor_field_keys = $ancestor_field_keys;

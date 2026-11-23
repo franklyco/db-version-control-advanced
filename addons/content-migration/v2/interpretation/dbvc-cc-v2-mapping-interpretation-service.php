@@ -113,7 +113,10 @@ final class DBVC_CC_V2_Mapping_Interpretation_Service
             $page_context,
             $catalog,
             $object_key,
-            $this->build_options($overrides)
+            array_merge(
+                ['collection_object_keys' => self::resolve_collection_object_keys($classification_artifact, $object_key)],
+                $this->build_options($overrides)
+            )
         );
 
         if (is_wp_error($result)) {
@@ -148,6 +151,37 @@ final class DBVC_CC_V2_Mapping_Interpretation_Service
             : [];
 
         return isset($primary['object_key']) ? sanitize_key((string) $primary['object_key']) : '';
+    }
+
+    /**
+     * The other post-type objects the classifier considered for this page, in its own order.
+     *
+     * These are the objects a page might be a SET of (D-19): `/dental-team` routes to `page`, and
+     * `team_member` is the classifier's runner-up. The interpreter decides whether the page holds
+     * records of one of them; this only bounds what it may choose from.
+     *
+     * @param array<string, mixed> $classification_artifact
+     * @param string               $object_key
+     * @return array<int, string>
+     */
+    public static function resolve_collection_object_keys(array $classification_artifact, $object_key)
+    {
+        $alternates = isset($classification_artifact['alternate_classifications']) && is_array($classification_artifact['alternate_classifications'])
+            ? $classification_artifact['alternate_classifications']
+            : [];
+
+        $keys = [];
+        foreach ($alternates as $alternate) {
+            if (! is_array($alternate) || (string) ($alternate['type_family'] ?? '') !== 'post_type') {
+                continue;
+            }
+            $key = sanitize_key((string) ($alternate['object_key'] ?? ''));
+            if ($key !== '' && $key !== (string) $object_key && ! in_array($key, $keys, true)) {
+                $keys[] = $key;
+            }
+        }
+
+        return $keys;
     }
 
     /**

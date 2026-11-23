@@ -112,12 +112,8 @@ final class FleetService
         if (($env['status'] ?? '') !== EnvironmentRegistry::STATUS_ENABLED) {
             return false;
         }
-        $window = ComparisonService::freshness_seconds();
-        foreach (['last_contact_at', 'last_inbox_poll_at'] as $key) {
-            $ts = empty($env[$key]) ? 0 : (int) strtotime((string) $env[$key] . ' UTC');
-            if ($ts > 0 && (time() - $ts) <= $window) {
-                return true;
-            }
+        if (EnvironmentRegistry::is_live($env, ComparisonService::freshness_seconds())) {
+            return true;
         }
 
         return false;
@@ -166,12 +162,15 @@ final class FleetService
             }
         }
 
-        // Composed site state, worst-wins. A fresh state report is required to
-        // assert framework parity (in_sync / protected / review / behind). Without
-        // one, a site that still polls the hub is alive but "awaiting current
-        // state"; a site with no recent contact at all is "not reporting".
-        if (! $fresh) {
-            $state = $live ? 'awaiting_state' : 'not_reporting';
+        // Composed site state, worst-wins. CR-4d: freshness follows liveness (a
+        // connector heard from inside the window — poll or observation — keeps its
+        // projections current by construction), so a quiet site stays assessable.
+        // A live site that has NEVER delivered an observation (just enrolled) is
+        // "awaiting current state"; a site not heard from at all is "not reporting".
+        if (! $live) {
+            $state = 'not_reporting';
+        } elseif (! $fresh) {
+            $state = 'awaiting_state';
         } elseif ($needs_rebase > 0) {
             $state = 'needs_review';
         } elseif ($behind) {
@@ -194,6 +193,7 @@ final class FleetService
             'live' => $live,
             'last_contact_at' => (string) ($env['last_contact_at'] ?? ''),
             'last_inbox_poll_at' => (string) ($env['last_inbox_poll_at'] ?? ''),
+            'last_seen_at' => (string) ($env['last_seen_at'] ?? EnvironmentRegistry::last_seen_at($env) ?? ''),
             'framework' => $framework_rows !== []
                 ? ['adopted_version' => $adopted_version, 'desired_version' => $desired_version, 'behind' => $behind]
                 : null,

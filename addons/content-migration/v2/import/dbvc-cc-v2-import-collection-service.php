@@ -118,12 +118,24 @@ final class DBVC_CC_V2_Import_Collection_Service
             }
 
             ++$summary['includedPages'];
+            $record_media = isset($media_items_by_page[(string) ($record['page_id'] ?? '')]) ? $media_items_by_page[(string) ($record['page_id'] ?? '')] : [];
+            // One record of a page read as a set takes only the media bound to it; its siblings
+            // share the page id and would otherwise each receive every photo on the page.
+            if (isset($record['entity_ref']) && (string) $record['entity_ref'] !== '') {
+                $entity_ref = (string) $record['entity_ref'];
+                $record_media = array_values(array_filter(
+                    $record_media,
+                    static function ($media_item) use ($entity_ref) {
+                        return is_array($media_item) && isset($media_item['entity_ref']) && (string) $media_item['entity_ref'] === $entity_ref;
+                    }
+                ));
+            }
             $page_execution = $this->build_page_execution(
                 $run_id,
                 $selected_package,
                 $record,
                 isset($page_reports[(string) ($record['page_id'] ?? '')]) ? $page_reports[(string) ($record['page_id'] ?? '')] : [],
-                isset($media_items_by_page[(string) ($record['page_id'] ?? '')]) ? $media_items_by_page[(string) ($record['page_id'] ?? '')] : []
+                $record_media
             );
 
             if (is_wp_error($page_execution)) {

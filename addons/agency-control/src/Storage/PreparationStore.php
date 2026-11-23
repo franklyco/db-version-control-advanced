@@ -175,6 +175,19 @@ final class PreparationStore
     }
 
     /**
+     * Delete every preparation of one release (CR-3 purge of report-purpose releases).
+     *
+     * @param string $release_uid
+     * @return int Rows deleted.
+     */
+    public function delete_for_release($release_uid)
+    {
+        global $wpdb;
+
+        return (int) $wpdb->delete(Schema::table('preparations'), ['release_uid' => (string) $release_uid], ['%s']); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+    }
+
+    /**
      * @return array<string, int>
      */
     public function counts()

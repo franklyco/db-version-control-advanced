@@ -137,6 +137,9 @@ final class Controller
         if ($environment['status'] === EnvironmentRegistry::STATUS_REVOKED) {
             return new \WP_Error('dbvc_agency_environment_revoked', 'Enrollment revoked.', ['status' => 403]);
         }
+        // CR-4d: any authenticated call is a heartbeat. Throttled; the inbox route
+        // still writes its own poll time together with the cursor.
+        (new EnvironmentRegistry())->touch_poll($environment);
 
         return $environment;
     }
@@ -446,11 +449,15 @@ final class Controller
         if (is_wp_error($environment)) {
             return $environment;
         }
+        // CR-1: paged by item count so a run of large releases never exceeds what one
+        // response may carry; the connector polls again while `has_more` is set.
+        $page = PreparationService::page_requests((new PreparationService())->pending_for_target($environment));
 
         return $this->no_store(rest_ensure_response([
             'environment_id' => $environment['environment_id'],
             'installation_epoch' => $environment['current_epoch'],
-            'requests' => (new PreparationService())->pending_for_target($environment),
+            'requests' => $page['requests'],
+            'has_more' => $page['has_more'],
             'retrieved_at' => gmdate('c'),
         ]));
     }
@@ -464,6 +471,9 @@ final class Controller
         $environment = $this->enabled_environment();
         if (is_wp_error($environment)) {
             return $environment;
+        }
+        if (strlen((string) $request->get_body()) > Protocol::MAX_RECEIPT_BYTES) {
+            return new \WP_Error('dbvc_agency_receipt_too_large', 'Receipt exceeds ' . Protocol::MAX_RECEIPT_BYTES . ' bytes.', ['status' => 413]);
         }
         $body = $request->get_json_params();
         $receipt = is_array($body) && isset($body['receipt']) && is_array($body['receipt']) ? $body['receipt'] : null;

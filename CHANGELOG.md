@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## Unreleased
+- Fixed: completing a resumed chunked export no longer records stale options, menus, taxonomies and third-party entities. A chunked export writes those once, when the job is created, and unfinished jobs persist and are offered for resume in the admin — so a job finished days or weeks after it was started exported current posts alongside non-post entities from its creation date, and the manifest and snapshot recorded the mix as one export. They are now refreshed when a resumed job completes, before the manifest is built; a job created and finished in the same call does not repeat the work.
 
 ## 2.5.1 — 2026-11-22
 - Visual Editor: fixed the editor panel sliding under the Visual Editor's own toolbar, hiding its Close and Save. It happened in 2.5.0 with the Vertical theme's Classic toolbar stage, when the theme's Design Review panel was open and moved a tall editor panel left; the panel now stops above the toolbar. Sites where the theme docks the controls were not affected.

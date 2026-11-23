@@ -139,6 +139,17 @@ final class DependencyLedger
 
         $entries = [];
         foreach (ReferenceTokens::tokens_in_body($after) as $ref) {
+            // A Template element rendering another template, keyed by that template's
+            // vf_object_uid: present when a local bricks_template carries the uid,
+            // selected when this release supplies it, unresolved otherwise.
+            if ($ref['kind'] === ReferenceTokens::KIND_TEMPLATE) {
+                $domain = DomainRegistry::DOMAIN_POST_PREFIX . 'bricks_template';
+                $supplied = self::uid_in_release($release_items, $domain, $ref['name']);
+                $local = $supplied ? 0 : self::template_id_by_uid($ref['name']);
+                $status = $supplied ? self::STATUS_SELECTED : ($local > 0 ? self::STATUS_PRESENT : self::STATUS_UNRESOLVED);
+                $entries[] = self::entry($domain, $ref['name'], $status, $supplied ? 'release:' . $ref['name'] : ($local > 0 ? 'post:' . $local : 'template_missing'));
+                continue;
+            }
             if ($ref['kind'] === ReferenceTokens::KIND_CLASS) {
                 $status = isset($class_selected[$ref['name']]) ? self::STATUS_SELECTED : (isset($class_present[$ref['name']]) ? self::STATUS_PRESENT : self::STATUS_UNRESOLVED);
                 $entries[] = self::entry('bricks.global_class', $ref['name'], $status, isset($class_selected[$ref['name']]) ? 'release:' . $class_selected[$ref['name']] : 'option:bricks_global_classes');
@@ -185,6 +196,34 @@ final class DependencyLedger
         }
 
         return $names;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $release_items
+     * @param string                           $domain
+     * @param string                           $uid
+     * @return bool Whether the release supplies the object with this instance uid in this domain.
+     */
+    private static function uid_in_release(array $release_items, $domain, $uid)
+    {
+        foreach ($release_items as $item) {
+            if (($item['domain'] ?? '') === $domain && (string) ($item['instance_uid'] ?? '') === (string) $uid) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param string $uid vf_object_uid
+     * @return int The local bricks_template post id carrying $uid, or 0.
+     */
+    private static function template_id_by_uid($uid)
+    {
+        $ids = get_posts(['post_type' => 'bricks_template', 'post_status' => 'any', 'fields' => 'ids', 'meta_key' => 'vf_object_uid', 'meta_value' => (string) $uid, 'posts_per_page' => 1, 'suppress_filters' => true, 'no_found_rows' => true]); // phpcs:ignore WordPress.DB.SlowDBQuery
+
+        return $ids !== [] ? (int) $ids[0] : 0;
     }
 
     /**
@@ -281,14 +320,24 @@ final class DependencyLedger
         // post can converge and does not block; `unresolved` otherwise, still
         // blocking, so a post is never applied with a dangling reference.
         $carried = array_fill_keys(array_map([self::class, 'media_hex'], $carried_media_hashes), true);
+        // Each media reference is listed under the token form the body carries: the
+        // string/thumbnail form (`dbvc-media:`) or an id-bearing meta field's
+        // (`dbvc-media-id:`, ACF image/file/gallery). Same hash, same resolution.
+        $refs = [];
         foreach (MediaReferences::tokens_in_body($after) as $hash) {
+            $refs[MediaReferences::TOKEN_PREFIX . $hash] = $hash;
+        }
+        foreach (MetaMediaReferences::tokens_in_body($after) as $hash) {
+            $refs[MetaMediaReferences::TOKEN_PREFIX . $hash] = $hash;
+        }
+        foreach ($refs as $ref => $hash) {
             $local = MediaReferences::local_by_hash($hash);
             if ($local > 0) {
-                $entries[] = self::entry('wp.media', MediaReferences::TOKEN_PREFIX . $hash, self::STATUS_PRESENT, 'attachment:' . $local);
+                $entries[] = self::entry('wp.media', $ref, self::STATUS_PRESENT, 'attachment:' . $local);
             } elseif (isset($carried[$hash])) {
-                $entries[] = self::entry('wp.media', MediaReferences::TOKEN_PREFIX . $hash, self::STATUS_PRESENT, 'carried');
+                $entries[] = self::entry('wp.media', $ref, self::STATUS_PRESENT, 'carried');
             } else {
-                $entries[] = self::entry('wp.media', MediaReferences::TOKEN_PREFIX . $hash, self::STATUS_UNRESOLVED, 'media_transfer_pending');
+                $entries[] = self::entry('wp.media', $ref, self::STATUS_UNRESOLVED, 'media_transfer_pending');
             }
         }
 

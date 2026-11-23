@@ -97,8 +97,8 @@ When this manifest ships with the plugin, administrators can review the same cur
 <!-- BEGIN GENERATED AGENT INDEX -->
 ### Current inventory
 
-- **72** curated records cover **614** enforced discovery surfaces; **0** are unmapped.
-- Source discovery identifies **131** WP-CLI leaf commands and **130** REST registrations.
+- **72** curated records cover **632** enforced discovery surfaces; **0** are unmapped.
+- Source discovery identifies **138** WP-CLI leaf commands and **130** REST registrations.
 - Opportunity dispositions: **0** candidate, **0** needs review, **12** covered elsewhere, **6** deferred, **8** not recommended for further parity, and **46** unreviewed.
 
 ### Records by category

@@ -107,6 +107,67 @@ final class DBVC_CC_V2_Package_Selection_Service
     }
 
     /**
+     * Resolve every record a page's recommendations name, applying the reviewer's per-record
+     * decisions (D-19).
+     *
+     * A single-record page resolves exactly as `resolve_selected_target_object()` always has, as
+     * a list of one with an empty `entityRef`. On a page read as a set, each record resolves on
+     * its own: a reviewer may exclude one (`target_entity_decisions[<ref>].decision = exclude`)
+     * or move it to another object, and the others are untouched.
+     *
+     * @param array<string, mixed>|null $recommendations
+     * @param array<string, mixed>|null $mapping_decisions
+     * @param string                    $domain
+     * @return array<int, array<string, mixed>>
+     */
+    public function resolve_selected_target_entities($recommendations, $mapping_decisions, $domain = '')
+    {
+        if (! DBVC_CC_V2_Contracts::has_entity_set($recommendations)) {
+            $recommended = is_array($recommendations) && isset($recommendations['recommended_target_object']) && is_array($recommendations['recommended_target_object'])
+                ? $recommendations['recommended_target_object']
+                : [];
+
+            return [array_merge(
+                $this->resolve_selected_target_object($recommended, $mapping_decisions, $domain),
+                ['entityRef' => '', 'included' => true]
+            )];
+        }
+
+        $decisions = is_array($mapping_decisions) && isset($mapping_decisions['target_entity_decisions']) && is_array($mapping_decisions['target_entity_decisions'])
+            ? $mapping_decisions['target_entity_decisions']
+            : [];
+
+        $selected = [];
+        foreach (DBVC_CC_V2_Contracts::get_target_entities($recommendations) as $entity) {
+            $entity_ref = isset($entity['entity_ref']) ? (string) $entity['entity_ref'] : '';
+            $decision = isset($decisions[$entity_ref]) && is_array($decisions[$entity_ref]) ? $decisions[$entity_ref] : [];
+            $target_family = ! empty($decision['selected_target_family'])
+                ? (string) $decision['selected_target_family']
+                : (isset($entity['target_family']) ? (string) $entity['target_family'] : 'post_type');
+            $target_object_key = ! empty($decision['selected_target_object_key'])
+                ? sanitize_key((string) $decision['selected_target_object_key'])
+                : (isset($entity['target_object_key']) ? (string) $entity['target_object_key'] : '');
+
+            $selected[] = [
+                'entityRef' => $entity_ref,
+                'label' => isset($entity['label']) ? (string) $entity['label'] : '',
+                'slug' => isset($entity['slug']) ? (string) $entity['slug'] : '',
+                'targetFamily' => $target_family,
+                'targetObjectKey' => $target_object_key,
+                'resolutionMode' => isset($entity['resolution_mode']) ? (string) $entity['resolution_mode'] : '',
+                'included' => (isset($decision['decision']) ? sanitize_key((string) $decision['decision']) : '') !== 'exclude',
+                'presentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_object(
+                    $domain,
+                    $target_object_key,
+                    $target_family
+                ),
+            ];
+        }
+
+        return $selected;
+    }
+
+    /**
      * @param array<string, mixed>|null $recommendations
      * @param array<string, mixed>|null $mapping_decisions
      * @return array<int, array<string, mixed>>
@@ -173,7 +234,7 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => $default_auto_accept ? 'auto_accept' : 'reviewed',
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $target_ref),
-                ];
+                ] + (array_key_exists('entity_ref', $item) ? ['entity_ref' => (string) $item['entity_ref']] : []);
                 continue;
             }
 
@@ -188,7 +249,7 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => 'override',
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $override_target),
-                ];
+                ] + (array_key_exists('entity_ref', $item) ? ['entity_ref' => (string) $item['entity_ref']] : []);
             }
         }
 

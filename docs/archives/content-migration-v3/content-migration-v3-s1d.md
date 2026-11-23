@@ -1,11 +1,19 @@
 # Content Migration V3 — Slice S1d implementation brief
 
+> **Archived — historical. Delivered 2026-11-12 and merged to `master` in PR #219 (merge
+> `12ea0cd0`).** Do not use this brief as current guidance. The plan of record is the V3 guide: the
+> measurement is its §6.1g, the ledger row is §9.1, and D-19 is RESOLVED in §5. Two corrections to
+> the brief found in recon: records are emitted by
+> `DBVC_CC_V2_Package_Artifact_Service::build_records()` (not the build service), and the five-step
+> match order lives in `import-executor/dbvc-cc-import-executor-service.php`, not in the selection or
+> schema-presentation services.
+
 **Lane:** Content Collection / Migration V3
 **Slice:** S1d — *one source URL → many target entities* (closes defect **D-19**)
 **Priority:** P1 (the named next slice)
 **Written:** 2026-10-24. **Base branch:** `master` (tip `d34de4d1` at writing).
 
-> **Canonical plan of record:** [`docs/implementation/proposed/content-collection-v3/README.md`](../proposed/content-collection-v3/README.md).
+> **Canonical plan of record:** [`docs/implementation/proposed/content-collection-v3/README.md`](../../implementation/proposed/content-collection-v3/README.md).
 > That guide owns the V3 direction, the defect register (§5), the evidence register (§6), the acceptance gates (§8), and the build sequence (§9). **Read it before this brief and defer to it on any conflict.** This file is the executable brief for one slice; it does not restate the guide.
 
 Required reading order (per `AGENTS.md`):

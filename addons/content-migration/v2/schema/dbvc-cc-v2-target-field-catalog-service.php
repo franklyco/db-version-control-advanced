@@ -406,6 +406,17 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
             $warnings[] = 'runtime_field_context_fallback';
         }
 
+        // Last resort: the field's own ACF instructions, which every ACF site can carry and which
+        // describe the field in the site builder's words. Without this, a target with no
+        // field-context provider offers the interpreter no ACF purpose at all (D-16).
+        $instructions = isset($field['instructions']) ? sanitize_text_field((string) $field['instructions']) : '';
+        if ($resolved_purpose === '' && $instructions !== '') {
+            $resolved_purpose = $instructions;
+            $effective_purpose = $effective_purpose === '' ? $instructions : $effective_purpose;
+            $default_purpose = $default_purpose === '' ? $instructions : $default_purpose;
+            $resolved_from = $resolved_from === '' ? 'acf_instructions' : $resolved_from;
+        }
+
         return [
             'status' => $status,
             'provider' => isset($field_context_provider['provider']) ? sanitize_key((string) $field_context_provider['provider']) : 'vertical-field-context',

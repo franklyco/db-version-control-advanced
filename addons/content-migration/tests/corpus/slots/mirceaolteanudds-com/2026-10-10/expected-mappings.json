@@ -69,12 +69,11 @@
       "expected_object_key": "team_member",
       "expected_entity_count": 5,
 
-      "structural_blocker": {
+      "structural_blocker_resolved": {
         "code": "one_source_url_many_entities",
-        "detail": "This page must yield FIVE team_member entities. The V2 recommendation contract cannot express that: mapping-recommendations.v2 carries a single `recommended_target_object`, and entity resolution resolves one target per page. So this page is unmappable under the current data model regardless of how good the interpreter is.",
-        "evidence": "addons/content-migration/v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php - `recommended_target_object` is a single object, not a list",
-        "consequence": "The evaluator reports this page as a structural blocker and excludes it from the G-4 and G-5 scores rather than scoring an impossible task. Fixing it is a contract change, which belongs in its own slice.",
-        "schema_note": "target-schema.v1.json declares team_member cardinality one_per_person precisely so this shows up as a measurement, not a surprise."
+        "resolved": "2026-11-12, V3 guide D-19 (S1d)",
+        "detail": "This page was excluded from G-4 and G-5 because mapping-recommendations.v2 could carry only one `recommended_target_object`. It now carries `target_entities` when the interpreter reads a page as a set, every recommendation names its record, and the package emits one record per entity. The evaluator scores this page record by record: a value is right only in the right field of the right person.",
+        "schema_note": "target-schema.v1.json declares team_member cardinality one_per_person, which is what lets the deterministic floor group this page by its repeated headings; the live catalog cannot declare it, so on the wired path only a model reads a page as a set."
       },
 
       "expected_entities": [
@@ -100,6 +99,7 @@
         ]},
         { "entity": "Mariana Cristea", "mappings": [
           { "source_probe": "Mariana Cristea",                                    "target_ref": "core:post_title" },
+          { "source_probe": "Certified Dental Assistant",                         "target_ref": "acf:team_member:role" },
           { "source_probe": "Mariana earned her dental assisting degree in 2006",  "target_ref": "acf:team_member:bio" },
           { "source_probe": "dental-assistant-mariana.jpg",                        "target_ref": "acf:team_member:photo", "from": "image" }
         ]},
@@ -117,9 +117,18 @@
         { "source_probe": "Designed by",                   "belongs_to": null,                        "reason": "theme credit. Not content." }
       ],
 
+      "expected_unmapped": [
+        { "source_probe": "is a family dentist in Broadview Heights, Ohio", "reason": "alt text of family-dentist-broadview-heights-ohio.jpg. Every image here is a W3TC lazyload placeholder (D-18), and the capture lifts its alt text into a paragraph; it belongs to the photo, not to a role or bio. Added 2026-11-12 after a model filed it as Dr. Olteanu's role." },
+        { "source_probe": "his wife and their two young sons pose",         "reason": "alt text of the family portrait, lifted into a paragraph (D-18)." },
+        { "source_probe": "Nicole Jeglie is a registered dental hygienist",  "reason": "alt text of dental-hygienist-nicole.jpg, lifted into a paragraph (D-18). Not her role: her role is the h3 under her name." },
+        { "source_probe": "Nancy Gezymalla is a certified dental assistant", "reason": "alt text of dental-assistant-nancy.jpg, lifted into a paragraph (D-18)." },
+        { "source_probe": "Mariana Cristea is a certified dental assistant", "reason": "alt text of dental-assistant-mariana.jpg, lifted into a paragraph (D-18)." },
+        { "source_probe": "Connie Viola is a dentist office manager",        "reason": "alt text of dentist-office-manager-connie.jpg, lifted into a paragraph (D-18)." }
+      ],
+
       "issues_expected": [
         { "code": "heading_nesting_split", "detail": "Names are h2 and roles are h3 directly beneath them. V2's segmenter opens a section at every heading regardless of level (D-9), producing a section holding only 'Nicole Langford' and another headed 'Registered Dental Hygienist' owning her bio. Role and bio must stay with the person." },
-        { "code": "missing_role", "detail": "Mariana Cristea has no role heading in the source, unlike the other four. acf:team_member:role must be null for her, not inferred from a sibling." }
+        { "code": "shared_role_text", "detail": "Nancy Gezymalla and Mariana Cristea both carry the role 'Certified Dental Assistant'. Each must keep her own, which is why a value is scored against the record it was filed under before any other. Corrected 2026-11-12: this entry previously said Mariana had no role heading; the captured source has <h3>Certified Dental Assistant</h3> directly under her name, and so does the capture's elements.v2." }
       ]
     }
   ],
@@ -135,7 +144,7 @@
       "threshold_max_wrong": 0.02,
       "rationale": "A wrong confident mapping costs more than an escalation: the reviewer never sees it."
     },
-    "excluded_pages": ["dental-team"],
-    "excluded_reason": "structural_blocker one_source_url_many_entities"
+    "excluded_pages": [],
+    "excluded_note": "dental-team was excluded as structural_blocker one_source_url_many_entities until 2026-11-12 (D-19); it is now scored record by record."
   }
 }

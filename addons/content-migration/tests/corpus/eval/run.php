@@ -647,6 +647,10 @@ function dbvc_corpus_gate_mapping($slot_dir, array $profile, $fixtures_root, arr
  */
 function dbvc_corpus_score_recommendations(array $result, array $expectation)
 {
+    if (isset($expectation['expected_entities']) && is_array($expectation['expected_entities'])) {
+        return dbvc_corpus_score_entity_recommendations($result, $expectation);
+    }
+
     $recommendations = $result['recommendations'] ?? [];
     $auto_correct = 0;
     $auto_wrong = 0;
@@ -755,6 +759,274 @@ function dbvc_corpus_score_recommendations(array $result, array $expectation)
         'expected_mappings_hit' => count($expectations_hit),
         'expectation_recall' => $expected_total > 0 ? round(count($expectations_hit) / $expected_total, 4) : 0.0,
     ];
+}
+
+/**
+ * Score a page whose ground truth is a SET of records (D-19), record by record.
+ *
+ * A value is right only when it lands in the right field of the right record: Nancy's role in
+ * Mariana's record is as wrong as Nancy's role in the bio field. Each expected record is matched to
+ * the produced record whose label names it; a page the interpreter did not read as a set scores
+ * every value wrong, because one record cannot hold five people. Returns the same totals as the
+ * single-record scorer, so G-4 and G-5 aggregate across both, plus an `entities` block.
+ *
+ * @param array<string, mixed> $result
+ * @param array<string, mixed> $expectation
+ * @return array<string, mixed>
+ */
+function dbvc_corpus_score_entity_recommendations(array $result, array $expectation)
+{
+    $recommendations = $result['recommendations'] ?? [];
+    $expected_entities = array_values($expectation['expected_entities']);
+    $produced = [];
+    foreach ($result['entities'] ?? [] as $entity) {
+        if (is_array($entity) && isset($entity['entity_id'])) {
+            $produced[(string) $entity['entity_id']] = strtolower(trim((string) ($entity['label'] ?? '')));
+        }
+    }
+
+    // Expected record index -> produced entity_id, matched on the record's own name.
+    $matched = [];
+    foreach ($expected_entities as $index => $expected) {
+        $name = strtolower(trim((string) ($expected['entity'] ?? '')));
+        foreach ($produced as $entity_id => $label) {
+            if ($name !== '' && $label !== '' && in_array($entity_id, $matched, true) === false
+                && (strpos($label, $name) !== false || strpos($name, $label) !== false)) {
+                $matched[$index] = $entity_id;
+                break;
+            }
+        }
+    }
+    $expected_for = array_flip($matched);
+
+    $auto_correct = 0;
+    $auto_wrong = 0;
+    $auto_unscorable = 0;
+    $all_correct = 0;
+    $all_wrong = 0;
+    $wrong_detail = [];
+    $expectations_hit = [];
+    $correct_hits = [];
+
+    foreach ($recommendations as $recommendation) {
+        $auto_accepted = empty($recommendation['requires_review']);
+        $evidence = strtolower((string) ($recommendation['source_evidence'] ?? ''));
+        $target = (string) ($recommendation['target_ref'] ?? '');
+        $entity_id = (string) ($recommendation['entity_id'] ?? '');
+        $own = isset($expected_for[$entity_id]) ? (int) $expected_for[$entity_id] : null;
+        $verdict = null;
+
+        // Precedence, most specific first. An image's filename probe outranks everything: the
+        // bench offers an image as "filename alt-text", and that item is the photo. Then a sentence
+        // the ground truth says belongs to no field (alt text the capture lifted into a paragraph,
+        // which embeds the person's name and role and would otherwise match those probes). Then
+        // the record's own text, then every other record's — so a role shared by two people is
+        // scored against the person it was filed under.
+        $order = array_keys($expected_entities);
+        if ($own !== null) {
+            $order = array_merge([$own], array_values(array_diff($order, [$own])));
+        }
+        $image_only = false;
+        foreach ($expected_entities as $expected) {
+            foreach ($expected['mappings'] ?? [] as $mapping) {
+                $probe = strtolower((string) ($mapping['source_probe'] ?? ''));
+                if (($mapping['from'] ?? '') === 'image' && $probe !== '' && strpos($evidence, $probe) !== false) {
+                    $image_only = true;
+                }
+            }
+        }
+        if (! $image_only) {
+            foreach ($expectation['expected_unmapped'] ?? [] as $gap) {
+                $probe = strtolower((string) ($gap['source_probe'] ?? ''));
+                if ($probe !== '' && strpos($evidence, $probe) !== false) {
+                    $verdict = 'wrong';
+                    $wrong_detail[] = [
+                        'probe' => $gap['source_probe'],
+                        'expected' => '(declined - no fitting field)',
+                        'got' => $target,
+                        'confidence' => $recommendation['confidence'] ?? null,
+                        'auto_accepted' => $auto_accepted,
+                        'why' => 'forced an expected_unmapped item into a field',
+                    ];
+                    break;
+                }
+            }
+        }
+        foreach ($verdict === null ? $order : [] as $index) {
+            // Every expectation of this record the value's text carries. A photo's alt text can
+            // carry the person's role, so the value is right if any of them names its field.
+            $candidates = [];
+            foreach ($expected_entities[$index]['mappings'] ?? [] as $mapping) {
+                $probe = strtolower((string) ($mapping['source_probe'] ?? ''));
+                if ($probe !== '' && strpos($evidence, $probe) !== false
+                    && (! $image_only || ($mapping['from'] ?? '') === 'image')) {
+                    $candidates[] = $mapping;
+                }
+            }
+            foreach ($candidates as $candidate) {
+                if ($target === (string) $candidate['target_ref']) {
+                    $candidates = [$candidate];
+                    break;
+                }
+            }
+            foreach ($candidates as $mapping) {
+                $probe = strtolower((string) $mapping['source_probe']);
+                $expectations_hit[$index . '|' . $probe] = true;
+                $right_record = $own !== null && $index === $own;
+                $right_field = $target === (string) $mapping['target_ref'];
+                $verdict = $right_record && $right_field ? 'correct' : 'wrong';
+                if ($verdict === 'correct') {
+                    $correct_hits[$index][$probe] = true;
+                } else {
+                    $wrong_detail[] = [
+                        'probe' => $mapping['source_probe'],
+                        'expected' => $mapping['target_ref'] . ' of ' . (string) $expected_entities[$index]['entity'],
+                        'got' => $target . ($own !== null ? ' of ' . (string) $expected_entities[$own]['entity'] : ($entity_id === '' ? ' (page not read as a set)' : ' of an unmatched record')),
+                        'confidence' => $recommendation['confidence'] ?? null,
+                        'auto_accepted' => $auto_accepted,
+                        'why' => ! $right_record ? 'wrong record' : 'wrong field',
+                    ];
+                }
+                break 2;
+            }
+        }
+
+        if ($verdict === null) {
+            foreach ($expectation['must_not_map'] ?? [] as $forbidden) {
+                $probe = strtolower((string) ($forbidden['source_probe'] ?? ''));
+                if ($probe !== '' && strpos($evidence, $probe) !== false) {
+                    $verdict = 'wrong';
+                    $wrong_detail[] = [
+                        'probe' => $forbidden['source_probe'],
+                        'expected' => $forbidden['belongs_to'] ?? '(nothing - not content)',
+                        'got' => $target,
+                        'why' => 'must_not_map: ' . (string) ($forbidden['reason'] ?? ''),
+                    ];
+                    break;
+                }
+            }
+        }
+
+        if ($verdict === 'correct') {
+            $all_correct++;
+            if ($auto_accepted) {
+                $auto_correct++;
+            }
+        } elseif ($verdict === 'wrong') {
+            $all_wrong++;
+            if ($auto_accepted) {
+                $auto_wrong++;
+            }
+        } elseif ($auto_accepted) {
+            $auto_unscorable++;
+        }
+    }
+
+    // A record is complete when every text value the ground truth gives it landed right.
+    $complete = 0;
+    $expected_total = 0;
+    foreach ($expected_entities as $index => $expected) {
+        $text_probes = [];
+        foreach ($expected['mappings'] ?? [] as $mapping) {
+            ++$expected_total;
+            if (($mapping['from'] ?? '') !== 'image') {
+                $text_probes[] = strtolower((string) $mapping['source_probe']);
+            }
+        }
+        $missing = array_diff($text_probes, array_keys($correct_hits[$index] ?? []));
+        if (isset($matched[$index]) && $missing === []) {
+            ++$complete;
+        }
+    }
+
+    return [
+        'recommended' => count($recommendations),
+        'auto_accepted' => count(array_filter(
+            $recommendations,
+            static function ($recommendation) {
+                return empty($recommendation['requires_review']);
+            }
+        )),
+        'auto_correct' => $auto_correct,
+        'auto_wrong' => $auto_wrong,
+        'auto_unscorable' => $auto_unscorable,
+        'wrong_detail' => $wrong_detail,
+        'all_correct' => $all_correct,
+        'all_wrong' => $all_wrong,
+        'all_accuracy' => ($all_correct + $all_wrong) > 0
+            ? round($all_correct / ($all_correct + $all_wrong), 4)
+            : 0.0,
+        'expected_mappings' => $expected_total,
+        'expected_mappings_hit' => count($expectations_hit),
+        'expectation_recall' => $expected_total > 0 ? round(count($expectations_hit) / $expected_total, 4) : 0.0,
+        'entities' => [
+            'expected' => (int) ($expectation['expected_entity_count'] ?? count($expected_entities)),
+            'produced' => count($produced),
+            'matched' => count($matched),
+            'complete_text_values' => $complete,
+            'object_key' => (string) ($result['entities'][0]['object_key'] ?? ''),
+        ],
+    ];
+}
+
+/**
+ * The perfect interpreter's answer for a page, built from the ground truth. Records are declared
+ * per expected entity, and a probe two records share (two people with the same role) is matched to
+ * the first unused item at or after that record's own name, the way the page orders them.
+ *
+ * @param array<string, mixed> $page_expectation
+ * @param array<string, mixed> $input
+ * @return array<string, mixed> A model response payload: mappings, declined, and entities if a set.
+ */
+function dbvc_corpus_oracle_answer(array $page_expectation, array $input)
+{
+    // An image probe matches only an image item and a text probe only a text item: a photo's
+    // alt text carries the person's name, and must not be taken for the name.
+    $find = static function ($probe, $from, array $used, $want_image = false) use ($input) {
+        foreach ($input['items'] as $position => $item) {
+            $is_image = ($item['kind'] ?? '') === DBVC_CC_Interp_Contracts::KIND_IMAGE;
+            if ($position >= $from && ! isset($used[$item['item_id']]) && $is_image === (bool) $want_image
+                && strpos(strtolower((string) $item['text']), $probe) !== false) {
+                return [$position, $item['item_id']];
+            }
+        }
+
+        return [null, null];
+    };
+
+    if (! isset($page_expectation['expected_entities'])) {
+        $mappings = [];
+        foreach ($page_expectation['mappings'] ?? [] as $expectation) {
+            list(, $item_id) = $find(strtolower((string) $expectation['source_probe']), 0, [], ($expectation['from'] ?? '') === 'image');
+            if ($item_id !== null) {
+                $mappings[] = ['item_id' => $item_id, 'target_ref' => (string) $expectation['target_ref'], 'confidence' => 0.97, 'rationale' => 'oracle'];
+            }
+        }
+
+        return ['mappings' => $mappings, 'declined' => []];
+    }
+
+    $entities = [];
+    $mappings = [];
+    $used = [];
+    foreach (array_values($page_expectation['expected_entities']) as $index => $expected) {
+        $entity_id = 'e' . ($index + 1);
+        $entities[] = ['entity_id' => $entity_id, 'object_key' => (string) $page_expectation['expected_object_key'], 'label' => (string) $expected['entity']];
+        list($anchor) = $find(strtolower((string) $expected['entity']), 0, []);
+        foreach ($expected['mappings'] ?? [] as $expectation) {
+            $want_image = ($expectation['from'] ?? '') === 'image';
+            list(, $item_id) = $find(strtolower((string) $expectation['source_probe']), (int) $anchor, $used, $want_image);
+            if ($item_id === null) {
+                list(, $item_id) = $find(strtolower((string) $expectation['source_probe']), 0, $used, $want_image);
+            }
+            if ($item_id !== null) {
+                $used[$item_id] = true;
+                $mappings[] = ['item_id' => $item_id, 'target_ref' => (string) $expectation['target_ref'], 'confidence' => 0.97, 'rationale' => 'oracle', 'entity_id' => $entity_id];
+            }
+        }
+    }
+
+    return ['entities' => $entities, 'mappings' => $mappings, 'declined' => []];
 }
 
 // ---------------------------------------------------------------------------- DOM measurement
@@ -1123,27 +1395,14 @@ function dbvc_corpus_verify_scorer($corpus_root)
             );
 
             // The oracle: for each expectation, map the item whose text contains the probe.
-            $mappings = [];
-            foreach ($page_expectation['mappings'] ?? [] as $expectation) {
-                $probe = strtolower((string) $expectation['source_probe']);
-                foreach ($input['items'] as $item) {
-                    if ($probe !== '' && strpos(strtolower((string) $item['text']), $probe) !== false) {
-                        $mappings[] = [
-                            'item_id' => $item['item_id'],
-                            'target_ref' => (string) $expectation['target_ref'],
-                            'confidence' => 0.97,
-                            'rationale' => 'oracle',
-                        ];
-                        break;
-                    }
-                }
-            }
+            $answer = dbvc_corpus_oracle_answer($page_expectation, $input);
+            $mappings = $answer['mappings'];
             if ($mappings === []) {
                 $failures[] = "{$slot_name}/{$slug}: oracle matched no items at all - the probes or the input builder are broken";
                 continue;
             }
 
-            $payload = (string) json_encode(['mappings' => $mappings, 'declined' => []]);
+            $payload = (string) json_encode($answer);
             $result = DBVC_CC_Interp_Service::interpret($input, $schema, (string) $page_expectation['expected_object_key'], [
                 'api_key' => 'oracle',
                 'provider' => DBVC_CC_Interp_Model::PROVIDER_ANTHROPIC,
@@ -1179,6 +1438,15 @@ function dbvc_corpus_verify_scorer($corpus_root)
                     $failures[] = sprintf('    probe "%s": expected %s, scored against %s',
                         substr((string) $wrong['probe'], 0, 40), (string) $wrong['expected'], (string) $wrong['got']);
                 }
+            }
+            if (isset($scored['entities']) && $scored['entities']['complete_text_values'] !== $scored['entities']['expected']) {
+                $failures[] = sprintf(
+                    '%s/%s: the oracle declared %d records but only %d scored complete',
+                    $slot_name,
+                    $slug,
+                    $scored['entities']['expected'],
+                    $scored['entities']['complete_text_values']
+                );
             }
             if ($scored['auto_correct'] < count($mappings)) {
                 $failures[] = sprintf(
@@ -1464,11 +1732,95 @@ function dbvc_corpus_self_test()
     }
     @rmdir($cache_dir_models);
 
+    // ---- one source URL, many records (D-19) ----
+
+    $team_schema = $schema;
+    $team_schema['objects'][] = [
+        'object_key' => 'team_member',
+        'label' => 'Team member',
+        'cardinality' => 'one_per_person',
+        'fields' => [
+            ['field_ref' => 'core:post_title', 'label' => 'Name', 'type' => 'text', 'required' => true,
+                'purpose' => 'The person\'s full name.', 'value_contract' => ['shape' => 'scalar_string']],
+            ['field_ref' => 'acf:team_member:bio', 'label' => 'Biography', 'type' => 'wysiwyg',
+                'purpose' => 'Paragraphs about the person.', 'value_contract' => ['shape' => 'html']],
+        ],
+    ];
+    $team_input = [
+        'artifact_type' => DBVC_CC_Interp_Contracts::INPUT_TYPE,
+        'page_slug' => 'selftest-team',
+        'items' => [
+            ['item_id' => 't1', 'kind' => DBVC_CC_Interp_Contracts::KIND_HEADING, 'text' => 'Our team', 'heading_context' => ['h1' => 'Our team']],
+            ['item_id' => 't2', 'kind' => DBVC_CC_Interp_Contracts::KIND_HEADING, 'text' => 'Ada Quill', 'heading_context' => ['h1' => 'Our team', 'h2' => 'Ada Quill']],
+            ['item_id' => 't3', 'kind' => DBVC_CC_Interp_Contracts::KIND_BODY, 'text' => 'Ada has practised for twenty years.', 'heading_context' => ['h1' => 'Our team', 'h2' => 'Ada Quill']],
+            ['item_id' => 't4', 'kind' => DBVC_CC_Interp_Contracts::KIND_HEADING, 'text' => 'Ben Ortolan', 'heading_context' => ['h1' => 'Our team', 'h2' => 'Ben Ortolan']],
+            ['item_id' => 't5', 'kind' => DBVC_CC_Interp_Contracts::KIND_BODY, 'text' => 'Ben joined the practice in 2015.', 'heading_context' => ['h1' => 'Our team', 'h2' => 'Ben Ortolan']],
+        ],
+    ];
+    $set_payload = static function (array $answer) use ($anthropic_envelope) {
+        return static function () use ($anthropic_envelope, $answer) {
+            return $anthropic_envelope((string) json_encode($answer));
+        };
+    };
+    $team_answer = [
+        'entities' => [
+            ['entity_id' => 'e1', 'object_key' => 'team_member', 'label' => 'Ada Quill'],
+            ['entity_id' => 'e2', 'object_key' => 'team_member', 'label' => 'Ben Ortolan'],
+        ],
+        'mappings' => [
+            ['item_id' => 't2', 'target_ref' => 'core:post_title', 'confidence' => 0.95, 'rationale' => 'name', 'entity_id' => 'e1'],
+            ['item_id' => 't3', 'target_ref' => 'acf:team_member:bio', 'confidence' => 0.95, 'rationale' => 'bio', 'entity_id' => 'e1'],
+            ['item_id' => 't4', 'target_ref' => 'core:post_title', 'confidence' => 0.95, 'rationale' => 'name', 'entity_id' => 'e2'],
+            ['item_id' => 't5', 'target_ref' => 'acf:team_member:bio', 'confidence' => 0.95, 'rationale' => 'bio', 'entity_id' => 'e2'],
+        ],
+        'declined' => [['item_id' => 't1', 'reason' => 'page_level_content']],
+    ];
+
+    // 13. A page read as a set of an offered collection object yields one record per entity,
+    //     every recommendation names its record, and the result passes the contract.
+    $set = DBVC_CC_Interp_Service::interpret($team_input, $team_schema, 'page', $base + [
+        'transport' => $set_payload($team_answer),
+        'collection_object_keys' => ['team_member'],
+    ]);
+    if (($set['interpreter'] ?? '') !== DBVC_CC_Interp_Contracts::INTERPRETER_MODEL
+        || count($set['entities'] ?? []) !== 2
+        || count(array_filter($set['recommendations'] ?? [], static function ($rec) {
+            return isset($rec['entity_id']) && ($rec['target_object_key'] ?? '') === 'team_member';
+        })) !== 4
+        || DBVC_CC_Interp_Contracts::validate_result($set) !== []) {
+        $failures[] = 'a model reading a page as two team_member records did not yield two records: '
+            . (string) ($set['model_attempt']['reason'] ?? '') . ' ' . (string) ($set['model_attempt']['detail'] ?? '');
+    }
+
+    // 14. A set of an object nobody offered is the model deciding the data model: rejected,
+    //     with the reason named, and the floor answers instead.
+    $unoffered = DBVC_CC_Interp_Service::interpret($team_input, $team_schema, 'page', $base + [
+        'transport' => $set_payload($team_answer),
+    ]);
+    if (($unoffered['model_attempt']['reason'] ?? '') !== DBVC_CC_Interp_Model::SKIP_INVALID_SHAPE
+        || isset($unoffered['entities'])) {
+        $failures[] = 'a set of an un-offered object was accepted';
+    }
+
+    // 15. The floor reads a set only on a positive declaration, and its records carry no
+    //     model key: the D-3 rule holds for records as for fields.
+    $floor_set = DBVC_CC_Interp_Floor::interpret($team_input, $team_schema, 'team_member');
+    $floor_open = DBVC_CC_Interp_Floor::interpret(
+        $team_input,
+        ['schema' => $team_schema['schema'], 'objects' => [array_merge($team_schema['objects'][1], ['cardinality' => DBVC_CC_Interp_Contracts::CARDINALITY_ONE_OR_MANY_PER_SOURCE_URL])]],
+        'team_member'
+    );
+    if (count($floor_set['entities'] ?? []) !== 2 || DBVC_CC_Interp_Contracts::validate_result($floor_set) !== []
+        || isset($floor_open['entities'])) {
+        $failures[] = 'the floor grouped records without a declared per-entity cardinality, or failed to with one';
+    }
+
     if ($failures === []) {
-        echo "self-test: 12 assertions passed\n";
+        echo "self-test: 15 assertions passed\n";
         echo "  D-3 provenance guards are live (4)\n";
         echo "  model path, code fence, and all five fallback branches exercised with a fake transport (6)\n";
         echo "  response caching prevents a duplicate paid call, and is keyed per resolved model (2)\n";
+        echo "  one URL as a set of records: offered sets accepted, un-offered rejected, floor groups only on a declaration (3)\n";
 
         return 0;
     }
@@ -1709,7 +2061,7 @@ function dbvc_corpus_gate_detail_lines($gate_id, array $gate)
                 continue;
             }
             $lines[] = sprintf(
-                '%s: %d items in, %d declined as chrome, %d recommended, %d auto-accepted',
+                '%s: %d items in, %d declined, %d recommended, %d auto-accepted',
                 $slug,
                 $page['items_in'],
                 $page['declined'],
@@ -1728,6 +2080,16 @@ function dbvc_corpus_gate_detail_lines($gate_id, array $gate)
                 $page['all_wrong'],
                 100 * $page['all_accuracy']
             );
+            if (isset($page['entities'])) {
+                $lines[] = sprintf(
+                    '  records (D-19)                : %d produced / %d expected %s, %d matched by name, %d with every text value right',
+                    $page['entities']['produced'],
+                    $page['entities']['expected'],
+                    $page['entities']['object_key'] !== '' ? $page['entities']['object_key'] : '(no set)',
+                    $page['entities']['matched'],
+                    $page['entities']['complete_text_values']
+                );
+            }
             if ($page['provenance_violations'] !== []) {
                 foreach ($page['provenance_violations'] as $violation) {
                     $lines[] = '  PROVENANCE: ' . $violation;

@@ -111,6 +111,60 @@ trait BricksReferenceMaps
     }
 
     /**
+     * Source bricks_template post id => vf_object_uid, for Template elements that
+     * render another template by local post id. Read fresh on every call (an apply
+     * may create the referenced template moments earlier in the same run).
+     *
+     * @return array<string, string>
+     */
+    protected function bricks_template_id_to_uid()
+    {
+        $map = [];
+        foreach ($this->read_template_identities() as $row) {
+            $map[(string) $row['id']] = (string) $row['uid'];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Target vf_object_uid => bricks_template post id (first writer wins, so a
+     * duplicated uid resolves deterministically).
+     *
+     * @return array<string, string>
+     */
+    protected function bricks_template_uid_to_id()
+    {
+        $map = [];
+        foreach ($this->read_template_identities() as $row) {
+            $map += [(string) $row['uid'] => (string) $row['id']];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Every bricks_template post that carries a DBVC identity, oldest first.
+     *
+     * @return array<int, array{id: int, uid: string}>
+     */
+    private function read_template_identities()
+    {
+        global $wpdb;
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT p.ID AS id, m.meta_value AS uid FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = 'vf_object_uid' WHERE p.post_type = %s AND p.post_status NOT IN ('trash', 'auto-draft') AND m.meta_value <> '' ORDER BY p.ID ASC",
+            'bricks_template'
+        ), ARRAY_A);
+        $out = [];
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            $out[] = ['id' => (int) $row['id'], 'uid' => trim((string) $row['uid'])];
+        }
+
+        return $out;
+    }
+
+    /**
      * Direct read of a persisted option as a list, bypassing caches and filters.
      *
      * @param string $option

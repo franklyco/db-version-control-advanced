@@ -319,6 +319,49 @@ final class DBVC_CC_V2_Target_Transform_Service
     }
 
     /**
+     * Preview how one record of a multi-record page would resolve, by its own slug.
+     *
+     * The same slug check the page-level preview makes, scoped to the record's object. It is a
+     * preview: the importer's full match order runs per record at dry run and decides.
+     *
+     * @param string $object_key
+     * @param string $slug
+     * @return array{mode: string, reason: string, target: array<string, mixed>}
+     */
+    public function build_entity_resolution_preview($object_key, $slug)
+    {
+        $object_key = sanitize_key((string) $object_key);
+        $slug = sanitize_title((string) $slug);
+        if ($object_key === '' || ! post_type_exists($object_key)) {
+            return [
+                'mode' => DBVC_CC_V2_Contracts::RESOLUTION_MODE_BLOCKED,
+                'reason' => 'entity_object_unavailable',
+                'target' => ['object_key' => $object_key],
+            ];
+        }
+
+        if ($slug !== '') {
+            $existing = get_page_by_path($slug, OBJECT, $object_key);
+            if ($existing instanceof WP_Post) {
+                return [
+                    'mode' => DBVC_CC_V2_Contracts::RESOLUTION_MODE_UPDATE_EXISTING,
+                    'reason' => 'entity_slug_match',
+                    'target' => [
+                        'object_id' => (int) $existing->ID,
+                        'object_key' => $object_key,
+                    ],
+                ];
+            }
+        }
+
+        return [
+            'mode' => DBVC_CC_V2_Contracts::RESOLUTION_MODE_CREATE_NEW,
+            'reason' => 'entity_create_inputs_present',
+            'target' => ['object_key' => $object_key],
+        ];
+    }
+
+    /**
      * @param string $target_ref
      * @return string
      */

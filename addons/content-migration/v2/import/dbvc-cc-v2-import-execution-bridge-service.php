@@ -121,7 +121,7 @@ final class DBVC_CC_V2_Import_Execution_Bridge_Service
             }
 
             if (! empty($approval['approval']['approval_token'])) {
-                $approval_tokens[$page_id] = (string) $approval['approval']['approval_token'];
+                $approval_tokens[$this->approval_key($page_detail)] = (string) $approval['approval']['approval_token'];
             }
 
             $page_approvals[] = [
@@ -210,7 +210,7 @@ final class DBVC_CC_V2_Import_Execution_Bridge_Service
 
             $page_id = isset($page_detail['pageId']) ? (string) $page_detail['pageId'] : '';
             $path = isset($page_detail['path']) ? (string) $page_detail['path'] : '';
-            $approval_token = $this->resolve_approval_token($approval_tokens, $page_id, $path);
+            $approval_token = $this->resolve_approval_token($approval_tokens, $this->approval_key($page_detail), $path);
             $execution = DBVC_CC_Import_Executor_Service::get_instance()->execute_write_skeleton_from_execution(
                 $page_detail['dryRunExecution'],
                 $confirm_execute,
@@ -336,6 +336,24 @@ final class DBVC_CC_V2_Import_Execution_Bridge_Service
      * @param string               $path
      * @return string
      */
+    /**
+     * The key one record's preflight token is held under.
+     *
+     * A page's id, unless the record is one of several a page was read as (D-19): those share
+     * the page id, so each is keyed by its record as well, or the last approval would overwrite
+     * the others and every other record would execute with no token.
+     *
+     * @param array<string, mixed> $page_detail
+     * @return string
+     */
+    private function approval_key(array $page_detail)
+    {
+        $page_id = isset($page_detail['pageId']) ? (string) $page_detail['pageId'] : '';
+        $entity_ref = isset($page_detail['record']['entity_ref']) ? (string) $page_detail['record']['entity_ref'] : '';
+
+        return $entity_ref === '' ? $page_id : $page_id . '#' . $entity_ref;
+    }
+
     private function resolve_approval_token(array $approval_tokens, $page_id, $path)
     {
         if ($page_id !== '' && isset($approval_tokens[$page_id]) && is_scalar($approval_tokens[$page_id])) {

@@ -288,9 +288,13 @@ class ConnectedReleaseTest extends WP_UnitTestCase
         $this->assertSame('option:bricks_global_classes', $aaa['container']);
         $this->assertNotEmpty($aaa['storage_fingerprint']);
         $this->assertSame('replace_object', $aaa['patch']['strategy']);
-        $this->assertSame([['path' => 'settings', 'operation' => 'replace']], array_map(static function ($path) {
+        // CR-1: changed paths are nested leaves (the test body changes settings._direction only).
+        $this->assertSame([['path' => 'settings._direction', 'operation' => 'replace']], array_map(static function ($path) {
             return ['path' => $path['path'], 'operation' => $path['operation']];
         }, $aaa['patch']['changed_paths']));
+        $this->assertFalse($aaa['patch']['truncated']);
+        $this->assertArrayNotHasKey('before_value', $aaa['patch']['changed_paths'][0], 'Values are off by default: hashes only.');
+        $this->assertSame(['included' => false, 'omitted' => 'disabled'], $receipt['values']);
         $this->assertSame(Preparer::OUTCOME_NOOP, $items[$uids['bbb222']]['outcome']);
         $this->assertNull($items[$uids['bbb222']]['patch']);
         $blocked = $items['bricks-global-class-unknown1'];
@@ -353,7 +357,11 @@ class ConnectedReleaseTest extends WP_UnitTestCase
                 $this->assertSame($uids['ccc333'], $item['target_instance_uid']);
                 $this->assertSame(['storage_key' => 'ccc333', 'source' => 'sidecar+link'], $item['identity']);
                 $this->assertSame(Preparer::OUTCOME_READY, $item['outcome']);
-                $this->assertSame(['cat', 'id', 'name', 'settings'], array_column($item['patch']['changed_paths'], 'path'), 'ccc333 has a category the new body lacks: remove; id/name/settings differ: replace.');
+                // CR-1: nested leaves — compare the top-level keys the leaves fall under.
+                $tops = array_values(array_unique(array_map(static function ($path) {
+                    return explode('.', (string) $path)[0];
+                }, array_column($item['patch']['changed_paths'], 'path'))));
+                $this->assertSame(['cat', 'id', 'name', 'settings'], $tops, 'ccc333 has a category the new body lacks: remove; id/name/settings differ: replace.');
             }
         }
         $hub_linked = (new HubPreparationStore())->find($linked['operation_id']);

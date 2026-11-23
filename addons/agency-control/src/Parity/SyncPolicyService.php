@@ -62,7 +62,7 @@ final class SyncPolicyService
 
         $mode = (string) ($args['mode'] ?? 'manual');
         if (! in_array($mode, SyncPolicyStore::MODES, true)) {
-            return new \WP_Error('dbvc_agency_invalid_mode', 'mode must be manual, assisted or auto.', ['status' => 400]);
+            return new \WP_Error('dbvc_agency_invalid_mode', 'mode must be manual, assisted, auto or report.', ['status' => 400]);
         }
         $conflict = (string) ($args['conflict_policy'] ?? 'hold');
         if (! in_array($conflict, SyncPolicyStore::CONFLICT_POLICIES, true)) {
@@ -91,7 +91,9 @@ final class SyncPolicyService
             'conflict_policy' => $conflict,
             'create_new' => ! empty($args['create_new']),
             'propagate_deletions' => ! empty($args['propagate_deletions']),
-            'max_objects' => max(1, (int) ($args['max_objects'] ?? 25)),
+            // Report mode transports more per cycle (D7): nothing applies, and the prepare
+            // request is paged (CR-1), so the default cap is 50 instead of 25.
+            'max_objects' => max(1, (int) ($args['max_objects'] ?? ($mode === 'report' ? 50 : 25))),
             'cadence' => (string) ($args['cadence'] ?? 'manual'),
             'note' => (string) ($args['note'] ?? ''),
         ];

@@ -46,9 +46,13 @@ final class DBVC_CC_V2_Package_Artifact_Service
                 continue;
             }
 
-            $target_key = isset($report['packagePreview']['target_entity_key']) ? (string) $report['packagePreview']['target_entity_key'] : '';
-            if ($target_key !== '') {
-                $included_object_types[$target_key] = $target_key;
+            $target_keys = isset($report['packagePreview']['entities']) && is_array($report['packagePreview']['entities'])
+                ? array_column($report['packagePreview']['entities'], 'target_entity_key')
+                : [isset($report['packagePreview']['target_entity_key']) ? (string) $report['packagePreview']['target_entity_key'] : ''];
+            foreach ($target_keys as $target_key) {
+                if ((string) $target_key !== '') {
+                    $included_object_types[(string) $target_key] = (string) $target_key;
+                }
             }
         }
 
@@ -173,6 +177,32 @@ final class DBVC_CC_V2_Package_Artifact_Service
             }
 
             $preview = $report['packagePreview'];
+
+            // A page read as a set becomes one record per entity (D-19), each under its own
+            // source URL and path so the importer's match order runs per record. Shared page
+            // fields come from the page's preview; values and media are the record's own.
+            if (isset($preview['entities']) && is_array($preview['entities']) && $preview['entities'] !== []) {
+                foreach ($preview['entities'] as $entity) {
+                    if (! is_array($entity)) {
+                        continue;
+                    }
+                    $records[] = [
+                        'page_id' => isset($preview['page_id']) ? (string) $preview['page_id'] : '',
+                        'path' => isset($entity['path']) ? (string) $entity['path'] : '',
+                        'source_url' => isset($entity['source_url']) ? (string) $entity['source_url'] : '',
+                        'target_entity_key' => isset($entity['target_entity_key']) ? (string) $entity['target_entity_key'] : '',
+                        'target_action' => isset($entity['target_action']) ? (string) $entity['target_action'] : '',
+                        'field_values' => isset($entity['field_values']) && is_array($entity['field_values']) ? array_values($entity['field_values']) : [],
+                        'media_refs' => isset($entity['media_refs']) && is_array($entity['media_refs']) ? array_values($entity['media_refs']) : [],
+                        'trace' => isset($preview['trace']) && is_array($preview['trace']) ? $preview['trace'] : [],
+                        'entity_ref' => isset($entity['entity_ref']) ? (string) $entity['entity_ref'] : '',
+                        'entity_label' => isset($entity['label']) ? (string) $entity['label'] : '',
+                        'page_source_url' => isset($preview['source_url']) ? (string) $preview['source_url'] : '',
+                    ];
+                }
+                continue;
+            }
+
             $records[] = [
                 'page_id' => isset($preview['page_id']) ? (string) $preview['page_id'] : '',
                 'path' => isset($preview['path']) ? (string) $preview['path'] : '',
@@ -196,20 +226,33 @@ final class DBVC_CC_V2_Package_Artifact_Service
     {
         $items = [];
         foreach ($included_reports as $report) {
-            if (! is_array($report) || empty($report['packagePreview']['media_refs']) || ! is_array($report['packagePreview']['media_refs'])) {
+            $media_refs = isset($report['packagePreview']['media_refs']) && is_array($report['packagePreview']['media_refs'])
+                ? $report['packagePreview']['media_refs']
+                : [];
+            // On a page read as a set only media bound to a record travel, each with its record.
+            if (isset($report['packagePreview']['entities']) && is_array($report['packagePreview']['entities']) && $report['packagePreview']['entities'] !== []) {
+                $media_refs = [];
+                foreach ($report['packagePreview']['entities'] as $entity) {
+                    foreach (isset($entity['media_refs']) && is_array($entity['media_refs']) ? $entity['media_refs'] : [] as $media_ref) {
+                        $media_refs[] = $media_ref;
+                    }
+                }
+            }
+            if (! is_array($report) || $media_refs === []) {
                 continue;
             }
 
-            foreach ($report['packagePreview']['media_refs'] as $media_ref) {
+            foreach ($media_refs as $media_ref) {
                 if (! is_array($media_ref)) {
                     continue;
                 }
 
                 $dedupe_key = sprintf(
-                    '%s|%s|%s',
+                    '%s|%s|%s%s',
                     isset($report['pageId']) ? (string) $report['pageId'] : '',
                     isset($media_ref['target_ref']) ? (string) $media_ref['target_ref'] : '',
-                    isset($media_ref['source_url']) ? (string) $media_ref['source_url'] : ''
+                    isset($media_ref['source_url']) ? (string) $media_ref['source_url'] : '',
+                    isset($media_ref['entity_ref']) ? '|' . (string) $media_ref['entity_ref'] : ''
                 );
 
                 $items[$dedupe_key] = [
@@ -224,7 +267,7 @@ final class DBVC_CC_V2_Package_Artifact_Service
                         'decision_source' => isset($media_ref['decision_source']) ? (string) $media_ref['decision_source'] : '',
                         'source_refs' => isset($media_ref['source_refs']) && is_array($media_ref['source_refs']) ? array_values($media_ref['source_refs']) : [],
                     ],
-                ];
+                ] + (isset($media_ref['entity_ref']) ? ['entity_ref' => (string) $media_ref['entity_ref']] : []);
             }
         }
 

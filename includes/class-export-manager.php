@@ -70,14 +70,7 @@ if (! class_exists('DBVC_Export_Manager')) {
             } else {
                 $creating_job = true;
 
-                DBVC_Sync_Posts::export_options_to_json();
-                if (class_exists('DBVC_Third_Party_Portability')) {
-                    DBVC_Third_Party_Portability::export_selected_entities();
-                }
-                DBVC_Sync_Posts::export_menus_to_json();
-                if (class_exists('DBVC_Sync_Taxonomies')) {
-                    DBVC_Sync_Taxonomies::export_selected_taxonomies();
-                }
+                self::export_non_post_entities();
 
                 $total_posts = DBVC_Sync_Posts::get_total_export_post_count();
                 if ($total_posts <= 0) {
@@ -149,7 +142,23 @@ if (! class_exists('DBVC_Export_Manager')) {
 
             $snapshot_id = null;
 
+            $non_post_refreshed = false;
+
             if ('done' === $status) {
+                // Options, menus, taxonomies and third-party entities are written
+                // once, when the job is created. A job left unfinished survives
+                // indefinitely and is offered for resume in the admin, so a job
+                // finished days or weeks later would otherwise pair today's posts
+                // with non-post entities from its creation date — and the manifest
+                // and snapshot below would record that mix as one coherent export.
+                // Refresh them here, before the manifest is built, whenever this
+                // run did not itself create the job (a single-call export already
+                // wrote them moments ago).
+                if (! $creating_job) {
+                    self::export_non_post_entities();
+                    $non_post_refreshed = true;
+                }
+
                 if (class_exists('DBVC_Backup_Manager')) {
                     DBVC_Backup_Manager::generate_manifest(dbvc_get_sync_path());
                 }
@@ -174,9 +183,10 @@ if (! class_exists('DBVC_Export_Manager')) {
                     'success',
                     'Chunked export completed',
                     [
-                        'job_id'      => $job_id,
-                        'snapshot_id' => $snapshot_id,
-                        'total'       => $context['total'],
+                        'job_id'             => $job_id,
+                        'snapshot_id'        => $snapshot_id,
+                        'total'              => $context['total'],
+                        'non_post_refreshed' => $non_post_refreshed,
                     ]
                 );
             }
@@ -196,6 +206,28 @@ if (! class_exists('DBVC_Export_Manager')) {
                     ? __('Chunked export completed.', 'dbvc')
                     : __('Chunk processed.', 'dbvc'),
             ];
+        }
+
+        /**
+         * Export everything that is not a post: options, third-party entities,
+         * menus and taxonomies.
+         *
+         * Runs when a chunked job is created and again when a resumed job
+         * completes, so the export a finished job records is consistent with its
+         * posts. Each call replaces the files it writes.
+         *
+         * @return void
+         */
+        private static function export_non_post_entities()
+        {
+            DBVC_Sync_Posts::export_options_to_json();
+            if (class_exists('DBVC_Third_Party_Portability')) {
+                DBVC_Third_Party_Portability::export_selected_entities();
+            }
+            DBVC_Sync_Posts::export_menus_to_json();
+            if (class_exists('DBVC_Sync_Taxonomies')) {
+                DBVC_Sync_Taxonomies::export_selected_taxonomies();
+            }
         }
     }
 }

@@ -51,9 +51,10 @@ final class ReleaseService
      * @param array<int, array<string, string>> $selections Each `domain` + `instance_uid`, optional `operation` (`replace` default, or
      *                                                     `delete` to release a verified absence: the source must report the object gone).
      * @param string                          $note
+     * @param string                          $purpose    `release` (default) or `report` (CR-2: transport for a dry run only; never approved, purged by retention).
      * @return array<string, mixed>|\WP_Error
      */
-    public function create($source_environment_id, array $selections, $note = '')
+    public function create($source_environment_id, array $selections, $note = '', $purpose = ReleaseStore::PURPOSE_RELEASE)
     {
         $source = $this->environments->find((string) $source_environment_id);
         if ($source === null) {
@@ -110,6 +111,7 @@ final class ReleaseService
             'client_id' => $source['client_id'],
             'source_environment_id' => $source['environment_id'],
             'source_epoch' => $source['current_epoch'],
+            'purpose' => (string) $purpose,
             'note' => (string) $note,
             'created_by' => get_current_user_id(),
         ], $items);

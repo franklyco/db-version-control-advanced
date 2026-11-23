@@ -21,36 +21,36 @@ final class DBVC_CC_Interp_Service
      * @param array<string, mixed> $input      interpretation-input.v1
      * @param array<string, mixed> $schema     corpus-target-schema.v1
      * @param string               $object_key
-     * @param array<string, mixed> $options    model config, plus 'transport', 'cache_dir', 'use_model'
+     * @param array<string, mixed> $options    model config, plus 'transport', 'cache_dir', 'use_model',
+     *                                         and 'collection_object_keys': other schema objects the
+     *                                         page may be read as a SET of (D-19).
      * @return array<string, mixed> interpretation-result.v1
      */
     public static function interpret(array $input, array $schema, $object_key, array $options = [])
     {
+        $offered = isset($options['collection_object_keys']) && is_array($options['collection_object_keys'])
+            ? array_values(array_map('strval', $options['collection_object_keys']))
+            : [];
         $use_model = array_key_exists('use_model', $options) ? (bool) $options['use_model'] : true;
         if (! $use_model) {
             return self::with_attempt(
-                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key),
+                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key, $offered),
                 ['attempted' => false, 'reason' => 'model_disabled']
             );
         }
 
-        $object = null;
-        foreach ($schema['objects'] ?? [] as $candidate) {
-            if (is_array($candidate) && (string) ($candidate['object_key'] ?? '') === (string) $object_key) {
-                $object = $candidate;
-                break;
-            }
-        }
+        $object = DBVC_CC_Interp_Contracts::find_object($schema, $object_key);
         if ($object === null) {
             return self::with_attempt(
-                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key),
+                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key, $offered),
                 ['attempted' => false, 'reason' => 'unknown_object_key']
             );
         }
 
         $fields = DBVC_CC_Interp_Contracts::mappable_fields($object);
+        $collection_objects = DBVC_CC_Interp_Contracts::collection_objects($schema, $object_key, $offered);
         $system = DBVC_CC_Interp_Prompt::system_prompt();
-        $user_payload = DBVC_CC_Interp_Prompt::user_payload($input, $fields, $object);
+        $user_payload = DBVC_CC_Interp_Prompt::user_payload($input, $fields, $object, $collection_objects);
 
         // Construct the client BEFORE keying the cache, and key on the model it resolved rather
         // than the option as passed. When a caller omits 'model' the option is empty, so keying on
@@ -79,7 +79,7 @@ final class DBVC_CC_Interp_Service
 
         if (empty($completion['ok'])) {
             return self::with_attempt(
-                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key),
+                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key, $offered),
                 [
                     'attempted' => true,
                     'reason' => (string) ($completion['skip'] ?? DBVC_CC_Interp_Model::SKIP_TRANSPORT_ERROR),
@@ -89,10 +89,10 @@ final class DBVC_CC_Interp_Service
         }
 
         $decoded = self::decode_json_payload((string) $completion['text']);
-        $errors = DBVC_CC_Interp_Prompt::validate_response($decoded, $fields, $input);
+        $errors = DBVC_CC_Interp_Prompt::validate_response($decoded, $fields, $input, $collection_objects);
         if ($errors !== []) {
             return self::with_attempt(
-                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key),
+                DBVC_CC_Interp_Floor::interpret($input, $schema, $object_key, $offered),
                 [
                     'attempted' => true,
                     'reason' => DBVC_CC_Interp_Model::SKIP_INVALID_SHAPE,
@@ -135,6 +135,7 @@ final class DBVC_CC_Interp_Service
             $text_by_item[(string) $item['item_id']] = (string) ($item['text'] ?? '');
         }
 
+        $entities = self::declared_entities($decoded, (string) $object_key);
         $recommendations = [];
         foreach ($decoded['mappings'] as $mapping) {
             $confidence = round((float) $mapping['confidence'], 2);
@@ -143,11 +144,12 @@ final class DBVC_CC_Interp_Service
                 $reason_codes[] = 'below_auto_accept_confidence';
             }
 
-            $recommendations[] = [
+            $entity_id = $entities !== [] ? (string) $mapping['entity_id'] : '';
+            $recommendation = [
                 'recommendation_id' => 'rec_' . str_pad((string) (count($recommendations) + 1), 3, '0', STR_PAD_LEFT),
                 'item_id' => (string) $mapping['item_id'],
                 'target_ref' => (string) $mapping['target_ref'],
-                'target_object_key' => (string) $object_key,
+                'target_object_key' => $entity_id !== '' ? $entities[$entity_id]['object_key'] : (string) $object_key,
                 'confidence' => $confidence,
                 // Identical gate to the floor's, so G-4 compares like with like.
                 'requires_review' => $confidence < DBVC_CC_Interp_Contracts::AUTO_ACCEPT_MIN_CONFIDENCE,
@@ -156,6 +158,12 @@ final class DBVC_CC_Interp_Service
                 'source_evidence' => $text_by_item[(string) $mapping['item_id']] ?? '',
                 'provenance' => $provenance,
             ];
+            // Written only on a page read as a set, so a single-record result keeps its shape.
+            if ($entity_id !== '') {
+                $recommendation['entity_id'] = $entity_id;
+                $entities[$entity_id]['item_ids'][] = (string) $mapping['item_id'];
+            }
+            $recommendations[] = $recommendation;
         }
 
         $declined = [];
@@ -171,7 +179,7 @@ final class DBVC_CC_Interp_Service
             ];
         }
 
-        return [
+        $result = [
             'artifact_type' => DBVC_CC_Interp_Contracts::RESULT_TYPE,
             'page_slug' => (string) ($input['page_slug'] ?? ''),
             'source_url' => (string) ($input['source_url'] ?? ''),
@@ -201,6 +209,56 @@ final class DBVC_CC_Interp_Service
                 )),
             ],
         ];
+
+        if ($entities !== []) {
+            $result['entities'] = array_values($entities);
+        }
+
+        return $result;
+    }
+
+    /**
+     * The records a validated response declared, keyed by entity_id, in the order declared.
+     *
+     * Empty when the page is one record of the object it was routed to — including a "set" of
+     * one entity of that same object, which is the same thing said the long way. A single entity
+     * of a DIFFERENT object is kept: the page is one team member, not a page.
+     *
+     * @param array<string, mixed> $decoded A response that already passed validate_response().
+     * @param string               $object_key
+     * @return array<string, array<string, mixed>>
+     */
+    private static function declared_entities(array $decoded, $object_key)
+    {
+        if (empty($decoded['entities']) || ! is_array($decoded['entities'])) {
+            return [];
+        }
+
+        $used = [];
+        foreach ($decoded['mappings'] as $mapping) {
+            $used[(string) ($mapping['entity_id'] ?? '')] = true;
+        }
+
+        $entities = [];
+        foreach ($decoded['entities'] as $entity) {
+            $entity_id = (string) $entity['entity_id'];
+            // A record nothing maps into has no values to write.
+            if (! isset($used[$entity_id])) {
+                continue;
+            }
+            $entities[$entity_id] = [
+                'entity_id' => $entity_id,
+                'object_key' => (string) $entity['object_key'],
+                'label' => trim((string) $entity['label']),
+                'item_ids' => [],
+            ];
+        }
+
+        if (count($entities) === 1 && reset($entities)['object_key'] === (string) $object_key) {
+            return [];
+        }
+
+        return $entities;
     }
 
     /**

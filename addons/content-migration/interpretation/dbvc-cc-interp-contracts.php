@@ -46,6 +46,106 @@ final class DBVC_CC_Interp_Contracts
     public const KIND_HEAD_META = 'head_meta';
 
     /**
+     * How many records of an object one source URL can produce.
+     *
+     * `one_per_source_url` is a page: the URL is the record. Anything else names a record that can
+     * repeat on one page — a team member, a service, a question — so a single URL may yield a set
+     * of them (V3 guide D-19). `one_or_many_per_source_url` is what an adapter declares when it
+     * cannot know: the live catalog says what an object's fields are, not how often it appears on a
+     * page, so the decision is left to whoever reads the page.
+     */
+    public const CARDINALITY_ONE_PER_SOURCE_URL = 'one_per_source_url';
+    public const CARDINALITY_ONE_OR_MANY_PER_SOURCE_URL = 'one_or_many_per_source_url';
+
+    /** Decline reason for content that belongs to the page rather than to any record on it. */
+    public const DECLINE_PAGE_LEVEL_CONTENT = 'page_level_content';
+
+    /**
+     * Can one source URL yield more than one record of an object with this cardinality?
+     *
+     * @param string $cardinality
+     * @return bool
+     */
+    public static function allows_many_per_source_url($cardinality)
+    {
+        $cardinality = (string) $cardinality;
+
+        return $cardinality !== '' && $cardinality !== self::CARDINALITY_ONE_PER_SOURCE_URL;
+    }
+
+    /**
+     * Does the cardinality positively declare a record per entity, rather than leave it open?
+     *
+     * The deterministic floor groups a page into records only on a positive declaration. "One or
+     * many" is a question, and answering it from heading shape alone is a guess.
+     *
+     * @param string $cardinality
+     * @return bool
+     */
+    public static function declares_one_per_entity($cardinality)
+    {
+        return self::allows_many_per_source_url($cardinality)
+            && (string) $cardinality !== self::CARDINALITY_ONE_OR_MANY_PER_SOURCE_URL;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @param string               $object_key
+     * @return array<string, mixed>|null
+     */
+    public static function find_object(array $schema, $object_key)
+    {
+        foreach ($schema['objects'] ?? [] as $candidate) {
+            if (is_array($candidate) && (string) ($candidate['object_key'] ?? '') === (string) $object_key) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The objects a page may be read as a SET of: the target object itself when its cardinality
+     * allows it, then each offered collection object that does, in the order offered.
+     *
+     * @param array<string, mixed> $schema
+     * @param string               $object_key
+     * @param array<int, string>   $offered_keys
+     * @return array<int, array<string, mixed>>
+     */
+    public static function collection_objects(array $schema, $object_key, array $offered_keys = [])
+    {
+        $keys = array_merge([(string) $object_key], array_map('strval', $offered_keys));
+        $objects = [];
+        foreach ($keys as $key) {
+            if ($key === '' || isset($objects[$key])) {
+                continue;
+            }
+            $object = self::find_object($schema, $key);
+            if ($object !== null && self::allows_many_per_source_url((string) ($object['cardinality'] ?? ''))) {
+                $objects[$key] = $object;
+            }
+        }
+
+        return array_values($objects);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function entity_ids(array $result)
+    {
+        $ids = [];
+        foreach ($result['entities'] ?? [] as $entity) {
+            if (is_array($entity) && isset($entity['entity_id'])) {
+                $ids[(string) $entity['entity_id']] = (string) ($entity['object_key'] ?? '');
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
      * Value shapes a kind can legitimately land in. Used by the floor and asserted on model output,
      * so neither can propose a heading for an attachment field.
      *
@@ -195,7 +295,31 @@ final class DBVC_CC_Interp_Contracts
         if (($result['artifact_type'] ?? '') !== self::RESULT_TYPE) {
             $errors[] = 'artifact_type must be ' . self::RESULT_TYPE;
         }
+
+        // A set of records is all-or-nothing: once a page is read as several entities, every
+        // recommendation says which one it belongs to, and the entity it names exists. A value
+        // with no record would be written to whichever post the importer reached first.
+        $entity_ids = self::entity_ids($result);
+        if (array_key_exists('entities', $result)) {
+            if (! is_array($result['entities']) || $result['entities'] === []) {
+                $errors[] = 'entities must be a non-empty array when present';
+            }
+            if (count($entity_ids) !== count((array) $result['entities'])) {
+                $errors[] = 'every entity needs a unique entity_id';
+            }
+        }
         foreach ($result['recommendations'] ?? [] as $index => $recommendation) {
+            $entity_id = isset($recommendation['entity_id']) ? (string) $recommendation['entity_id'] : null;
+            if ($entity_ids !== [] && $entity_id === null) {
+                $errors[] = "recommendations[{$index}] has no entity_id on a page read as several entities";
+            } elseif ($entity_id !== null && ! isset($entity_ids[$entity_id])) {
+                $errors[] = "recommendations[{$index}] names undeclared entity '{$entity_id}'";
+            } elseif ($entity_id !== null
+                && (string) ($recommendation['target_object_key'] ?? '') !== $entity_ids[$entity_id]
+            ) {
+                $errors[] = "recommendations[{$index}] targets a different object than its entity";
+            }
+
             $provenance = $recommendation['provenance'] ?? [];
             $interpreter = (string) ($provenance['interpreter'] ?? '');
             if ($interpreter === '') {

@@ -1274,6 +1274,155 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 		}
 
 		/**
+		 * Change report (CR-3): the inbox for a pair — open items with decisions,
+		 * handled items, summary and honest status — or the items of one run.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function change_report(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$service = new \Dbvc\AgencyControl\Reports\ChangeReportService();
+			$options = [];
+			if (! empty($assoc_args['report'])) {
+				$options['report_uid'] = (string) $assoc_args['report'];
+			}
+			if (isset($assoc_args['handled_limit'])) {
+				$options['handled_limit'] = self::bounded_integer($assoc_args['handled_limit'], 0, self::MAX_LIMIT);
+			}
+			$inbox = $service->inbox((string) ($assoc_args['source'] ?? ''), (string) ($assoc_args['target'] ?? ''), $options);
+			if (is_wp_error($inbox)) {
+				return $inbox;
+			}
+			if ((string) ($assoc_args['design_review'] ?? '') !== '') {
+				// CR-6: the hub holds no posts, so rows match the review by title only.
+				$file = (string) $assoc_args['design_review'];
+				if (! is_file($file) || ! is_readable($file)) {
+					return new WP_Error('dbvc_agency_design_review_missing', 'Design Review export not found or unreadable: ' . $file);
+				}
+				$decoded = json_decode((string) file_get_contents($file), true);
+				$review = is_array($decoded) ? \Dbvc\ConnectedProtocol\DesignReviewAnnotation::read($decoded) : null;
+				if ($review === null) {
+					return new WP_Error('dbvc_agency_design_review_format', 'Not a ' . \Dbvc\ConnectedProtocol\DesignReviewAnnotation::FORMAT . ' export: ' . $file);
+				}
+				$annotated = \Dbvc\ConnectedProtocol\DesignReviewAnnotation::annotate($inbox['items'], $review);
+				$inbox['items'] = $annotated['items'];
+				$inbox['handled'] = \Dbvc\ConnectedProtocol\DesignReviewAnnotation::annotate($inbox['handled'], $review)['items'];
+				$inbox['design_review'] = $annotated['summary'];
+			}
+			if ((string) ($assoc_args['format'] ?? '') === 'markdown') {
+				$inbox['markdown'] = \Dbvc\AgencyControl\Reports\ChangeReportService::render_markdown($inbox);
+			}
+			$inbox['returned'] = count($inbox['items']);
+
+			return $inbox;
+		}
+
+		/**
+		 * Change report (CR-3): report runs for a pair (newest first).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function change_reports(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$store = new \Dbvc\AgencyControl\Storage\ChangeReportStore();
+			$rows = $store->reports(isset($assoc_args['source']) ? (string) $assoc_args['source'] : null, isset($assoc_args['target']) ? (string) $assoc_args['target'] : null, self::bounded_integer($assoc_args['limit'] ?? self::DEFAULT_LIMIT, 1, self::MAX_LIMIT));
+
+			return ['returned' => count($rows), 'reports' => array_map(static function ($row) {
+				return [
+					'report_uid' => (string) $row['report_uid'],
+					'source' => (string) $row['source_environment_id'],
+					'target' => (string) $row['target_environment_id'],
+					'state' => (string) $row['state'],
+					'items' => (int) $row['item_count'],
+					'created' => (int) ($row['counts']['created'] ?? 0),
+					'updated' => (int) ($row['counts']['updated'] ?? 0),
+					'removed' => (int) ($row['counts']['removed'] ?? 0),
+					'conflict' => (int) ($row['counts']['conflict'] ?? 0),
+					'local_only' => (int) ($row['counts']['local_only'] ?? 0),
+					'values' => $row['values_included'] ? 'on' : 'off',
+					'release_uid' => (string) $row['release_uid'],
+					'operation_id' => (string) $row['operation_id'],
+					'generated_at' => (string) $row['generated_at'],
+					'counts' => $row['counts'],
+				];
+			}, $rows)];
+		}
+
+		/**
+		 * Change report (CR-3): decide open items — reconciled ("Done"), ignored
+		 * ("Leave it"), snoozed ("Remind me tomorrow") or clear.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function change_report_decide(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$args = [
+				'source' => (string) ($assoc_args['source'] ?? ''),
+				'target' => (string) ($assoc_args['target'] ?? ''),
+				'items' => $assoc_args['items'] ?? [],
+				'decision' => (string) ($assoc_args['decision'] ?? ''),
+				'note' => (string) ($assoc_args['note'] ?? ''),
+				'rebaseline' => ! empty($assoc_args['rebaseline']) && filter_var($assoc_args['rebaseline'], FILTER_VALIDATE_BOOLEAN),
+			];
+			if (isset($assoc_args['snooze_seconds'])) {
+				$args['snooze_seconds'] = (int) $assoc_args['snooze_seconds'];
+			}
+
+			return (new \Dbvc\AgencyControl\Reports\ChangeReportService())->decide($args);
+		}
+
+		/**
+		 * Change report (CR-3): promote open items into a real release (publisher).
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function change_report_promote(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+
+			return (new \Dbvc\AgencyControl\Reports\ChangeReportService())->promote([
+				'source' => (string) ($assoc_args['source'] ?? ''),
+				'target' => (string) ($assoc_args['target'] ?? ''),
+				'items' => $assoc_args['items'] ?? [],
+				'note' => (string) ($assoc_args['note'] ?? ''),
+			]);
+		}
+
+		/**
+		 * Change report (CR-3): purge report-purpose releases past retention.
+		 *
+		 * @param array $assoc_args
+		 * @return array|WP_Error
+		 */
+		public static function change_report_purge(array $assoc_args) {
+			$ready = self::require_ready();
+			if (is_wp_error($ready)) {
+				return $ready;
+			}
+			$args = ['dry_run' => ! empty($assoc_args['dry-run']) || ! empty($assoc_args['dry_run'])];
+			if (isset($assoc_args['days'])) {
+				$args['days'] = (int) $assoc_args['days'];
+			}
+
+			return (new \Dbvc\AgencyControl\Reports\ChangeReportService())->purge($args);
+		}
+
+		/**
 		 * M8 parity: read-only parity view (comparison counts + a dry-run proposal).
 		 *
 		 * @param array $assoc_args
@@ -1490,6 +1639,12 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 					if (! is_array($changed) || ! isset($changed['path'])) {
 						continue;
 					}
+					// CR-1: a target that opted in already rendered both sides (before_value is
+					// the target's own value, which only the target can supply); keep those and
+					// fill after_value from the stored payload only when the receipt has none.
+					if (isset($changed['after_value']) && is_string($changed['after_value'])) {
+						continue;
+					}
 					$changed['after_value'] = $body === null
 						? null
 						: self::format_incoming_value(self::value_at_path($body, (string) $changed['path']), (string) $changed['path']);
@@ -1532,24 +1687,8 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 		 * @return string
 		 */
 		private static function format_incoming_value($value, $path) {
-			foreach (explode('.', strtolower($path)) as $segment) {
-				if (preg_match('/pass(word)?|secret|token|api[-_]?key|private[-_]?key|nonce|credential|(^|_)auth($|_)/', $segment)) {
-					return '[redacted]';
-				}
-			}
-			if ($value === null) {
-				return '(absent)';
-			}
-			if (is_bool($value)) {
-				return $value ? 'true' : 'false';
-			}
-			$string = is_scalar($value) ? (string) $value : (string) wp_json_encode($value);
-			$string = trim(preg_replace('/\s+/', ' ', $string));
-			if (mb_strlen($string) > 200) {
-				return mb_substr($string, 0, 200) . '… (' . mb_strlen($string) . ' chars)';
-			}
-
-			return $string;
+			// One rule for both sides (CR-1): the connector renders its receipt values with the same class.
+			return \Dbvc\ConnectedProtocol\ReceiptValues::format($value, (string) $path, true);
 		}
 
 		/**
@@ -2130,6 +2269,7 @@ if (! class_exists('DBVC_Agency_CLI_Inspector')) {
 				'principal_user_id' => (int) $row['principal_user_id'],
 				'enrolled_site_url' => (string) $row['enrolled_site_url'],
 				'last_contact_at' => (string) ($row['last_contact_at'] ?? ''),
+				'last_seen_at' => (string) ($row['last_seen_at'] ?? ''),
 				'received_events' => (int) $row['received_events'],
 				'max_received_sequence' => (int) $row['max_received_sequence'],
 				'last_inbox_poll_at' => (string) ($row['last_inbox_poll_at'] ?? ''),
@@ -2233,7 +2373,7 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		 */
 		public function environments($args, $assoc_args) {
 			unset($args);
-			$this->emit_rows(DBVC_Agency_CLI_Inspector::environments($assoc_args), 'environments', ['environment_id', 'client_id', 'label', 'status', 'hold_reason', 'current_epoch', 'received_events', 'max_received_sequence', 'last_contact_at'], $assoc_args);
+			$this->emit_rows(DBVC_Agency_CLI_Inspector::environments($assoc_args), 'environments', ['environment_id', 'client_id', 'label', 'status', 'hold_reason', 'current_epoch', 'received_events', 'max_received_sequence', 'last_contact_at', 'last_seen_at'], $assoc_args);
 		}
 
 		/**
@@ -4091,7 +4231,7 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		 * : Target environment identifier.
 		 *
 		 * [--mode=<mode>]
-		 * : manual, assisted or auto. Default: manual.
+		 * : manual, assisted, auto or report. Default: manual. report tracks a cycle like auto but stops at the target's dry run (nothing is approved or applied): the change report.
 		 *
 		 * [--conflict_policy=<policy>]
 		 * : hold, source_wins or skip. Default: hold.
@@ -4185,6 +4325,188 @@ if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI_Command') && ! class_exi
 		public function sync_policy_delete($args, $assoc_args) {
 			unset($args);
 			$this->emit_json(DBVC_Agency_CLI_Inspector::sync_policy_delete($assoc_args));
+		}
+
+		/**
+		 * Change report: what changed on staging since the last check, object by object (the inbox for a pair).
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier (where edits happen, e.g. staging).
+		 *
+		 * --target=<id>
+		 * : Target environment identifier (kept up to date, e.g. LocalWP).
+		 *
+		 * [--report=<uid>]
+		 * : Show the items of one run instead of the live inbox.
+		 *
+		 * [--handled_limit=<n>]
+		 * : Handled items to include. Default: 50.
+		 *
+		 * [--design-review=<file>]
+		 * : A VerticalFramework Design Review export (vf-design-review/1 JSON) whose pin counts and approvals annotate the page and template rows it covers, matched by title (CR-6).
+		 *
+		 * [--format=<format>]
+		 * : table, json or markdown. Default: table.
+		 *
+		 * [--fields=<fields>]
+		 * : Comma-separated columns for the table.
+		 *
+		 * @subcommand change-report
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function change_report($args, $assoc_args) {
+			unset($args);
+			if (isset($assoc_args['design-review'])) {
+				$assoc_args['design_review'] = $assoc_args['design-review'];
+			}
+			$result = DBVC_Agency_CLI_Inspector::change_report($assoc_args);
+			if ((string) ($assoc_args['format'] ?? '') === 'markdown') {
+				if (is_wp_error($result)) {
+					WP_CLI::error($result->get_error_message());
+				}
+				WP_CLI::line($result['markdown']);
+				return;
+			}
+			if (! is_wp_error($result)) {
+				if ((string) ($assoc_args['format'] ?? 'table') !== 'json') {
+					WP_CLI::log($result['summary']['text']);
+				}
+				$result['items'] = array_map(static function ($item) {
+					$item['decision'] = $item['decision'] !== null ? $item['decision']['decision'] . ':' . $item['decision']['verify_state'] : '';
+					if (array_key_exists('design_review', $item)) {
+						$item['design_review'] = \Dbvc\ConnectedProtocol\DesignReviewAnnotation::describe($item['design_review']);
+					}
+					return $item;
+				}, $result['items']);
+			}
+			$columns = ['display_name', 'domain', 'instance_uid', 'label_text', 'path_count', 'receipt_outcome', 'decision', 'changed_at'];
+			if (is_array($result) && isset($result['design_review'])) {
+				$columns[] = 'design_review';
+			}
+			$this->emit_rows($result, 'items', $columns, $assoc_args);
+		}
+
+		/**
+		 * Change report runs for a pair, newest first.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--source=<id>]
+		 * : Source environment identifier.
+		 *
+		 * [--target=<id>]
+		 * : Target environment identifier.
+		 *
+		 * [--limit=<n>]
+		 * : Maximum rows.
+		 *
+		 * [--format=<format>]
+		 * : table or json. Default: table.
+		 *
+		 * [--fields=<fields>]
+		 * : Comma-separated columns for the table.
+		 *
+		 * @subcommand change-reports
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function change_reports($args, $assoc_args) {
+			unset($args);
+			$this->emit_rows(DBVC_Agency_CLI_Inspector::change_reports($assoc_args), 'reports', ['report_uid', 'state', 'items', 'created', 'updated', 'removed', 'conflict', 'local_only', 'values', 'generated_at'], $assoc_args);
+		}
+
+		/**
+		 * Decide change-report items: reconciled ("Done"), ignored ("Leave it"), snoozed ("Remind me tomorrow") or clear.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier.
+		 *
+		 * --items=<items>
+		 * : Comma-separated domain:instance_uid references (the uid is the last colon segment).
+		 *
+		 * --decision=<decision>
+		 * : reconciled, ignored, snoozed or clear.
+		 *
+		 * [--note=<note>]
+		 * : Optional note.
+		 *
+		 * [--rebaseline=<bool>]
+		 * : With reconciled on a conflict item: also confirm the pair baseline for that object ("Sorted — they match now").
+		 *
+		 * [--snooze_seconds=<n>]
+		 * : With snoozed: how long to hide the item. Default: 86400.
+		 *
+		 * @subcommand change-report-decide
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function change_report_decide($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::change_report_decide($assoc_args));
+		}
+
+		/**
+		 * Promote change-report items into a real release (publisher); approve it from Releases.
+		 *
+		 * ## OPTIONS
+		 *
+		 * --source=<id>
+		 * : Source environment identifier.
+		 *
+		 * --target=<id>
+		 * : Target environment identifier.
+		 *
+		 * --items=<items>
+		 * : Comma-separated domain:instance_uid references.
+		 *
+		 * [--note=<note>]
+		 * : Release note.
+		 *
+		 * @subcommand change-report-promote
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function change_report_promote($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::change_report_promote($assoc_args));
+		}
+
+		/**
+		 * Purge report-purpose releases (release, items, preparations) older than the retention window whose report exists; reclaims orphan media.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--days=<n>]
+		 * : Age threshold in days. Default: 7.
+		 *
+		 * [--dry-run]
+		 * : Count only.
+		 *
+		 * @subcommand change-report-purge
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function change_report_purge($args, $assoc_args) {
+			unset($args);
+			$this->emit_json(DBVC_Agency_CLI_Inspector::change_report_purge($assoc_args));
 		}
 
 		/**

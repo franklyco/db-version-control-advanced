@@ -79,11 +79,12 @@ final class ParityScheduler
         $skipped = 0;
         $results = [];
         foreach ($store->all(null, null, 500) as $policy) {
-            if (! $policy['enabled'] || $policy['mode'] !== 'auto' || $policy['cadence'] === 'manual') {
+            // auto and report (CR-2) are the tracked modes the hub drives; assisted and manual never are.
+            if (! $policy['enabled'] || ! in_array($policy['mode'], SyncDriver::TRACKED_MODES, true) || $policy['cadence'] === 'manual') {
                 $skipped++;
                 continue;
             }
-            $in_flight = $policy['active_release_uid'] !== '' || $policy['active_rollout_uid'] !== '';
+            $in_flight = $policy['active_release_uid'] !== '' || $policy['active_rollout_uid'] !== '' || $policy['active_operation_id'] !== '';
             if (! $in_flight && ! self::is_due($policy)) {
                 $skipped++;
                 continue;

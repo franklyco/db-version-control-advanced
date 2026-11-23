@@ -61,9 +61,9 @@ final class HubClient
      * @param array<string, mixed> $auth
      * @return array{ok: bool, status: int, body: array<string, mixed>|null, error: string, error_code: string}
      */
-    public static function get_json($hub_url, $route, array $query = [], array $auth = [])
+    public static function get_json($hub_url, $route, array $query = [], array $auth = [], array $options = [])
     {
-        return self::request('GET', $hub_url, $route, $query, null, $auth);
+        return self::request('GET', $hub_url, $route, $query, null, $auth, $options);
     }
 
     /**
@@ -174,7 +174,7 @@ final class HubClient
      * @param array<string, mixed>      $auth
      * @return array{ok: bool, status: int, body: array<string, mixed>|null, error: string, error_code: string}
      */
-    private static function request($method, $hub_url, $route, array $query, $body, array $auth)
+    private static function request($method, $hub_url, $route, array $query, $body, array $auth, array $options = [])
     {
         $base = self::validate_hub_url($hub_url);
         if (is_wp_error($base)) {
@@ -204,7 +204,9 @@ final class HubClient
             'redirection' => 0,
             'sslverify' => true,
             'headers' => $headers,
-            'limit_response_size' => Protocol::MAX_BATCH_BYTES * 4,
+            // Default 1 MiB; a route that legitimately carries more (prepare requests with
+            // whole release bodies, CR-1) names its own bound.
+            'limit_response_size' => isset($options['limit_response_size']) ? max(Protocol::MAX_BATCH_BYTES, (int) $options['limit_response_size']) : Protocol::MAX_BATCH_BYTES * 4,
         ];
         if ($body !== null) {
             $args['body'] = wp_json_encode($body);
