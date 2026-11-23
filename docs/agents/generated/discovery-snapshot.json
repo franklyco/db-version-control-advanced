@@ -4,7 +4,7 @@
     "repository": {
         "scope": "repository_only",
         "source_file_count": 502,
-        "source_fingerprint": "sha256:8103b7e1eac85785e2e4dab2efb411e8cd29533fa6f86b012f4e944385a02e91",
+        "source_fingerprint": "sha256:272529880d9756e1e74308880f09bf8d87642c131d068fbc650aa69ef23e567d",
         "live_runtime_verified": false
     },
     "counts": {
@@ -15,7 +15,7 @@
         "cli_commands": 138,
         "cli_namespaces": 13,
         "database_tables": 49,
-        "documentation": 547,
+        "documentation": 544,
         "extension_points": 211,
         "hook_listeners": 230,
         "rest_routes": 130,
@@ -5062,11 +5062,9 @@
             "docs/implementation/proposed/bricks-portability-drift-manager/examples/package-manifest.example.json",
             "docs/implementation/proposed/bricks-portability-drift-manager/README.md",
             "docs/implementation/proposed/bricks-reference-mapping-plan.md",
-            "docs/implementation/proposed/configuration-portability-tool-guide.md",
             "docs/implementation/proposed/content-collection-v3/README.md",
             "docs/implementation/proposed/content-collection-v3/unit-economics-baseline.md",
             "docs/implementation/proposed/cross-site-entity-packet-guide.md",
-            "docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md",
             "docs/implementation/proposed/media-sync-hydration-guide.md",
             "docs/implementation/proposed/post-field-masking-expansion-plan.md",
             "docs/implementation/proposed/README.md",
@@ -5093,7 +5091,6 @@
             "docs/reference/meta-masking.md",
             "docs/reference/README.md",
             "docs/reference/terms.md",
-            "docs/reference/wordpress-application-passwords.md",
             "docs/requests.md",
             "docs/ROADMAP.md",
             "docs/troubleshooting/content-migration-ai-jobs-stuck-queued.md",
