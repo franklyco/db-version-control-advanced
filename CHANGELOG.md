@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 2.5.1 — 2026-11-22
+- Visual Editor: fixed the editor panel sliding under the Visual Editor's own toolbar, hiding its Close and Save. It happened in 2.5.0 with the Vertical theme's Classic toolbar stage, when the theme's Design Review panel was open and moved a tall editor panel left; the panel now stops above the toolbar. Sites where the theme docks the controls were not affected.
+
 ## 2.5.0 — 2026-11-22
 - Visual Editor: Review fields can be searched. A search box at the top of the Review fields tray narrows the page's field list by label, field name, owner, or section as you type, together with the category chips; matching sections open, clearing the search restores the tray, the term is kept when the tray is reopened, and Escape clears the search before it closes the tray.
 - Visual Editor: the editor panel keeps clear of a panel the theme opens on the right edge. With a Vertical theme that reserves the edge of its open Design Review panel (the theme release after 2.18.1), the editor panel opens to its left, moves aside if the review panel opens after it, and cannot be dragged under it; it always keeps at least 320px. With an older theme, or without the Vertical theme, nothing moves. Details in the Visual Editor changelog.
