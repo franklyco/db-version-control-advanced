@@ -1,7 +1,6 @@
 # CHANGELOG
 
 ## Unreleased
-- Visual Editor: Review fields can be searched. A search box at the top of the Review fields tray narrows the page's field list by label, field name, owner, or section as you type, together with the category chips; matching sections open, clearing the search restores the tray, the term is kept when the tray is reopened, and Escape clears the search before it closes the tray.
 - Fixed: completing a resumed chunked export no longer records stale options, menus, taxonomies and third-party entities. A chunked export writes those once, when the job is created, and unfinished jobs persist and are offered for resume in the admin — so a job finished days or weeks after it was started exported current posts alongside non-post entities from its creation date, and the manifest and snapshot recorded the mix as one export. They are now refreshed when a resumed job completes, before the manifest is built; a job created and finished in the same call does not repeat the work.
 
 ## 2.5.1 — 2026-11-22
