@@ -8778,15 +8778,67 @@
 		};
 	}
 
+	/**
+	 * UT6.3c: the top edge of this editor's own toolbar when the panel would
+	 * cover it. The own toolbar shows wherever no host docks the controls
+	 * (the Vertical theme's Classic stage, or no Vertical theme) and sits on
+	 * a layer above the panel, so a panel under it loses its Close and Save.
+	 * A host's right inset (UT6.3b) can move the panel into the toolbar's
+	 * columns, so the clamp has to know where it is.
+	 *
+	 * @param {number} panelLeft  Panel's left edge in viewport pixels.
+	 * @param {number} panelWidth Panel's width in pixels.
+	 * @return {number|null} The toolbar's top in viewport pixels, or null when
+	 *                       it is hidden, docked, or clear of those columns.
+	 */
+	function getOwnToolbarTopBeside( panelLeft, panelWidth ) {
+		const toolbar = state.toolbarNode;
+
+		if ( ! toolbar || toolbar.hidden || ! toolbar.isConnected ) {
+			return null;
+		}
+
+		const rect = toolbar.getBoundingClientRect();
+
+		if ( ! rect || ! rect.width || ! rect.height ) {
+			return null;
+		}
+
+		if (
+			panelLeft + panelWidth <= rect.left ||
+			panelLeft >= rect.right
+		) {
+			return null;
+		}
+
+		return rect.top;
+	}
+
 	function syncPanelViewportSize( panel ) {
 		if ( ! panel ) {
 			return;
 		}
 
 		const bounds = getPanelViewportBounds();
+		let maxHeight = bounds.height - 16;
+
+		// UT6.3c: where the panel shares columns with the own toolbar, it
+		// must also fit above it.
+		const rect = panel.getBoundingClientRect();
+		const panelLeft = state.panelPosition
+			? Number( state.panelPosition.left )
+			: rect && rect.left;
+		const toolbarTop = getOwnToolbarTopBeside(
+			Number.isFinite( panelLeft ) ? panelLeft : bounds.left,
+			( rect && rect.width ) || 380
+		);
+
+		if ( null !== toolbarTop ) {
+			maxHeight = Math.min( maxHeight, toolbarTop - bounds.top - 16 );
+		}
 
 		panel.style.maxWidth = `${ Math.max( 1, bounds.width - 16 ) }px`;
-		panel.style.maxHeight = `${ Math.max( 1, bounds.height - 16 ) }px`;
+		panel.style.maxHeight = `${ Math.max( 1, maxHeight ) }px`;
 	}
 
 	function ensurePanelPosition( panel ) {
@@ -8844,10 +8896,27 @@
 			? parsedLeft
 			: minLeft;
 		const requestedTop = Number.isFinite( parsedTop ) ? parsedTop : minTop;
+		const left = Math.min( Math.max( minLeft, requestedLeft ), maxLeft );
+		let topLimit = maxTop;
+
+		// UT6.3c: in the own toolbar's columns the panel stops above it.
+		const toolbarTop = getOwnToolbarTopBeside( left, panelWidth );
+
+		if ( null !== toolbarTop ) {
+			const fitHeight = Math.min(
+				panelHeight,
+				Math.max( 1, toolbarTop - bounds.top - margin * 2 )
+			);
+
+			topLimit = Math.max(
+				minTop,
+				Math.min( maxTop, toolbarTop - margin - fitHeight )
+			);
+		}
 
 		return {
-			left: Math.min( Math.max( minLeft, requestedLeft ), maxLeft ),
-			top: Math.min( Math.max( minTop, requestedTop ), maxTop ),
+			left,
+			top: Math.min( Math.max( minTop, requestedTop ), topLimit ),
 		};
 	}
 
