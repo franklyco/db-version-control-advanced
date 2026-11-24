@@ -1,6 +1,12 @@
 # CHANGELOG
 
 ## Unreleased
+
+## 2.6.0 — 2026-11-24
+- Connected Environments: compare two sites without a hub. `wp dbvc connected objects-export` writes the objects a site has recorded to a JSON file, and `wp dbvc connected compare-file` on the other site prints what differs, object by object and value by value. Both are read-only. `--design-review=<file>` adds a Vertical Design Review export's pin counts and approvals to the pages and templates it covers.
+- Agency Control: Site Changes, a durable change report for a staging and LocalWP pair. The hub reads the pair, stores each run, lets you record a decision per item, notifies on new changes, and purges old runs. A pair can use the report-only policy, which changes nothing on either site. The hub schema moves from 20 to 23; it applies only where Agency Control is enabled.
+- Connected Environments: fewer false differences between two hosts. ACF image, file and gallery fields and featured images compare by file content instead of attachment ID, Bricks Template elements compare by the referenced template's portable ID, and the Bricks query-loop cache stamp and WordPress oEmbed cache are ignored. This changes the fingerprint of every post with such a field once: update both sites of a pair, let them re-observe, then re-confirm the baseline.
+- Content Migration V3: mapping and interpretation improvements, including several entities from one URL, and corpus evaluation tooling.
 - Fixed: completing a resumed chunked export no longer records stale options, menus, taxonomies and third-party entities. A chunked export writes those once, when the job is created, and unfinished jobs persist and are offered for resume in the admin — so a job finished days or weeks after it was started exported current posts alongside non-post entities from its creation date, and the manifest and snapshot recorded the mix as one export. They are now refreshed when a resumed job completes, before the manifest is built; a job created and finished in the same call does not repeat the work.
 
 ## 2.5.1 — 2026-11-22
