@@ -231,8 +231,8 @@ final class VisualEditorGlobalClassBackgroundTest extends WP_UnitTestCase
      * the loop identifier it also stamps on the element, alongside the page-context class rule.
      */
     private const LOOP_CSS = '.mm-core__post.brxe-block {background-image: url("https://example.test/uploads/page.jpg")} '
-        . '.brxe-qjyxen.brxe-block[data-query-loop-index="0"] {background-image: url("https://example.test/uploads/paula.jpg")} '
-        . '.brxe-qjyxen.brxe-block[data-query-loop-index="1"] {background-image: url("https://example.test/uploads/connie.jpg")} '
+        . '.brxe-qjyxen.brxe-block[data-query-loop-index="0"] {background-image: url("https://example.test/uploads/team-a.jpg")} '
+        . '.brxe-qjyxen.brxe-block[data-query-loop-index="1"] {background-image: url("https://example.test/uploads/team-b.jpg")} '
         . '.brxe-qjyxen.brxe-block[data-query-loop-index="2"] {background-image: none} '
         . '.brxe-loopel .brxe-cardbg.brxe-div[data-query-loop-index="gjzhgw:1:loopel:3"] {background-image: url("https://example.test/uploads/nested.jpg")} '
         . '.brxe-otherl .brxe-cardbg.brxe-div[data-query-loop-index="gjzhgw:1:loopel:3"] {background-image: url("https://example.test/uploads/other-loop.jpg")} '
@@ -243,8 +243,8 @@ final class VisualEditorGlobalClassBackgroundTest extends WP_UnitTestCase
         $service = $this->serviceWithCss(self::LOOP_CSS);
         $root = $this->loopDescriptor(['element_id' => 'qjyxen', 'element_name' => 'block'], 'qjyxen');
 
-        $this->assertSame('https://example.test/uploads/paula.jpg', $this->extract($service, '<div class="brxe-qjyxen brxe-block" data-query-loop-index="0" data-dbvc-ve="ve_test">', $root));
-        $this->assertSame('https://example.test/uploads/connie.jpg', $this->extract($service, '<div class="brxe-qjyxen brxe-block" data-query-loop-index="1" data-dbvc-ve="ve_test">', $root));
+        $this->assertSame('https://example.test/uploads/team-a.jpg', $this->extract($service, '<div class="brxe-qjyxen brxe-block" data-query-loop-index="0" data-dbvc-ve="ve_test">', $root));
+        $this->assertSame('https://example.test/uploads/team-b.jpg', $this->extract($service, '<div class="brxe-qjyxen brxe-block" data-query-loop-index="1" data-dbvc-ve="ve_test">', $root));
         // Bricks emits `none` for an item whose field is empty: verifiable as an empty background.
         $this->assertSame('', $this->extract($service, '<div class="brxe-qjyxen brxe-block" data-query-loop-index="2">', $root));
         $this->assertFalse($this->unverifiable($service, '<div class="brxe-qjyxen brxe-block" data-query-loop-index="2">', $root));

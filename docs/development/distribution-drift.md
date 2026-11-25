@@ -40,11 +40,19 @@ The config carries two allowlists, and keeping them honest is the whole value of
 
 `distribution_only` — paths that legitimately exist only in the distribution repo, so they are not reported as unexpected. As of 2026-10-18 that is the ChatGPT `distribution/` package, the Visual Editor handoff notes, and a few reference docs. **These exist nowhere else**, so a sync that mirrors development over the distribution repo would destroy them. Copy in one direction, file by file; never reset the distribution repo to match.
 
-`development_only` — build scaffolding, repomix config, editor settings, Playwright and fixture files that the distribution copy is not expected to carry.
+`development_only` — build scaffolding, repomix config, editor settings, Playwright and fixture files that the distribution copy is not expected to carry, plus the client material described below.
 
 `tests/` is deliberately **not** in `development_only`. Neither repository's `.gitignore` excludes tests, and the distribution repo contains test files of its own, so a missing test is genuine drift. As of 2026-10-18 **177 `tests/phpunit` files are missing from the distribution copy** — an omission from past manual copies, not a boundary.
 
 The script also asserts the premise: if the two repositories ever come to share history, `shares_history` flips to `YES` and the assumption behind this doc no longer holds.
+
+## The distribution repository is public
+
+Anything copied there can be read by anyone, and stays in its history. Before a copy:
+
+- Client material stays here. `addons/content-migration/tests/corpus/slots/`, `tests/phpunit/ContentMigrationCorpusWiredMeasurementTest.php` and `docs/private/` are `development_only`.
+- Every other file uses an alias or an invented name. `docs/private/client-key.md` says who an alias is.
+- `.gitattributes` and `scripts/check-release-archive-contents.php` are the same in both repositories. `composer release:check` runs in either; change both files here first and copy them. It checks what a release archive holds, not every file in the repository.
 
 ## When to run it
 

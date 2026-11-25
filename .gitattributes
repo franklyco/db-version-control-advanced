@@ -61,6 +61,19 @@
 /addons/visual-editor/boilerplates export-ignore
 /addons/visual-editor/curation/*.md export-ignore
 
+# Paths only db-version-control-main tracks (development_only in
+# scripts/distribution-drift.json). They are here so that both repositories
+# carry this file unchanged, and so that a stray copy of one cannot ship.
+# uninstall.php stays out on purpose: it deletes collected uploads and drops
+# tables when a site opted in, and no release has ever carried it.
+/.claude export-ignore
+/.github export-ignore
+/.repomixignore export-ignore
+/.vscode export-ignore
+/_source export-ignore
+/test-results export-ignore
+/uninstall.php export-ignore
+
 # docs/ is an allowlist: everything is ignored, then the files runtime code
 # names are re-included. git archive prunes an ignored directory without looking
 # inside it, so each parent of a re-included file needs its own line.

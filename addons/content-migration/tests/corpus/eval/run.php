@@ -764,8 +764,8 @@ function dbvc_corpus_score_recommendations(array $result, array $expectation)
 /**
  * Score a page whose ground truth is a SET of records (D-19), record by record.
  *
- * A value is right only when it lands in the right field of the right record: Nancy's role in
- * Mariana's record is as wrong as Nancy's role in the bio field. Each expected record is matched to
+ * A value is right only when it lands in the right field of the right record: one person's role
+ * in another's record is as wrong as that role in the bio field. Each expected record is matched to
  * the produced record whose label names it; a page the interpreter did not read as a set scores
  * every value wrong, because one record cannot hold five people. Returns the same totals as the
  * single-record scorer, so G-4 and G-5 aggregate across both, plus an `entities` block.
@@ -1563,7 +1563,7 @@ function dbvc_corpus_self_test()
         'artifact_type' => DBVC_CC_Interp_Contracts::INPUT_TYPE,
         'page_slug' => 'selftest',
         'items' => [
-            ['item_id' => 'it_001', 'kind' => DBVC_CC_Interp_Contracts::KIND_HEADING, 'text' => 'Creating Healthy Smiles'],
+            ['item_id' => 'it_001', 'kind' => DBVC_CC_Interp_Contracts::KIND_HEADING, 'text' => 'Making Gentle Smiles'],
             ['item_id' => 'it_002', 'kind' => DBVC_CC_Interp_Contracts::KIND_BODY, 'text' => 'We welcome you to the practice.'],
         ],
     ];

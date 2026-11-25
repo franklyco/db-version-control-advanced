@@ -21,7 +21,7 @@
         "rest_routes": 130,
         "scheduled_hooks": 3,
         "settings": 52,
-        "tests": 219
+        "tests": 218
     },
     "collections": {
         "admin_handlers": [
@@ -13638,7 +13638,6 @@
             "tests/phpunit/ContentMigrationAiMappingFlagBoundaryTest.php",
             "tests/phpunit/ContentMigrationCliTest.php",
             "tests/phpunit/ContentMigrationCorpusTargetProvisioningTest.php",
-            "tests/phpunit/ContentMigrationCorpusWiredMeasurementTest.php",
             "tests/phpunit/ContentMigrationExplorerContextTest.php",
             "tests/phpunit/ContentMigrationExternalArtifactIngestTest.php",
             "tests/phpunit/ContentMigrationExternalUrlInventoryTest.php",
@@ -13752,7 +13751,7 @@
         "Static discovery records literal registrations and references; dynamically composed hooks, routes, settings keys, and table names may require manual research.",
         "Observed source presence does not establish runtime activation, safety, support level, or permission for autonomous use.",
         "Core and Bricks paths are classified from this checkout; live LocalWP activation and route availability have not been verified.",
-        "Development-only paths (_source/, uninstall.php, tests/playwright/, tests/*.test.cjs) are never scanned, so source_reference records for _source/content-collector carry no discovery IDs.",
+        "Development-only paths (_source/, uninstall.php, tests/playwright/, tests/*.test.cjs, tests/phpunit/ContentMigrationCorpusWiredMeasurementTest.php, docs/private/) are never scanned, so source_reference records for _source/content-collector carry no discovery IDs.",
         "Settings discovery covers literal dbvc_* keys passed to common WordPress option functions; class constants and dynamically assembled keys require manual reconciliation."
     ]
 }

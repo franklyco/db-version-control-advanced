@@ -365,7 +365,7 @@ Why the export's keys are not `vf_object_uid`: the theme keys inventory entries 
 
 Tests: `ConnectedDesignReviewAnnotationTest` — format refusal, pin/approval folding, UID-then-title matching with a shared title matching neither, page vs template separation, summary and both markdown renderers, resolver id-drift → path fallback and front page, CLI file errors. connected-environments 271 green.
 
-### Real-pair dry run — 2026-11-20 (Mircea Olteanu DDS: LocalWP build ↔ Cloudways staging)
+### Real-pair dry run — 2026-11-20 (client pair A: LocalWP build ↔ Cloudways staging)
 
 The first run on the pair the design was written for, after every slice had only seen the two-connector test fleet. Both real sites were read, never written: staging is under the owner's freeze (reads only since 2026-11-12; no plugin install, enrollment or hub there), and the LocalWP build is single-writer. The run used two **read-only mirrors** on the operator's machine (docroot copy, database cloned from a streamed `wp db export -` over SSH, master plugin code), enrolled with the existing agency hub.
 
@@ -384,7 +384,7 @@ What the real data showed, in order of impact:
 | 14 templates and 6 variable *names* exist twice (`card-bg-featured` ×2 each side) | Duplicates match neither side; listed as created/removed pairs | By rule (shared name matches neither) |
 | Inbox rows from before linking stayed `local_only` until the next **idle scheduler tick** settled them (359 rows) | Manual `sync-advance` chains never reach the idle verify | Runbook note |
 
-Closed loop on real content: one `post_excerpt` edit on the staging mirror's *Solea Dental Laser* came back in the next hub run as `updated · 1 path · Design Review: 1 pin · not approved` with the before/after text, while the pre-existing divergence stayed *No agreed starting point*. Hub run and file mode agree object for object (141 / 142 after the edit); the Design Review export (37 entries, 45 pins) annotated 28 rows on the hub by title and 27 in file mode by UID.
+Closed loop on real content: one `post_excerpt` edit on the staging mirror's service post came back in the next hub run as `updated · 1 path · Design Review: 1 pin · not approved` with the before/after text, while the pre-existing divergence stayed *No agreed starting point*. Hub run and file mode agree object for object (141 / 142 after the edit); the Design Review export (37 entries, 45 pins) annotated 28 rows on the hub by title and 27 in file mode by UID.
 
 Open questions answered: Q1 retention — 4 runs, 3950 run-item rows and 143 release items for a 1516-object pair fit the 7-day / 20-run defaults with room; Q2/Q3 unchanged (no freeze or sleep window exercised); Q4 (co-located hub) still blocked by the staging freeze — the pair ran through the existing hub, both mirrors outbound only.
 

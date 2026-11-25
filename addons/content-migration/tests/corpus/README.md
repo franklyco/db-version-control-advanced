@@ -15,13 +15,18 @@ composer corpus:eval-json    # machine-readable
 ```
 
 ```bash
-php addons/content-migration/tests/corpus/eval/run.php --slot=mirceaolteanudds-com
+php addons/content-migration/tests/corpus/eval/run.php --slot=<domain-key>
 DBVC_CORPUS_FIXTURES=/path/to/fixtures composer corpus:eval
 ```
 
 ## What is and is not committed
 
 **Committed:** assertions, ground truth, and profile metadata. Small, reviewable, diffable.
+
+**Development repository only:** `slots/`, and `ContentMigrationCorpusWiredMeasurementTest`, which reads
+it. A slot is a client's site: its copy, its staff, its defects. The distribution repository is public,
+so `scripts/distribution-drift.json` lists both as `development_only`. There, `corpus:self-test` still
+runs, and `corpus:eval` and `corpus:verify-scorer` exit 2 because there is no slot to measure.
 
 **Not committed:** the source HTML. Corpus fixtures are third parties' copyrighted website content,
 collected to rebuild their own sites. It does not belong in plugin git history. Each slot declares
@@ -52,8 +57,14 @@ slots/<domain-key>/<capture-date>/
   profile.json           platform, why the slot earns its place, where the fixtures live, coverage
   expected-urls.json     the URL ground truth for G-1
   expected-content.json  per-page ground truth for G-2 and G-3
-  expected-mappings.json per-page target mappings for G-4 and G-5 (not authored yet)
+  expected-mappings.json per-page target mappings for G-4 and G-5
+target/
+  target-schema.v1.json  the pinned rebuild target slot 1 is scored against; names no site, so it
+                         ships to the distribution repository with the test that pins it
 ```
+
+A slot's `target_schema` is a path relative to the slot. A schema that describes nobody belongs in
+`target/`; keep one in the slot only when its labels say whose site it is.
 
 ### profile.json
 

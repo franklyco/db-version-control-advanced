@@ -336,7 +336,7 @@ class ContentMigrationCorpusTargetProvisioningTest extends WP_UnitTestCase
     private function schema_path()
     {
         return dirname(__DIR__, 2)
-            . '/addons/content-migration/tests/corpus/slots/mirceaolteanudds-com/2026-10-10/target-schema.v1.json';
+            . '/addons/content-migration/tests/corpus/target/target-schema.v1.json';
     }
 
     /**

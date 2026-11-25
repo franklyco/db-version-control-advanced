@@ -60,7 +60,7 @@ Widening the recommendation to a list and widening the item set are one unit of 
 | Readers to keep in sync | `v2/package/dbvc-cc-v2-url-qa-report-service.php`, any consumer of `mapping-recommendations.v2` (grep it). | Anything that assumed one target per URL. |
 
 **Corpus / ground truth:**
-- Slot 1 lives at `addons/content-migration/tests/corpus/slots/mirceaolteanudds-com/2026-10-10/` — `expected-mappings.json`, `expected-content.json`, `target-schema.v1.json`, `profile.json`.
+- Slot 1 lives at `addons/content-migration/tests/corpus/slots/<domain-key>/2026-10-10/` — `expected-mappings.json`, `expected-content.json`, `profile.json`; the target schema is `addons/content-migration/tests/corpus/target/target-schema.v1.json`.
 - Author/extend the `/dental-team` ground truth for the five `team_member` entities. Note §6.1c's third finding: the pinned schema and the live catalog spell `target_ref` differently (`acf:<group>:<field>` flat + `meta:post:<subtype>:<key>`) — reconcile for scoring and say so.
 - Run: `composer corpus:eval` (gates), `composer corpus:baseline` (no-fail), `composer corpus:eval-model` (model path; needs `DBVC_CC_OPENAI_API_KEY`), `composer corpus:self-test`, `composer corpus:verify-scorer`.
 
