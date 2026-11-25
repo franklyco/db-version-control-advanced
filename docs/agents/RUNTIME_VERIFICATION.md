@@ -69,6 +69,8 @@ Interactive browser testing of filters, responsive layout, and the authenticated
 - No repository release/archive workflow or `.distignore` currently defines a separate package assembly contract.
 - The new agent library, runtime view, generator, workflow, and focused test are currently untracked in the active dirty checkout.
 
+Update 2026-11-24: `.gitattributes` now has `export-ignore` rules, checked by `composer release:check`. Of this library, only `manifest.json` and `generated/discovery-snapshot.json` ship.
+
 Consequently, source packaging policy is compatible with shipping the library, but a real `git archive` or release-package proof cannot include these files until they are intentionally committed. That is the remaining package gate; this verification did not stage or commit user work.
 
 ## Current Authority

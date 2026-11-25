@@ -156,12 +156,15 @@ Before a release candidate or tagged release that changes DBVC surfaces:
 ```bash
 composer agent-docs:refresh
 composer agent-docs:check
+composer release:check
 git diff --check
 ```
 
+`release:check` archives `HEAD`, so run it after the release commit and before the tag. It compares the archive with the list in `scripts/check-release-archive-contents.php`; a path added to or removed from the release needs the same change there and in `.gitattributes`. Add a client with `--fingerprint=<name>` when DBVC is first used on its site; names are not written in this repository because it is public.
+
 Commit all intentional generated changes together with the curated manifest change. A clean check should never require hand-editing multiple indexes.
 
-If agent-reference files are newly added, also confirm they are tracked and present in the actual release artifact. Absence of `export-ignore` or ignore rules permits packaging but does not make untracked files part of `git archive` or a release ZIP. Record same-checkout runtime and package evidence in [`RUNTIME_VERIFICATION.md`](RUNTIME_VERIFICATION.md) instead of promoting the entire manifest baseline from registration checks alone.
+If agent-reference files are newly added, also confirm they are tracked and present in the actual release artifact. Only `manifest.json` and `generated/discovery-snapshot.json` ship, because the capability CLI and admin page read them; the rest of `docs/agents/` is `export-ignore`d. Untracked files are never part of `git archive` or a release ZIP. Record same-checkout runtime and package evidence in [`RUNTIME_VERIFICATION.md`](RUNTIME_VERIFICATION.md) instead of promoting the entire manifest baseline from registration checks alone.
 
 ## Current Implementation Boundary
 
