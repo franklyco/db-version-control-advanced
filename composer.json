@@ -18,6 +18,7 @@
         "agent-docs:query": "php scripts/agent-docs.php query",
         "dist:drift": "php scripts/check-distribution-drift.php",
         "dist:drift-json": "php scripts/check-distribution-drift.php --json",
+        "release:check": "php scripts/check-release-archive-contents.php",
         "test": "phpunit --testsuite \"DBVC Plugin\"",
         "test:smoke": "phpunit --filter PluginBootstrapSmokeTest",
         "test:proposal-diff": "phpunit --group proposal-diff",

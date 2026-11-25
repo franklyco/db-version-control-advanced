@@ -1,2 +1,81 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Release archives
+#
+# A release is a tag with no uploaded asset, so `git archive`, the GitHub source
+# ZIP and the ZIP the update checker downloads all follow these rules. The
+# plugin folder is web-served and is copied unmodified onto every client site,
+# so anything that ships is fetchable from every one of them. Only what the
+# installed plugin reads may ship. scripts/check-release-archive-contents.php
+# holds the same list and fails when the two disagree.
+#
+# Every rule is anchored. An unanchored `src` or `docs` would also match
+# addons/*/src, which is runtime code.
+.DS_Store export-ignore
+*.log export-ignore
+
+# Agent and editor settings.
+/.agents export-ignore
+/.codex export-ignore
+/.editorconfig export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/AGENT.md export-ignore
+/AGENTS.md export-ignore
+/repomix-instruction.md export-ignore
+/repomix-starter-kit export-ignore
+/repomix.config.json export-ignore
+
+# Tests, build sources and developer tooling. CHANGELOG.md and LICENSE ship: the
+# update checker looks for a local CHANGELOG.md before it fetches the remote one.
+/README.md export-ignore
+/admin-app.js export-ignore
+/admin-entity-editor.js export-ignore
+/bin export-ignore
+/composer.json export-ignore
+/composer.lock export-ignore
+/connected-app.js export-ignore
+/content-collector-v2-app.js export-ignore
+/dbvc_diff_entity.png export-ignore
+/dbvc_diff_list.png export-ignore
+/distribution export-ignore
+/package-lock.json export-ignore
+/package.json export-ignore
+/phpunit.xml.dist export-ignore
+/playwright.config.js export-ignore
+/scripts export-ignore
+/src export-ignore
+/tests export-ignore
+
+# Add-ons: docs, tests, fixtures, operator scripts and uncompiled sources.
+/addons/*/*.md export-ignore
+/addons/*/docs export-ignore
+/addons/*/tests export-ignore
+/addons/bricks/fixtures export-ignore
+/addons/content-migration/tools export-ignore
+/addons/content-migration/v2/admin-app export-ignore
+/addons/visual-editor/.editorconfig export-ignore
+/addons/visual-editor/.gitattributes export-ignore
+/addons/visual-editor/.gitignore export-ignore
+/addons/visual-editor/boilerplates export-ignore
+/addons/visual-editor/curation/*.md export-ignore
+
+# docs/ is an allowlist: everything is ignored, then the files runtime code
+# names are re-included. git archive prunes an ignored directory without looking
+# inside it, so each parent of a re-included file needs its own line.
+/docs/** export-ignore
+# The bricks add-on's documentation tab. Not in this repository today; the line
+# keeps it shipping once it is restored.
+/docs/DBVC_USER_DOCUMENTATION_LIBRARY.md -export-ignore
+# The capability CLI and admin page.
+/docs/agents -export-ignore
+/docs/agents/manifest.json -export-ignore
+/docs/agents/generated -export-ignore
+/docs/agents/generated/discovery-snapshot.json -export-ignore
+# Linked from admin/admin-page.php and build/admin-app.js.
+/docs/implementation -export-ignore
+/docs/implementation/completed -export-ignore
+/docs/implementation/completed/meta-masking-plan.md -export-ignore
+/docs/reference -export-ignore
+/docs/reference/meta-masking.md -export-ignore

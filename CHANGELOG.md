@@ -1,6 +1,8 @@
 # CHANGELOG
 
 ## Unreleased
+- Security: release archives carry only what the installed plugin reads. Tests, internal docs, agent settings, build sources and a stray log file used to ship in every release, where the web server could hand them out, and some of them named client sites. Nothing the plugin loads was removed.
+- Developer tooling: `composer release:check` archives `HEAD` and fails when an internal file ships, a runtime file is dropped, or a shipped file names a client.
 
 ## 2.6.0 — 2026-11-24
 - Connected Environments: compare two sites without a hub. `wp dbvc connected objects-export` writes the objects a site has recorded to a JSON file, and `wp dbvc connected compare-file` on the other site prints what differs, object by object and value by value. Both are read-only. `--design-review=<file>` adds a Vertical Design Review export's pin counts and approvals to the pages and templates it covers.
