@@ -167,7 +167,7 @@ class ContentMigrationInterpretationBridgeTest extends WP_UnitTestCase
         $this->assertSame('A dental practice in Hamilton', $by_id['head:description']['text']);
 
         // Heading context is carried so a body item can be read under the heading it sits beneath.
-        $this->assertSame(['h1' => 'Creating Healthy & Happy Smiles'], $by_id['e2']['heading_context']);
+        $this->assertSame(['h1' => 'Making Bright & Gentle Smiles'], $by_id['e2']['heading_context']);
     }
 
     /**
@@ -189,7 +189,7 @@ class ContentMigrationInterpretationBridgeTest extends WP_UnitTestCase
      *
      * Note what is NOT asserted: that the floor produces a recommendation for this page. On this
      * fixture it produces none, scoring 0.0 against every field — and that is the correct result,
-     * not a defect. "Creating Healthy & Happy Smiles" shares no token with "Hero heading / the
+     * not a defect. "Making Bright & Gentle Smiles" shares no token with "Hero heading / the
      * large headline in the hero band", which is precisely the measurement in the V3 guide's
      * section 7.2: the floor locates the right item 94.1% of the time and assigns it to the right
      * field 5.3% of the time. An earlier draft of this test asserted the floor must return
@@ -490,10 +490,10 @@ class ContentMigrationInterpretationBridgeTest extends WP_UnitTestCase
                 'normalized_url' => 'https://example.test/',
                 'content_hash' => str_repeat('a', 64),
                 'metadata' => [
-                    'title' => 'Mircea Olteanu Dental Surgery',
+                    'title' => 'Rowan Alderfield Dental Surgery',
                     'description' => 'A dental practice in Hamilton',
                 ],
-                'headings' => [['level' => 1, 'text' => 'Creating Healthy & Happy Smiles']],
+                'headings' => [['level' => 1, 'text' => 'Making Bright & Gentle Smiles']],
             ],
             'elements_artifact' => [
                 'artifact_type' => 'elements.v2',
@@ -503,7 +503,7 @@ class ContentMigrationInterpretationBridgeTest extends WP_UnitTestCase
                         'element_id' => 'e1',
                         'tag' => 'h1',
                         'level' => 1,
-                        'text' => 'Creating Healthy & Happy Smiles',
+                        'text' => 'Making Bright & Gentle Smiles',
                         'is_site_chrome' => false,
                     ],
                     [

@@ -282,7 +282,7 @@ class ContentMigrationExternalArtifactIngestTest extends WP_UnitTestCase
                 'normalized_url' => 'https://example.com/',
                 'content_hash' => str_repeat('a', 64),
                 'headings' => [
-                    ['level' => 1, 'text' => 'Creating Healthy & Happy Smiles'],
+                    ['level' => 1, 'text' => 'Making Bright & Gentle Smiles'],
                     ['level' => 2, 'text' => 'Our Services'],
                 ],
                 'text_blocks' => ['A paragraph.'],
@@ -293,7 +293,7 @@ class ContentMigrationExternalArtifactIngestTest extends WP_UnitTestCase
             ]
         );
 
-        $this->assertContains('Creating Healthy & Happy Smiles', $normalized['normalized']['headings']);
+        $this->assertContains('Making Bright & Gentle Smiles', $normalized['normalized']['headings']);
         $this->assertContains('Our Services', $normalized['normalized']['headings']);
         $this->assertNotContains('Array', $normalized['normalized']['headings']);
 

@@ -31,6 +31,8 @@ const DBVC_AGENT_DEVELOPMENT_ONLY_PATHS = [
     'uninstall.php',
     'tests/playwright/',
     'tests/*.test.cjs',
+    'tests/phpunit/ContentMigrationCorpusWiredMeasurementTest.php',
+    'docs/private/',
 ];
 
 $repositoryRoot = dirname(__DIR__);

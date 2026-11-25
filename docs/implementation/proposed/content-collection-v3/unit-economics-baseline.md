@@ -53,7 +53,7 @@ Three, not one. One page is a sample of one and will not generalise.
 | `/dental-team` | Five `team_member` records from one URL. S1d (delivered 2026-11-12, guide §6.1g) taught the tool to build a set from one URL, so this page is the **first operator-minutes test of the tool's set handling**. | Slowest by far |
 
 Source content for all eight pages is already captured at
-`~/Documents/LocalProjects/dbvc-content-migration-trials/mirceaolteanudds.com/2026-10-12/` — but **work from the live site**, not from the capture. The
+`~/Documents/LocalProjects/dbvc-content-migration-trials/<trial-domain>/2026-10-12/` — but **work from the live site**, not from the capture. The
 capture is the tool's output; using it would be timing yourself using the tool.
 
 ## 3. Stopwatch rules
@@ -82,7 +82,7 @@ Fill this in. Minutes to one decimal place.
 ```
 page            | what was ambiguous                                  | what you did
 ----------------|-----------------------------------------------------|---------------
-/dental-team    | heading says Nicole Langford, alt says Nicole Jeglie | recorded both
+/dental-team    | heading and alt give one person two surnames        | recorded both
 ```
 
 **Friction notes** — free text. What was tedious, what was fiddly, what you got wrong and had to

@@ -20,7 +20,10 @@ Read in this order:
 5. Section 11 — the decisions that belong to the product owner, not to an implementer.
 
 Trial data backing every measurement in this guide:
-`/Users/rhettbutler/Documents/LocalProjects/dbvc-content-migration-trials/mirceaolteanudds.com/2026-10-10/`
+`/Users/rhettbutler/Documents/LocalProjects/dbvc-content-migration-trials/<trial-domain>/2026-10-10/`
+
+The trial site, its staff and its copy are not named here: this file is mirrored to a public
+repository. `docs/private/client-key.md`, which is not mirrored, says which site it was.
 
 ---
 
@@ -194,7 +197,7 @@ Each entry is independently reproducible. Severity is against the goal in Sectio
 | D-6 | **RETIRED PATH** (Q5), not a backlog item | No HTML or inline markup is retained anywhere. Every value is `normalize_text($node->textContent)`; only a `content_hash` of the body is stored. Emphasis, bold, nested list structure, and the hrefs of links inside body copy are destroyed. A content *migration* tool cannot reproduce the source. | `v2/capture/dbvc-cc-v2-page-capture-service.php` |
 | D-7 | **RETIRED PATH** (Q5), not a backlog item | `collect_headings()` returns a flat, text-deduped list of strings. Heading level and document position are lost at the page-artifact layer. | `v2/capture/dbvc-cc-v2-page-capture-service.php` |
 | D-8 | **RETIRED PATH** (Q5), not a backlog item | `extract_metadata()` reads only `<title>`, `meta[name=description]`, `og:*`, and JSON-LD. No canonical, `meta robots`, `twitter:*`, `hreflang`, `lang`, or `article:modified_time`. The last of these is free migration-planning data: the trial homepage was last modified 2023-08-01, `/dental-team` 2019-04-29. | `v2/capture/dbvc-cc-v2-page-capture-service.php` |
-| D-9 | **Expressible 2026-10-14 (S4)**, boundaries unchanged | V2's segmenter opens a new section at **every** heading regardless of level, so nested structures split wrongly. On the trial About page, `Nicole Langford` (h2) becomes a heading-only section while her job title and bio land under `Registered Dental Hygienist` (h3). This mis-shapes every team page, service card, and FAQ. | `content-context/dbvc-cc-section-segmenter-service.php` — **unchanged.** The S2b emitter emits `parent_section_id`, verified on the team page: `Registered Dental Hygienist` now carries `parent=Nicole Langford`, so role and bio stay reachable from the person. V2's own segmenter still splits and still serves the in-WordPress capture path; fixing it there remains S4 |
+| D-9 | **Expressible 2026-10-14 (S4)**, boundaries unchanged | V2's segmenter opens a new section at **every** heading regardless of level, so nested structures split wrongly. On the trial About page, `Dana Whitfield` (h2) becomes a heading-only section while her job title and bio land under `Registered Dental Hygienist` (h3). This mis-shapes every team page, service card, and FAQ. | `content-context/dbvc-cc-section-segmenter-service.php` — **unchanged.** The S2b emitter emits `parent_section_id`, verified on the team page: `Registered Dental Hygienist` now carries `parent=Dana Whitfield`, so role and bio stay reachable from the person. V2's own segmenter still splits and still serves the in-WordPress capture path; fixing it there remains S4 |
 | D-10 | Low | `elements[].media_refs` is declared in the contract and hard-coded to `[]`. Images reach mapping by a separate path (`page-artifact.v1#images[]`), so this is dead structure that implies a relationship the data does not carry. | `content-context/dbvc-cc-element-extractor-service.php` |
 | D-11 | **Partly resolved 2026-10-14 (S4)** | Artifact directories were hardened with `Deny from all` only — Apache 2.2 syntax. No `Require all denied` for Apache 2.4 without `mod_access_compat`, and nothing at all for nginx. Artifacts live under `wp_upload_dir()`, so on a typical nginx host the crawled client content **and the built package ZIPs** are fetchable by URL. | `shared/dbvc-cc-helpers.php:32` |
 | D-12 | ~~Medium~~ **RESOLVED 2026-10-14 (S4)** | `openai_api_key` is stored in `wp_options` via `sanitize_text_field` with no constant/env override and no masking on redisplay. | `settings/dbvc-cc-settings-service.php:81` |
@@ -271,7 +274,7 @@ Recorded because they were wrong in a plausible way and the next reader will mak
 
 ## 6. Evidence register
 
-Measured 2026-10-10 against `https://mirceaolteanudds.com/` (WordPress 6.1.8, Divi Child 1.0).
+Measured 2026-10-10 against the trial site (WordPress 6.1.8, Divi Child 1.0).
 Raw data and scripts: see Section 12.
 
 | Measurement | Result |
@@ -289,7 +292,7 @@ Raw data and scripts: see Section 12.
 | Homepage visible text reached by the `elements.v2` selector set | 1,923 / 2,583 chars — **74.4%** |
 | `/dental-team` visible text reached by `elements.v2` | 3,122 / 3,596 chars — **86.8%** |
 | Named content missed on the homepage | all four service-card blurbs |
-| Named content missed on `/dental-team` | the opening paragraph of Dr. Olteanu's bio |
+| Named content missed on `/dental-team` | the opening paragraph of the lead dentist's bio |
 | `<img>` tags on the homepage | **1** (the logo) — hero slides are CSS backgrounds |
 | `<img>` tags on `/dental-team` | 7, all with `alt` |
 | SEO head fields DBVC captures | title, description, `og:*`, JSON-LD |
@@ -382,8 +385,8 @@ Three findings the headless harness could not produce:
   headline, one body, one CTA per section — so a section with two paragraphs drops the answer for
   one of them. Two of nineteen answers had no mapping item to attach to, which the artifact now
   counts as `interpretation.unjoined_recommendation_items`. It is also why the wired run reaches
-  14 of 17 ground-truth probes where the bench reached 17: `Extensive knowledge and skill…` and
-  `Senior citizens 55 years and older…` are correctly mapped by the model and then dropped, and
+  14 of 17 ground-truth probes where the bench reached 17: the second intro paragraph and the second
+  offer line are correctly mapped by the model and then dropped, and
   `meta:_seo_robots` can never be reached at all because the mapping index surfaces only title and
   description as head items.
 - **The pinned corpus schema and the live catalog do not spell a target_ref the same way.** The
@@ -417,8 +420,8 @@ homepage:
 The 0.97 is a **prior, not a measurement**: it is the same number whatever the page says and
 whatever else the catalog offers, and it sits above `autoAcceptMinConfidence` (0.92) and above the
 ceiling of every evidence-derived candidate (slot graph 0.88, catalog pattern 0.84, pattern memory
-0.96). Ground truth puts that `<title>` — `Family Dentist in Broadview Heights, OH - Mircea
-Olteanu DDS`, a keyword-stuffed document title rather than the page's name — in the target site's
+0.96). Ground truth puts that `<title>` — `Family Dentist in <town> - <practice
+name>`, a keyword-stuffed document title rather than the page's name — in the target site's
 own `meta:_seo_title`. So the prior was wrong, and it was wrong at a confidence no evidence can
 reach.
 
@@ -690,7 +693,7 @@ offers the model no ACF field at all (a first run here did exactly that and was 
 
 **The done-when holds.** `/dental-team` — which V2 routes to `page` at 0.93, with `team_member` the
 classifier's runner-up — was read as five `team_member` records, each with its own name, its own
-role (Dr. Olteanu correctly has none) and its own biography. A reviewer approving the people,
+role (the lead dentist correctly has none) and its own biography. A reviewer approving the people,
 leaving the page-level items unmapped and rejecting the conflict losers produced a
 `ready_for_import` package of **5 records**; execute completed 5 of 5 and committed **5
 `team_member` posts**. The same flow is pinned with no network by `ContentMigrationMultiEntityPerUrlTest`,
@@ -700,7 +703,7 @@ paragraphs §6.1c lost, and field accuracy stays at 100%. G-5 passes on both pag
 inside the 20–33% band §6.1c recorded across four runs; it was not recalibrated (S3).
 
 **What the honest scorer found, and the fix.** The capture lifts each lazyload image's alt text into
-a paragraph (D-18), so the model sees "Nancy Gezymalla is a certified dental assistant." as body
+a paragraph (D-18), so the model sees "<name> is a certified dental assistant." as body
 copy beside her real role heading. One measured answer filed all four such sentences as the
 person's *role*, at auto-accept confidence: **G-5 4/22 = 18.2%, failing**. The ground truth had no
 expectation for those sentences, so a first scoring missed it; they are now `expected_unmapped`,
@@ -733,8 +736,8 @@ pinned schema's `one_per_person` declaration (the live catalog never declares on
 never groups), maps 8 right / 8 wrong, and auto-accepts one value, correctly — G-5 1/1 right, the
 floor's first denominator. `--verify-scorer` returns 21/21 for the oracle on `/dental-team`.
 
-Ground truth corrected in passing: the register said Mariana Cristea had no role heading; the
-source has `<h3>Certified Dental Assistant</h3>` under her name, and so does `elements.v2`.
+Ground truth corrected in passing: the register said one team member had no role heading; the
+source has `<h3>Certified Dental Assistant</h3>` under that name, and so does `elements.v2`.
 
 ### 6.2 The S0 baseline
 
@@ -755,11 +758,11 @@ Named content the evaluator proves is missing, which is the part that matters mo
 percentages:
 
 ```
-homepage       "Providing quality dental care at an affordable price..."   (service card 1)
-               "Your smile is in great hands at Mircea Olteanu DDS..."    (service card 2)
-               "Your questions and concerns are important..."             (service card 3)
-               "Receive the highest quality care every time you see us..."(service card 4)
-/dental-team   "Dr. Olteanu is always looking out for the best interest..." (lead bio paragraph)
+homepage       service card 1 blurb
+               service card 2 blurb
+               service card 3 blurb
+               service card 4 blurb
+/dental-team   lead bio paragraph
 ```
 
 One finding only re-measurement could produce: **a single discovery tool's recall is not
@@ -770,8 +773,8 @@ single strategy's recall as a sample, not a constant. Only the union has been 10
 measured.
 
 The 2026-10-12 live run surfaced two more things worth carrying into the product: a linked
-`New-patient-packet.pdf`, which is **client content** a migration must transfer and which a
-plain asset-extension filter would have binned as noise, and `/440.746.9070` returning 404 — a fax
+new-patient PDF, which is **client content** a migration must transfer and which a
+plain asset-extension filter would have binned as noise, and a bare fax-number path returning 404 — a fax
 number written as an href without `tel:`.
 
 Two diagnostics worth keeping an eye on:
@@ -785,7 +788,7 @@ Two diagnostics worth keeping an eye on:
   on Divi's div-wrapped modules score 74-87%. V2's extractor is not uniformly lossy, it is lossy
   exactly where a page builder is used — which is most of the market.
 - **A capture is also a client report.** The run surfaced a wrong address on `/contact/thank-you`
-  (8193 Avery Rd against 7500 Town Centre Dr everywhere else), a hero CTA pointing at a 403, a
+  (one street address there, another everywhere else), a hero CTA pointing at a 403, a
   malformed `tel:` href, drifting index spam, an alt text naming the wrong person, and three pages
   last modified in 2018-2019. These are recorded in the slot's `client_findings` so a later run can
   check they were reported rather than silently carried across.
@@ -894,8 +897,8 @@ it to the right target field **5.3%** of the time, auto-accepting nothing. It is
 under-confident — it is wrong, and correctly refuses to act on being wrong.
 
 That is the thesis of this guide, measured instead of argued. Lexical overlap between a client's
-copy and an ACF field's label and purpose carries almost no signal: *"Creating Healthy & Happy
-Smiles"* shares no token with *"Hero heading / the large headline in the hero band"*, so it falls
+copy and an ACF field's label and purpose carries almost no signal: the trial
+homepage's hero headline shares no token with *"Hero heading / the large headline in the hero band"*, so it falls
 through to `core:post_title` at 0.02 confidence. No amount of tuning closes a gap of that shape,
 which is why 32 phases could not. Matching page copy to a field by meaning is a semantic task.
 
@@ -1189,7 +1192,7 @@ section can be decided during the build.
 
 ### 12.1 Trial data
 
-`/Users/rhettbutler/Documents/LocalProjects/dbvc-content-migration-trials/mirceaolteanudds.com/2026-10-10/`
+`/Users/rhettbutler/Documents/LocalProjects/dbvc-content-migration-trials/<trial-domain>/2026-10-10/`
 
 | Path | Contents |
 |---|---|
@@ -1270,10 +1273,10 @@ Defaults and deliberate choices:
 ### 12.4 Reproducing the measurements
 
 ```bash
-cd /Users/rhettbutler/Documents/LocalProjects/dbvc-content-migration-trials/mirceaolteanudds.com/2026-10-10
+cd /Users/rhettbutler/Documents/LocalProjects/dbvc-content-migration-trials/<trial-domain>/2026-10-10
 python3 -I tools/coverage.py source-html/home.html=homepage source-html/team.html=meet-the-team
 python3 -I tools/fc_to_dbvc.py . ./dbvc-artifacts-rebuild \
-  ccext_mirceaolteanudds-com_20261010T000000Z_pilot mirceaolteanudds.com
+  ccext_<trial-domain-key>_20261010T000000Z_pilot <trial-domain>
 ```
 
 ### 12.5 Verifying the Section 3.1 finding yourself

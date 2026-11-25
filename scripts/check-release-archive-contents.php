@@ -14,6 +14,11 @@
  * 3. No tracked file that shipped PHP or the built JavaScript names by path is
  *    left out, so the list in (1) cannot drop something runtime reads.
  *
+ * Both DBVC repositories carry this file and `.gitattributes` unchanged, so the
+ * development checkout fails before a mirror does. A development-only path
+ * (`scripts/distribution-drift.json`), `uninstall.php` included, is not on the
+ * shipped list and so must be ignored there too.
+ *
  * Read-only; no WordPress. The archive is unpacked in the system temp folder
  * and removed again.
  *
@@ -71,6 +76,15 @@ const DBVC_RELEASE_INTERNAL = [
 	'~^addons/content-migration/v2/admin-app/~'  => 'uncompiled source (build/ holds the result)',
 	'~^addons/visual-editor/boilerplates/~'      => 'agent boilerplate',
 	'~^addons/visual-editor/curation/[^/]+\.md$~' => 'a review sheet (runtime reads the JSON)',
+];
+
+/**
+ * Paths shipped code names without needing them, so check (3) leaves them out.
+ * Exact paths only: a file inside one is still reported.
+ */
+const DBVC_RELEASE_NAMED_AND_ABSENT = [
+	// Named only by the guard that stops WordPress when a file in it is loaded.
+	'_source/content-collector',
 ];
 
 /**
@@ -339,7 +353,8 @@ $unshipped_docs = array_filter($tracked, static function ($path) use ($shipped) 
 
 ksort($shipped);
 foreach (array_keys($shipped) as $path) {
-	$contents = (string) file_get_contents($work . '/files/' . $path);
+	// A link to a directory is a leaf here, and has no contents to read.
+	$contents = is_file($work . '/files/' . $path) ? (string) file_get_contents($work . '/files/' . $path) : '';
 
 	if (dbvc_release_client_line($path)) {
 		$failures['client'][] = "{$path} (in its path)";
@@ -354,7 +369,7 @@ foreach (array_keys($shipped) as $path) {
 	}
 	if ('.php' === substr($path, -4)) {
 		foreach (dbvc_release_named_paths($path, $contents, $known) as $named) {
-			if (! isset($shipped[$named]) && ! isset($shipped_dirs[$named])) {
+			if (! isset($shipped[$named]) && ! isset($shipped_dirs[$named]) && ! in_array($named, DBVC_RELEASE_NAMED_AND_ABSENT, true)) {
 				$failures['named'][] = "{$named} (named in {$path})";
 			}
 		}

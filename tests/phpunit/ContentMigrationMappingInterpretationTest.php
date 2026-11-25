@@ -722,7 +722,7 @@ class ContentMigrationMappingInterpretationTest extends WP_UnitTestCase
                 'element_id' => 'home-e1',
                 'tag' => 'h1',
                 'level' => 1,
-                'text' => 'Creating Healthy and Happy Smiles',
+                'text' => 'Making Bright and Gentle Smiles',
                 'is_site_chrome' => false,
             ],
             [
@@ -753,10 +753,10 @@ class ContentMigrationMappingInterpretationTest extends WP_UnitTestCase
                 'captured_at' => gmdate('c'),
                 'content_hash' => hash('sha256', $slug),
                 'metadata' => [
-                    'title' => 'Mircea Olteanu Dental Surgery',
+                    'title' => 'Rowan Alderfield Dental Surgery',
                     'description' => 'A dental practice in Hamilton.',
                 ],
-                'headings' => [['level' => 1, 'text' => 'Creating Healthy and Happy Smiles']],
+                'headings' => [['level' => 1, 'text' => 'Making Bright and Gentle Smiles']],
                 'text_blocks' => ['We have been caring for Hamilton families since 1998.'],
                 'links' => [],
                 'images' => [],
@@ -778,10 +778,10 @@ class ContentMigrationMappingInterpretationTest extends WP_UnitTestCase
                     [
                         'section_id' => 'home_s1',
                         'order' => 1,
-                        'heading' => 'Creating Healthy and Happy Smiles',
-                        'section_label_candidate' => 'Creating Healthy and Happy Smiles',
+                        'heading' => 'Making Bright and Gentle Smiles',
+                        'section_label_candidate' => 'Making Bright and Gentle Smiles',
                         'parent_section_id' => null,
-                        'heading_path' => ['Creating Healthy and Happy Smiles'],
+                        'heading_path' => ['Making Bright and Gentle Smiles'],
                         'element_ids' => ['home-e1', 'home-e2', 'home-e3'],
                         'signals' => [
                             'heading_level' => 1,
@@ -803,9 +803,9 @@ class ContentMigrationMappingInterpretationTest extends WP_UnitTestCase
                     [
                         'section_id' => 'home_s1',
                         'order' => 1,
-                        'label' => 'Creating Healthy and Happy Smiles',
+                        'label' => 'Making Bright and Gentle Smiles',
                         'sample_text' => [
-                            'Creating Healthy and Happy Smiles',
+                            'Making Bright and Gentle Smiles',
                             'We have been caring for Hamilton families since 1998.',
                             'Book an appointment',
                         ],

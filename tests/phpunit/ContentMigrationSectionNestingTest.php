@@ -37,12 +37,12 @@ class ContentMigrationSectionNestingTest extends WP_UnitTestCase
     {
         return ['elements' => [
             $this->element('h1', 'Meet the Team', 1),
-            $this->element('h2', 'Nicole Langford', 2),
+            $this->element('h2', 'Dana Whitfield', 2),
             $this->element('h3', 'Registered Dental Hygienist', 3),
-            $this->element('p', 'Nicole earned her dental hygiene degree in 2013.', 4),
-            $this->element('h2', 'Nancy Gezymalla', 5),
+            $this->element('p', 'Dana has a dental hygiene degree.', 4),
+            $this->element('h2', 'Priya Nolan', 5),
             $this->element('h3', 'Certified Dental Assistant', 6),
-            $this->element('p', 'Nancy became interested in dentistry many years ago.', 7),
+            $this->element('p', 'Priya joined the practice some years ago.', 7),
         ]];
     }
 
@@ -61,16 +61,16 @@ class ContentMigrationSectionNestingTest extends WP_UnitTestCase
         $this->assertNull($by_label['Meet the Team']['parent_section_id'], 'an h1 has no parent');
         $this->assertSame(
             $by_label['Meet the Team']['section_id'],
-            $by_label['Nicole Langford']['parent_section_id'],
+            $by_label['Dana Whitfield']['parent_section_id'],
             'an h2 nests under the preceding h1'
         );
         $this->assertSame(
-            $by_label['Nicole Langford']['section_id'],
+            $by_label['Dana Whitfield']['section_id'],
             $by_label['Registered Dental Hygienist']['parent_section_id'],
             "the role in an h3 must point at the person's name in the h2 above it"
         );
         $this->assertSame(
-            $by_label['Nancy Gezymalla']['section_id'],
+            $by_label['Priya Nolan']['section_id'],
             $by_label['Certified Dental Assistant']['parent_section_id'],
             'the stack pops correctly, so the second role does not attach to the first person'
         );
@@ -85,7 +85,7 @@ class ContentMigrationSectionNestingTest extends WP_UnitTestCase
 
         foreach ($artifact['sections'] as $section) {
             if ($section['section_label_candidate'] === 'Registered Dental Hygienist') {
-                $this->assertSame(['Meet the Team', 'Nicole Langford'], $section['heading_path']);
+                $this->assertSame(['Meet the Team', 'Dana Whitfield'], $section['heading_path']);
 
                 return;
             }
@@ -109,7 +109,7 @@ class ContentMigrationSectionNestingTest extends WP_UnitTestCase
         $person = null;
         $role = null;
         foreach ($sections as $section) {
-            if ($section['section_label_candidate'] === 'Nicole Langford') {
+            if ($section['section_label_candidate'] === 'Dana Whitfield') {
                 $person = $section;
             }
             if ($section['section_label_candidate'] === 'Registered Dental Hygienist') {
